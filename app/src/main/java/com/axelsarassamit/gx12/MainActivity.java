@@ -513,7 +513,16 @@ public class MainActivity extends android.app.Activity {
         logo.setImageResource(R.drawable.ridedeck_icon);
         android.widget.FrameLayout logoSlot = new android.widget.FrameLayout(this);
         logo.setContentDescription("RideDeck");
-        logoSlot.addView(logo, new android.widget.FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER));
+        android.widget.FrameLayout.LayoutParams rideLogoParams = new android.widget.FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        logoSlot.addView(logo, rideLogoParams);
+        android.widget.ImageView yamahaLogo = new android.widget.ImageView(this);
+        yamahaLogo.setImageResource(R.drawable.yamaha_motor_logo);
+        yamahaLogo.setContentDescription("Yamaha Motor compatibility");
+        yamahaLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        yamahaLogo.setBackgroundColor(Color.WHITE);
+        yamahaLogo.setPadding(dp(3), dp(2), dp(3), dp(2));
+        android.widget.FrameLayout.LayoutParams yamahaLogoParams = new android.widget.FrameLayout.LayoutParams(dp(80), dp(26), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        logoSlot.addView(yamahaLogo, yamahaLogoParams);
         header.addView(logoSlot, new LinearLayout.LayoutParams(dp(80), dp(64)));
         castStatus = text(YamahaCastService.status, 11, 0xff92a9be, false);
         castStatus.setMaxLines(1); castStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);

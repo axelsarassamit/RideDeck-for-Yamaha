@@ -38,3 +38,8 @@ Dependency META-INF license and notice resources are merged into the package.
 The phone edition excludes Pillion source and ADB dependencies. The Yamaha edition retains Pillion core/protocol under the notice above. DashServer, DashTouch, PillionAdb and LocalAdbDiscovery are retired and are not built into either edition. Their historical notices above describe the earlier distribution.
 
 MapLibre Native Android 13.4.1 renders the Yamaha map under BSD-2-Clause. Source: https://github.com/maplibre/maplibre-native . Provider content is licensed separately by MapTiler, OpenStreetMap and GraphHopper. The exact MapTiler logo from https://api.maptiler.com/resources/logo.svg is retained as a required provider attribution asset and converted to an Android vector without changing its paths. It is not RideDeck branding.
+
+
+## Yamaha Motor logo
+
+Unmodified logo sourced from https://global.yamaha-motor.com/shared/img/rwd_identity.png on 2026-10-07. Yamaha marks belong to Yamaha Motor Co., Ltd. Displayed to identify bike compatibility; RideDeck is an independent app and is not an official Yamaha product.
