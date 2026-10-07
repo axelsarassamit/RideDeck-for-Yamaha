@@ -62,6 +62,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <application
         android:name=".RideDeckApplication"
         android:allowBackup="false"
@@ -98,7 +100,7 @@
 
         <service
             android:name=".GX12NotificationListener"
-            android:label="RideDeck music and messages"
+            android:label="RideDeck for Yamaha music and messages"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter>
@@ -120,5 +122,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <service android:name=".YamahaCastService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+        <service android:name=".NativeNavigationService" android:exported="false" android:foregroundServiceType="location" />
     </application>
 </manifest>

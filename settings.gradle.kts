@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "RideBridge"
+rootProject.name = "RideDeck for Yamaha"
 include(":app")
