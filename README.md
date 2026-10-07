@@ -13,3 +13,8 @@ Java 17 and Android SDK 36. Run `./gradlew assembleDebug` or `./gradlew assemble
 Signed builds use the historical repository signing service to preserve the original certificate. Run `./scripts/Build-Signed.ps1 -Version 0.12.0` from this project with GitHub CLI authenticated. The service builds the exact committed HEAD and returns an APK, checksums, and source provenance. Private signing keys remain in GitHub secrets. Each project owns its source and update releases.
 
 No tests or bike verification were performed for this split. Provider keys are never committed. See THIRD_PARTY_NOTICES.md for licensing.
+
+
+## Personal provider configuration
+
+Signed Yamaha builds inject the personal MapTiler and GraphHopper keys from the private signing repository secrets. Keys are absent from Git source and logs, but embedded mobile credentials can be extracted from an APK. These personal builds use the owner's provider quotas. User-entered encrypted keys take precedence over bundled defaults. The phone edition has no provider keys or Yamaha logo.

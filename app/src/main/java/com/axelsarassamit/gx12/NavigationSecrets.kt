@@ -10,7 +10,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Provider keys are local, encrypted, excluded from backup and never logged. */
+/** Personal provider defaults are injected at build time; user overrides are encrypted and never logged. */
 object NavigationSecrets {
     /** Debug builds can be configured through USB into app-private storage, never exported. */
     fun importDebugSetup(context: Context) {
@@ -43,11 +43,17 @@ object NavigationSecrets {
             .putString(name, Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(bytes, Base64.NO_WRAP)).apply()
     }
     @Synchronized fun read(context: Context, name: String): String = runCatching {
-        val value = context.getSharedPreferences("navigation_keys", 0).getString(name, null) ?: return ""
+        val value = context.getSharedPreferences("navigation_keys", 0).getString(name, null) ?: return bundled(name)
         val parts = value.split(':')
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(parts[0], Base64.NO_WRAP)))
         }
         String(cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)), Charsets.UTF_8)
-    }.getOrDefault("")
+    }.getOrDefault("").ifBlank { bundled(name) }
+
+    private fun bundled(name: String): String = when (name) {
+        "maptiler" -> BuildConfig.MAPTILER_KEY
+        "graphhopper" -> BuildConfig.GRAPHHOPPER_KEY
+        else -> ""
+    }
 }

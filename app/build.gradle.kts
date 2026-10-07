@@ -12,9 +12,16 @@ android {
         buildConfigField("boolean", "YAMAHA", "true")
         buildConfigField("String", "UPDATE_ASSET", "\"ridedeck-yamaha-release.apk\"")
         manifestPlaceholders["appLabel"] = "RideDeck for Yamaha"
+        fun providerKey(name: String): String {
+            val value = System.getenv(name).orEmpty().trim()
+            require(value.all { it.isLetterOrDigit() || it == '-' || it == '_' }) { "Invalid provider key format" }
+            return "\"$value\""
+        }
+        buildConfigField("String", "MAPTILER_KEY", providerKey("RIDEDECK_MAPTILER_KEY"))
+        buildConfigField("String", "GRAPHHOPPER_KEY", providerKey("RIDEDECK_GRAPHHOPPER_KEY"))
         minSdk = 26
         targetSdk = 35
-        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.2").removePrefix("v")
+        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.3").removePrefix("v")
         val parts = releaseVersion.split(".")
         require(parts.size >= 2 && parts.take(3).all { it.all(Char::isDigit) }) {
             "GX12_VERSION_NAME must use numeric semver such as 0.1.0"
