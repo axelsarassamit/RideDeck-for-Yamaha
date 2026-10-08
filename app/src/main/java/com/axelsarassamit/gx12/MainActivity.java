@@ -669,9 +669,7 @@ public class MainActivity extends android.app.Activity {
         android.widget.FrameLayout messageSlot = new android.widget.FrameLayout(this);
         messageSlot.addView(messages, new android.widget.FrameLayout.LayoutParams(-1, -1));
         messageSlot.addView(callPanel, new android.widget.FrameLayout.LayoutParams(-1, -1));
-        controls.addView(messageSlot, stacked && BuildConfig.YAMAHA && !"music".equals(renderedPanel)
-            ? new LinearLayout.LayoutParams(-1, dp(compact ? 120 : 170))
-            : stacked ? new LinearLayout.LayoutParams(-1, 0, 1)
+        controls.addView(messageSlot, stacked ? new LinearLayout.LayoutParams(-1, 0, 1)
             : new LinearLayout.LayoutParams(0, -1, 1));
         if (!stacked && controlsRight) {
             controls.removeView(mediaSlot); controls.addView(mediaSlot);
