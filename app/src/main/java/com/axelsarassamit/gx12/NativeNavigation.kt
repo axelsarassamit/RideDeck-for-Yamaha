@@ -151,8 +151,8 @@ object NativeNavigation {
                     val detail = when (error) {
                         is java.net.UnknownHostException -> "No internet connection."
                         is java.net.SocketTimeoutException -> "The routing service timed out. Try again."
-                        else -> error.message?.takeIf { it.startsWith("Add your GraphHopper key") || it.startsWith("Enter a valid provider routing profile") || it.startsWith("GraphHopper rejected the route") }
-                            ?: "Check the GraphHopper key, scooter profile and account quota in Setup."
+                        else -> error.message?.takeIf { it.startsWith("Valhalla rejected the request") || it.startsWith("No motorcycle route") }
+                            ?: "The motorcycle routing service could not calculate this route. Check your connection and try again."
                     }
                     status = "Route unavailable: $detail"
                     BikeDiagnostics.record(c, "Native route failed detail=$detail exception=${error.javaClass.simpleName}")

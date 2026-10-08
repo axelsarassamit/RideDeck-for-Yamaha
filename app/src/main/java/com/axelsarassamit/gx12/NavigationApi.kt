@@ -5,7 +5,6 @@ import android.location.Location
 import android.net.Uri
 import org.json.JSONObject
 import org.json.JSONArray
-import org.json.JSONTokener
 import org.maplibre.android.geometry.LatLng
 import java.net.HttpURLConnection
 import java.net.URL
@@ -23,49 +22,6 @@ data class NavigationRoute(val destination: NavigationPlace, val points: List<La
 }
 
 object NavigationApi {
-    fun availableRoutingProfiles(context: Context): List<String> {
-        val key = NavigationSecrets.read(context, "graphhopper")
-        check(key.isNotBlank()) { "Add your GraphHopper key in Setup." }
-        val uri = Uri.parse("https://graphhopper.com/api/1/profiles").buildUpon()
-            .appendQueryParameter("key", key).build()
-        val connection = URL(uri.toString()).openConnection() as HttpURLConnection
-        try {
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 10000; connection.readTimeout = 15000
-            connection.setRequestProperty("User-Agent", "RideDeck-Yamaha")
-            val code = connection.responseCode
-            val stream = if (code == 200) connection.inputStream else connection.errorStream
-            val bytes = stream?.use { input ->
-                val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(2048)
-                while (output.size() < 65536) {
-                    val count = input.read(buffer, 0, minOf(buffer.size, 65536 - output.size()))
-                    if (count < 0) break
-                    output.write(buffer, 0, count)
-                }
-                output.toByteArray()
-            } ?: ByteArray(0)
-            if (code != 200) {
-                val message = runCatching { JSONObject(String(bytes, Charsets.UTF_8)).optString("message") }.getOrDefault("")
-                val safe = message.replace(key, "[hidden]").replace(Regex("[\\r\\n\\t]+"), " ").take(180)
-                error("GraphHopper rejected the profile check (HTTP $code)" + if (safe.isBlank()) "." else ": $safe")
-            }
-            val root = JSONTokener(String(bytes, Charsets.UTF_8)).nextValue()
-            val entries = when (root) {
-                is JSONArray -> root
-                is JSONObject -> root.optJSONArray("profiles") ?: root.optJSONArray("profile") ?: JSONArray()
-                else -> JSONArray()
-            }
-            return (0 until entries.length()).mapNotNull { index ->
-                val entry = entries.opt(index)
-                val id = when (entry) {
-                    is JSONObject -> entry.optString("name").ifBlank { entry.optString("id") }.ifBlank { entry.optString("profile") }
-                    is String -> entry
-                    else -> ""
-                }
-                id.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) }
-            }.distinct().sorted()
-        } finally { connection.disconnect() }
-    }
     fun englishMapStyle(context: Context): String {
         val key = NavigationSecrets.read(context, "maptiler")
         check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
@@ -87,6 +43,7 @@ object NavigationApi {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 10000; connection.readTimeout = 15000
             connection.setRequestProperty("User-Agent", "RideDeck-Yamaha")
+            if (provider == "Valhalla") connection.setRequestProperty("X-Client-Id", "RideDeck-for-Yamaha")
             val responseCode = connection.responseCode
             if (responseCode != 200) {
                 val apiKey = uri.getQueryParameter("key").orEmpty()
@@ -146,26 +103,61 @@ object NavigationApi {
         }
     }
     fun route(context: Context, origin: Location, target: NavigationPlace): NavigationRoute {
-        val key = NavigationSecrets.read(context, "graphhopper")
-        check(key.isNotBlank()) { "Add your GraphHopper key in Setup." }
-        val profile = RidePreferences.prefs(context).getString("routing_profile", "scooter").orEmpty()
-        require(profile.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Enter a valid provider routing profile." }
-        val uri = Uri.parse("https://graphhopper.com/api/1/route").buildUpon()
-            .appendQueryParameter("key", key).appendQueryParameter("profile", profile)
-            .appendQueryParameter("point", "${origin.latitude},${origin.longitude}")
-            .appendQueryParameter("point", "${target.latitude},${target.longitude}")
-            .appendQueryParameter("points_encoded", "false").appendQueryParameter("instructions", "true").appendQueryParameter("locale", "en").build()
-        val path = request(uri, "GraphHopper").getJSONArray("paths").getJSONObject(0)
-        val geometry = path.getJSONObject("points").getJSONArray("coordinates")
-        require(geometry.length() in 2..100000) { "Route geometry unavailable." }
-        val points = (0 until geometry.length()).map { i ->
-            val p = geometry.getJSONArray(i); LatLng(p.getDouble(1), p.getDouble(0))
-        }
-        val raw = path.getJSONArray("instructions")
+        val locations = JSONArray()
+            .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude))
+            .put(JSONObject().put("lat", target.latitude).put("lon", target.longitude))
+        val payload = JSONObject().put("locations", locations).put("costing", "motorcycle")
+            .put("units", "kilometers").put("language", "en-US")
+        val uri = Uri.parse("https://valhalla1.openstreetmap.de/route").buildUpon()
+            .appendQueryParameter("json", payload.toString()).build()
+        val trip = request(uri, "Valhalla").getJSONObject("trip")
+        check(trip.optInt("status", 0) == 0) { trip.optString("status_message", "No motorcycle route was found.") }
+        val legs = trip.getJSONArray("legs")
+        require(legs.length() == 1) { "Unexpected route response." }
+        val leg = legs.getJSONObject(0)
+        val points = decodePolyline(leg.getString("shape"))
+        require(points.size in 2..100000) { "Route geometry unavailable." }
+        val raw = leg.getJSONArray("maneuvers")
         val turns = (0 until raw.length()).map { i ->
-            val item = raw.getJSONObject(i); val interval = item.getJSONArray("interval")
-            NavigationTurn(item.getString("text"), item.getInt("sign"), interval.getInt(0).coerceIn(points.indices), interval.getInt(1).coerceIn(points.indices))
+            val item = raw.getJSONObject(i)
+            NavigationTurn(
+                item.optString("instruction", "Continue"), valhallaTurnSign(item.optInt("type")),
+                item.optInt("begin_shape_index").coerceIn(points.indices), item.optInt("end_shape_index").coerceIn(points.indices)
+            )
         }
-        return NavigationRoute(target, points, turns, path.getDouble("distance"), path.getLong("time"))
+        val summary = trip.getJSONObject("summary")
+        return NavigationRoute(target, points, turns, summary.getDouble("length") * 1000.0, (summary.getDouble("time") * 1000).toLong())
+    }
+
+    private fun valhallaTurnSign(type: Int): Int = when (type) {
+        9 -> 1; 10, 18, 20, 23 -> 2; 11, 12 -> 3
+        14, 13 -> -3; 15, 19, 21, 24 -> -2; 16 -> -1
+        4, 5, 6 -> 5; 26, 27 -> 6
+        else -> 0
+    }
+
+    private fun decodePolyline(encoded: String): List<LatLng> {
+        require(encoded.length <= 2_000_000) { "Route geometry is too large." }
+        val points = ArrayList<LatLng>()
+        var index = 0; var latitude = 0; var longitude = 0
+        fun component(): Int {
+            var result = 0; var shift = 0; var chunk: Int
+            do {
+                require(index < encoded.length && shift <= 30) { "Invalid route geometry." }
+                chunk = encoded[index++].code - 63
+                require(chunk in 0..63) { "Invalid route geometry." }
+                result = result or ((chunk and 0x1f) shl shift)
+                shift += 5
+            } while (chunk >= 0x20)
+            return if ((result and 1) != 0) (result shr 1).inv() else result shr 1
+        }
+        while (index < encoded.length) {
+            latitude += component(); longitude += component()
+            val lat = latitude / 1_000_000.0; val lon = longitude / 1_000_000.0
+            require(lat in -90.0..90.0 && lon in -180.0..180.0) { "Invalid route geometry." }
+            points.add(LatLng(lat, lon))
+            require(points.size <= 100000) { "Route geometry is too large." }
+        }
+        return points
     }
 }
