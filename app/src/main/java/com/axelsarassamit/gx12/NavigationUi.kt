@@ -55,13 +55,30 @@ object NavigationUi {
         val map=EditText(activity).apply { hint="MapTiler key (blank keeps existing key)"; inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         val routing=EditText(activity).apply { hint="GraphHopper key (blank keeps existing key)"; inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         val profile=EditText(activity).apply { hint="Routing profile available in your account"; setText(RidePreferences.prefs(activity).getString("routing_profile","scooter")) }
-        fields.addView(map); fields.addView(routing); fields.addView(profile)
+        val checkProfiles=Button(activity).apply { text="Check GraphHopper profiles" }
+        fields.addView(map); fields.addView(routing); fields.addView(profile); fields.addView(checkProfiles)
         AlertDialog.Builder(activity).setTitle("Map and routing accounts")
             .setMessage("MapTiler receives map-area and address searches. GraphHopper receives the route start and destination. Provider quotas and terms apply. Keys are encrypted on this phone.\n\nThe initial profile is scooter. Confirm that it is available on your plan and suitable for your motorcycle. No car-profile fallback is applied.")
             .setView(fields).setNegativeButton("Close",null).setNeutralButton("Provider websites") { _,_ ->
                 AlertDialog.Builder(activity).setItems(arrayOf("MapTiler","GraphHopper")) { _,i -> activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(if(i==0)"https://cloud.maptiler.com/" else "https://graphhopper.com/dashboard/"))) }.show()
             }.setPositiveButton("Save",null).create().also { dialog ->
-                dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dialog.setOnShowListener {
+                    checkProfiles.setOnClickListener {
+                        checkProfiles.isEnabled=false; checkProfiles.text="Checking account..."
+                        worker.execute {
+                            val result=runCatching { NavigationApi.availableRoutingProfiles(activity.applicationContext) }
+                            main.post {
+                                if(activity.isDestroyed) return@post
+                                checkProfiles.isEnabled=true; checkProfiles.text="Check GraphHopper profiles"
+                                val message=result.fold(
+                                    { profiles -> if(profiles.isEmpty()) "GraphHopper returned no profiles for this account." else "Profiles available on this account:\n${profiles.joinToString("\n")}\n\nChoose a profile suitable for your motorcycle before saving." },
+                                    { error -> error.message ?: "Could not check GraphHopper profiles." }
+                                )
+                                AlertDialog.Builder(activity).setTitle("GraphHopper profiles").setMessage(message).setPositiveButton("OK",null).show()
+                            }
+                        }
+                    }
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                     val value=profile.text.toString().trim()
                     if(!value.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { profile.error="Enter a valid provider profile"; return@setOnClickListener }
                     try {

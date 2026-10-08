@@ -4,6 +4,8 @@ import android.content.Context
 import android.location.Location
 import android.net.Uri
 import org.json.JSONObject
+import org.json.JSONArray
+import org.json.JSONTokener
 import org.maplibre.android.geometry.LatLng
 import java.net.HttpURLConnection
 import java.net.URL
@@ -21,6 +23,49 @@ data class NavigationRoute(val destination: NavigationPlace, val points: List<La
 }
 
 object NavigationApi {
+    fun availableRoutingProfiles(context: Context): List<String> {
+        val key = NavigationSecrets.read(context, "graphhopper")
+        check(key.isNotBlank()) { "Add your GraphHopper key in Setup." }
+        val uri = Uri.parse("https://graphhopper.com/api/1/profiles").buildUpon()
+            .appendQueryParameter("key", key).build()
+        val connection = URL(uri.toString()).openConnection() as HttpURLConnection
+        try {
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 10000; connection.readTimeout = 15000
+            connection.setRequestProperty("User-Agent", "RideDeck-Yamaha")
+            val code = connection.responseCode
+            val stream = if (code == 200) connection.inputStream else connection.errorStream
+            val bytes = stream?.use { input ->
+                val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(2048)
+                while (output.size() < 65536) {
+                    val count = input.read(buffer, 0, minOf(buffer.size, 65536 - output.size()))
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            } ?: ByteArray(0)
+            if (code != 200) {
+                val message = runCatching { JSONObject(String(bytes, Charsets.UTF_8)).optString("message") }.getOrDefault("")
+                val safe = message.replace(key, "[hidden]").replace(Regex("[\\r\\n\\t]+"), " ").take(180)
+                error("GraphHopper rejected the profile check (HTTP $code)" + if (safe.isBlank()) "." else ": $safe")
+            }
+            val root = JSONTokener(String(bytes, Charsets.UTF_8)).nextValue()
+            val entries = when (root) {
+                is JSONArray -> root
+                is JSONObject -> root.optJSONArray("profiles") ?: root.optJSONArray("profile") ?: JSONArray()
+                else -> JSONArray()
+            }
+            return (0 until entries.length()).mapNotNull { index ->
+                val entry = entries.opt(index)
+                val id = when (entry) {
+                    is JSONObject -> entry.optString("name").ifBlank { entry.optString("id") }.ifBlank { entry.optString("profile") }
+                    is String -> entry
+                    else -> ""
+                }
+                id.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) }
+            }.distinct().sorted()
+        } finally { connection.disconnect() }
+    }
     fun englishMapStyle(context: Context): String {
         val key = NavigationSecrets.read(context, "maptiler")
         check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
