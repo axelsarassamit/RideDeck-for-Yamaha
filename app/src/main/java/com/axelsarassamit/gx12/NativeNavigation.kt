@@ -116,7 +116,8 @@ object NativeNavigation {
             context?.let { navigate(it, target) }
             return
         }
-        status = if (route == null) "GPS ready. Choose a destination" else "Navigating"
+        if (route != null) status = "Navigating"
+        else if (!routeBusy && !status.startsWith("Route unavailable:")) status = "GPS ready. Choose a destination"
         updateGuidance(next)
     }
     @JvmStatic fun stopRoute() {
@@ -146,9 +147,15 @@ object NativeNavigation {
                     route = it; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
                     status = "Navigating"; location?.let(::updateGuidance)
                     BikeDiagnostics.record(c, "Native route ready points=${it.points.size} instructions=${it.turns.size}")
-                }.onFailure {
-                    status = "Route unavailable. Check provider key and routing profile in Setup"
-                    BikeDiagnostics.record(c, "Native route failed exception=${it.javaClass.simpleName}")
+                }.onFailure { error ->
+                    val detail = when (error) {
+                        is java.net.UnknownHostException -> "No internet connection."
+                        is java.net.SocketTimeoutException -> "The routing service timed out. Try again."
+                        else -> error.message?.takeIf { it.startsWith("Add your GraphHopper key") || it.startsWith("Enter a valid provider routing profile") || it.startsWith("GraphHopper rejected the route") }
+                            ?: "Check the GraphHopper key, scooter profile and account quota in Setup."
+                    }
+                    status = "Route unavailable: $detail"
+                    BikeDiagnostics.record(c, "Native route failed detail=$detail exception=${error.javaClass.simpleName}")
                 }
             }
         }

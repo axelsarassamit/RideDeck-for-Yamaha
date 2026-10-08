@@ -42,7 +42,8 @@ object NavigationApi {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 10000; connection.readTimeout = 15000
             connection.setRequestProperty("User-Agent", "RideDeck-Yamaha")
-            check(connection.responseCode == 200) { "Provider request failed. Check credentials, profile and account quota in Setup." }
+            val responseCode = connection.responseCode
+            check(responseCode == 200) { "GraphHopper rejected the route (HTTP $responseCode). Check its key, profile and account quota in Setup." }
             val bytes = connection.inputStream.use { input ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
