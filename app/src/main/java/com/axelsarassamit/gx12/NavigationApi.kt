@@ -36,14 +36,36 @@ object NavigationApi {
         }
         return style.toString()
     }
-    private fun request(uri: Uri): JSONObject {
+    private fun request(uri: Uri, provider: String = "MapTiler"): JSONObject {
         val connection = URL(uri.toString()).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 10000; connection.readTimeout = 15000
             connection.setRequestProperty("User-Agent", "RideDeck-Yamaha")
             val responseCode = connection.responseCode
-            check(responseCode == 200) { "GraphHopper rejected the route (HTTP $responseCode). Check its key, profile and account quota in Setup." }
+            if (responseCode != 200) {
+                val apiKey = uri.getQueryParameter("key").orEmpty()
+                val message = runCatching {
+                    val bytes = connection.errorStream?.use { input ->
+                        val output = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(1024)
+                        while (output.size() < 8192) {
+                            val count = input.read(buffer, 0, minOf(buffer.size, 8192 - output.size()))
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                        output.toByteArray()
+                    } ?: return@runCatching ""
+                    JSONObject(String(bytes, Charsets.UTF_8)).optString("message")
+                }.getOrDefault("")
+                val safeMessage = message
+                    .replace(apiKey, "[hidden]")
+                    .replace(Regex("-?\\d{1,3}\\.\\d+,\\s*-?\\d{1,3}\\.\\d+"), "[location]")
+                    .replace(Regex("[\\r\\n\\t]+"), " ")
+                    .take(180)
+                val detail = if (safeMessage.isBlank()) "" else ": $safeMessage"
+                throw IllegalStateException("$provider rejected the request (HTTP $responseCode)$detail")
+            }
             val bytes = connection.inputStream.use { input ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
@@ -88,7 +110,7 @@ object NavigationApi {
             .appendQueryParameter("point", "${origin.latitude},${origin.longitude}")
             .appendQueryParameter("point", "${target.latitude},${target.longitude}")
             .appendQueryParameter("points_encoded", "false").appendQueryParameter("instructions", "true").appendQueryParameter("locale", "en").build()
-        val path = request(uri).getJSONArray("paths").getJSONObject(0)
+        val path = request(uri, "GraphHopper").getJSONArray("paths").getJSONObject(0)
         val geometry = path.getJSONObject("points").getJSONArray("coordinates")
         require(geometry.length() in 2..100000) { "Route geometry unavailable." }
         val points = (0 until geometry.length()).map { i ->
