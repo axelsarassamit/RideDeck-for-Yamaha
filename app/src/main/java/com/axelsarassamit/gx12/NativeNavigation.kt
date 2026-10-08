@@ -251,7 +251,14 @@ object NativeNavigation {
         if (phone) { phoneInFlight = true; phoneRenderStarted = SystemClock.elapsedRealtime() }
         else { inFlight = true; renderStarted = SystemClock.elapsedRealtime() }
         try {
-            val camera = CameraPosition.Builder().target(LatLng(fix.latitude, fix.longitude)).zoom(zoomLevel).bearing(if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else 0.0).build()
+            val activeRoute = route
+            val heading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else if (activeRoute != null) routeBearing(activeRoute, progressIndex) else 0.0
+            val cameraBuilder = CameraPosition.Builder()
+                .target(LatLng(fix.latitude, fix.longitude))
+                .zoom(if (activeRoute != null) maxOf(zoomLevel, 17.0) else zoomLevel)
+                .bearing(heading)
+            if (activeRoute != null) cameraBuilder.tilt(55.0)
+            val camera = cameraBuilder.build()
             val renderer = (if (phone) phoneSnapshotter else snapshotter) ?: MapSnapshotter(c, MapSnapshotter.Options(480, renderHeight).withPixelRatio(1f)
                 .withStyleBuilder(Style.Builder().fromJson(style))
                 .withCameraPosition(camera))
@@ -263,7 +270,7 @@ object NativeNavigation {
                 val canvas = Canvas(bitmap)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG)
                 canvas.save(); canvas.clipRect(0, 34, 480, renderHeight - 20)
-                route?.let { r ->
+                activeRoute?.let { r ->
                     val path = Path()
                     r.points.drop((progressIndex-1).coerceAtLeast(0)).forEachIndexed { i, point ->
                         val pixel = snapshot.pixelForLatLng(point)
@@ -295,6 +302,14 @@ object NativeNavigation {
         paint.color=Color.WHITE; paint.textSize=size; paint.typeface=Typeface.DEFAULT_BOLD
         val shown=android.text.TextUtils.ellipsize(text,android.text.TextPaint(paint),466f,android.text.TextUtils.TruncateAt.END).toString()
         canvas.drawText(shown,7f,top+(bottom-top)/2f-(paint.ascent()+paint.descent())/2,paint)
+    }
+    private fun routeBearing(r: NavigationRoute, index: Int): Double {
+        val from = r.points[index.coerceIn(0, r.points.lastIndex)]
+        val to = r.points[(index + 1).coerceAtMost(r.points.lastIndex)]
+        val lat1 = Math.toRadians(from.latitude)
+        val lat2 = Math.toRadians(to.latitude)
+        val dLon = Math.toRadians(to.longitude - from.longitude)
+        return (Math.toDegrees(atan2(sin(dLon) * cos(lat2), cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon))) + 360.0) % 360.0
     }
     private fun jpeg(bitmap: Bitmap): ByteArray = ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG,85,it); it.toByteArray() }
     @JvmStatic fun frame(mode: String): ByteArray? {
