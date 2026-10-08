@@ -21,6 +21,21 @@ data class NavigationRoute(val destination: NavigationPlace, val points: List<La
 }
 
 object NavigationApi {
+    fun englishMapStyle(context: Context): String {
+        val key = NavigationSecrets.read(context, "maptiler")
+        check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
+        val style = request(Uri.parse("https://api.maptiler.com/maps/streets-v4/style.json?key=${Uri.encode(key)}"))
+        val layers = style.getJSONArray("layers")
+        for (i in 0 until layers.length()) {
+            val layout = layers.getJSONObject(i).optJSONObject("layout") ?: continue
+            val field = layout.opt("text-field") ?: continue
+            // Planet v4 supplies localized names as name:xx. Keep shields and numeric labels unchanged.
+            if (Regex("name(?::[A-Za-z_-]+)?").containsMatchIn(field.toString())) {
+                layout.put("text-field", org.json.JSONArray("[\"coalesce\",[\"get\",\"name:en\"],[\"get\",\"name:latin\"],[\"get\",\"name\"]]"))
+            }
+        }
+        return style.toString()
+    }
     private fun request(uri: Uri): JSONObject {
         val connection = URL(uri.toString()).openConnection() as HttpURLConnection
         try {
@@ -52,7 +67,7 @@ object NavigationApi {
         val key = NavigationSecrets.read(context, "maptiler")
         check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
         val url = Uri.Builder().scheme("https").authority("api.maptiler.com").appendPath("geocoding").appendPath(query.take(300) + ".json")
-            .appendQueryParameter("key", key).appendQueryParameter("autocomplete", "true").appendQueryParameter("limit", "6")
+            .appendQueryParameter("key", key).appendQueryParameter("language", "en").appendQueryParameter("autocomplete", "true").appendQueryParameter("limit", "6")
         location?.let { url.appendQueryParameter("proximity", "${it.longitude},${it.latitude}") }
         val features = request(url.build()).getJSONArray("features")
         return (0 until features.length()).mapNotNull { i ->

@@ -88,7 +88,6 @@ public class MainActivity extends android.app.Activity {
     private Button rideButton;
     private File downloadedApk;
     private MediaController mediaController;
-    private BluetoothDevice gx12Device;
     private BluetoothProfile a2dpProfile;
     private BluetoothProfile headsetProfile;
     private boolean a2dpRequested;
@@ -438,7 +437,7 @@ public class MainActivity extends android.app.Activity {
             String name = device.getName();
             if (name != null && (name.toUpperCase(Locale.ROOT).contains("CCU") || name.toUpperCase(Locale.ROOT).contains("YAMAHA"))) devices.add(device);
         }
-        if (devices.isEmpty()) { castStatus.setText("No paired Yamaha CCU found. Pair your dash using the bike's normal setup first. A GX12 headset is not the dash."); return; }
+        if (devices.isEmpty()) { castStatus.setText("No paired Yamaha CCU found. Pair your dash using the bike's normal setup first. A headset is separate from the bike display."); return; }
         String savedDash = getSharedPreferences("bike_display", MODE_PRIVATE).getString("dash_address", "");
         devices.sort((a, b) -> Boolean.compare(b.getAddress().equals(savedDash), a.getAddress().equals(savedDash)));
         if (devices.get(0).getAddress().equals(savedDash)) {
@@ -571,12 +570,11 @@ public class MainActivity extends android.app.Activity {
         android.widget.FrameLayout.LayoutParams rideLogoParams = new android.widget.FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         logoSlot.addView(logo, rideLogoParams);
         android.widget.ImageView yamahaLogo = new android.widget.ImageView(this);
-        yamahaLogo.setImageResource(R.drawable.yamaha_motor_logo);
+        yamahaLogo.setImageDrawable(YamahaBranding.roundLogo(this));
         yamahaLogo.setContentDescription("Yamaha Motor compatibility");
         yamahaLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        yamahaLogo.setBackgroundColor(0xffffffff);
-        yamahaLogo.setPadding(dp(3), dp(2), dp(3), dp(2));
-        android.widget.FrameLayout.LayoutParams yamahaLogoParams = new android.widget.FrameLayout.LayoutParams(dp(80), dp(26), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        yamahaLogo.setPadding(0, 0, 0, 0);
+        android.widget.FrameLayout.LayoutParams yamahaLogoParams = new android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         logoSlot.addView(yamahaLogo, yamahaLogoParams);
         header.addView(logoSlot, new LinearLayout.LayoutParams(dp(80), dp(64)));
         castStatus = text(YamahaCastService.status, 11, 0xff92a9be, false);
@@ -640,6 +638,10 @@ public class MainActivity extends android.app.Activity {
             mediaSlot.removeView(music);
             mediaSlot.addView(NavigationUi.panel(this), new android.widget.FrameLayout.LayoutParams(-1, -1));
         }
+        if (BuildConfig.YAMAHA && !"music".equals(renderedPanel)) {
+            musicParams = stacked ? new LinearLayout.LayoutParams(-1, 0, 1f)
+                : new LinearLayout.LayoutParams(0, -1, 1.4f);
+        }
         controls.addView(mediaSlot, musicParams);
 
         LinearLayout messages = rideCard("MESSAGES");
@@ -664,7 +666,9 @@ public class MainActivity extends android.app.Activity {
         android.widget.FrameLayout messageSlot = new android.widget.FrameLayout(this);
         messageSlot.addView(messages, new android.widget.FrameLayout.LayoutParams(-1, -1));
         messageSlot.addView(callPanel, new android.widget.FrameLayout.LayoutParams(-1, -1));
-        controls.addView(messageSlot, stacked ? new LinearLayout.LayoutParams(-1, 0, 1)
+        controls.addView(messageSlot, stacked && BuildConfig.YAMAHA && !"music".equals(renderedPanel)
+            ? new LinearLayout.LayoutParams(-1, dp(compact ? 120 : 170))
+            : stacked ? new LinearLayout.LayoutParams(-1, 0, 1)
             : new LinearLayout.LayoutParams(0, -1, 1));
         if (!stacked && controlsRight) {
             controls.removeView(mediaSlot); controls.addView(mediaSlot);
@@ -678,17 +682,17 @@ public class MainActivity extends android.app.Activity {
         Button settings = rideAction("Setup", false);
         settings.setOnClickListener(v -> buildSetupScreen());
         if (!compact) header.addView(settings, new LinearLayout.LayoutParams(dp(80), dp(56)));
-        String[] labels = new String[]{"Map", "Camera", "Voice"};
+        String[] labels = new String[]{"Yamaha", "Camera", "Voice"};
         if (controlsRight) java.util.Collections.reverse(java.util.Arrays.asList(labels));
         for (String label : labels) {
             Button action = rideAction(label, false);
-            if (label.equals("Map")) {
-                action.setContentDescription(compact ? "Map split-screen controls; hold to close RideDeck" : "Open map beside RideDeck; hold to close RideDeck");
+            if (label.equals("Yamaha")) {
+                action.setContentDescription("Yamaha bike connection and screen options");
                 action.setOnLongClickListener(v -> { finishAndRemoveTask(); return true; });
             }
             action.setOnClickListener(v -> {
                 switch (label) {
-                    case "Map": rideMapAction(); break;
+                    case "Yamaha": showBikeScreenMenu(); break;
                     case "Camera": showQuickCamera(); break;
                     case "Voice": startGoogleVoice(); break;
                 }
@@ -722,7 +726,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private Button rideAction(String label, boolean primary) {
-        boolean icon = java.util.Arrays.asList("Map", "Camera", "Voice", "Setup", "|◀", "▶", "▶|").contains(label);
+        boolean icon = java.util.Arrays.asList("Yamaha", "Map", "Camera", "Voice", "Setup", "|◀", "▶", "▶|").contains(label);
         Button action = icon ? new ControlIconButton(this, label, primary) : button(label); action.setAllCaps(false); action.setTextSize(16);
         action.setTypeface(Typeface.DEFAULT, Typeface.BOLD); action.setMinWidth(0); action.setMinimumWidth(0);
         action.setMinHeight(dp(56)); action.setMinimumHeight(dp(56));
@@ -751,6 +755,20 @@ public class MainActivity extends android.app.Activity {
 
     private LinearLayout.LayoutParams rideParams(int height) {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(height)); p.topMargin = dp(8); return p;
+    }
+
+    private void showBikeScreenMenu() {
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+            .setTitle("Yamaha bike screen")
+            .setItems(new String[]{YamahaCastService.active ? "Disconnect bike" : "Connect bike",
+                "Map on bike screen", "Turn arrows on bike screen", "Music on bike screen"},
+                (d, choice) -> {
+                    if (choice == 0) { castOrStop(); return; }
+                    String mode = new String[]{"map", "arrows", "music"}[choice - 1];
+                    RidePreferences.prefs(this).edit().putString("dash_panel", mode).apply();
+                    android.widget.Toast.makeText(this, "Bike screen updated", android.widget.Toast.LENGTH_SHORT).show();
+                }).setNegativeButton("Close", null).create();
+        dialog.show();
     }
 
     private void castOrStop() {
@@ -1481,11 +1499,10 @@ public class MainActivity extends android.app.Activity {
     private void withHeadsetMicrophone(Runnable listen) {
         java.util.ArrayList<String> permissions = new java.util.ArrayList<>();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.RECORD_AUDIO);
-        if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
         if (!permissions.isEmpty()) {
             pendingHeadsetVoice = listen; requestPermissions(permissions.toArray(new String[0]), 84); return;
         }
-        android.widget.Toast.makeText(this, "Connecting headset microphone…", android.widget.Toast.LENGTH_SHORT).show();
+        android.widget.Toast.makeText(this, "Preparing voice input.", android.widget.Toast.LENGTH_SHORT).show();
         headsetMic.start(listen, message -> {
             finishActivity(82); finishActivity(83); voiceReplyTarget = null; showRideMessage(message);
         });
@@ -1538,37 +1555,42 @@ public class MainActivity extends android.app.Activity {
 
     private void refreshDeviceStatus() {
         if (deviceStatus == null) return;
-        if (Build.VERSION.SDK_INT >= 31 && ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            deviceStatus.setText("Allow nearby-device access to check whether GX12 is paired."); return;
+        if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            deviceStatus.setText("Allow nearby-device access to show the connected headset. Voice input can use the phone microphone."); return;
         }
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-        if (adapter == null) { deviceStatus.setText("This phone does not report Bluetooth support."); return; }
+        if (adapter == null || !adapter.isEnabled()) {
+            deviceStatus.setText("No Bluetooth headset connected. Voice input uses the phone microphone."); return;
+        }
         try {
-            for (BluetoothDevice device : adapter.getBondedDevices()) {
-                String name = device.getName();
-                if (name != null && name.toUpperCase(Locale.ROOT).contains("GX12")) {
-                    gx12Device = device;
-                    deviceStatus.setText("Paired: " + name + "\nChecking audio and call connections…\nHeadset battery is not available to this app.");
-                    if (!a2dpRequested) a2dpRequested = adapter.getProfileProxy(this, profileListener, BluetoothProfile.A2DP);
-                    if (!headsetRequested) headsetRequested = adapter.getProfileProxy(this, profileListener, BluetoothProfile.HEADSET);
-                    showBluetoothConnection();
-                    return;
-                }
-            }
-            gx12Device = null;
-            deviceStatus.setText("GX12 is not in this phone’s paired-device list. Use Bluetooth settings to pair it.");
-        } catch (SecurityException error) { deviceStatus.setText("Bluetooth permission is needed to read the paired-device list."); }
+            if (!a2dpRequested) a2dpRequested = adapter.getProfileProxy(this, profileListener, BluetoothProfile.A2DP);
+            if (!headsetRequested) headsetRequested = adapter.getProfileProxy(this, profileListener, BluetoothProfile.HEADSET);
+            showBluetoothConnection();
+        } catch (SecurityException error) {
+            deviceStatus.setText("Nearby-device permission is needed for headset status. Voice input can use the phone microphone.");
+        }
     }
 
     private void showBluetoothConnection() {
-        if (deviceStatus == null || gx12Device == null) return;
+        if (deviceStatus == null) return;
         try {
-            String name = gx12Device.getName();
-            String audio = a2dpProfile == null ? "checking" : connectionLabel(a2dpProfile.getConnectionState(gx12Device));
-            String calls = headsetProfile == null ? "checking" : connectionLabel(headsetProfile.getConnectionState(gx12Device));
-            deviceStatus.setText("Paired: " + (name == null ? "GX12" : name) + "\nMusic audio: " + audio + "\nCall audio: " + calls + "\nHeadset battery is not available to this app.");
+            java.util.LinkedHashSet<BluetoothDevice> devices = new java.util.LinkedHashSet<>();
+            if (headsetProfile != null) devices.addAll(headsetProfile.getConnectedDevices());
+            if (a2dpProfile != null) devices.addAll(a2dpProfile.getConnectedDevices());
+            if (devices.isEmpty()) {
+                deviceStatus.setText("No Bluetooth headset connected. Voice input uses the phone microphone."); return;
+            }
+            StringBuilder status = new StringBuilder();
+            for (BluetoothDevice device : devices) {
+                if (status.length() > 0) status.append("\n\n");
+                String name = device.getName();
+                status.append("Connected: ").append(name == null ? "Bluetooth audio device" : name);
+                status.append("\nMusic audio: ").append(a2dpProfile == null ? "checking" : connectionLabel(a2dpProfile.getConnectionState(device)));
+                status.append("\nCall audio: ").append(headsetProfile == null ? "checking" : connectionLabel(headsetProfile.getConnectionState(device)));
+            }
+            deviceStatus.setText(status.toString());
         } catch (SecurityException error) {
-            deviceStatus.setText("Bluetooth permission is needed to read connection status.");
+            deviceStatus.setText("Nearby-device permission is needed for headset status. Voice input can use the phone microphone.");
         }
     }
 
@@ -1586,7 +1608,7 @@ public class MainActivity extends android.app.Activity {
             boolean granted = results.length > 0;
             for (int value : results) granted &= value == PackageManager.PERMISSION_GRANTED;
             if (granted && next != null) withHeadsetMicrophone(next);
-            else { voiceReplyTarget = null; showRideMessage("Microphone and nearby-device permissions are needed for headset voice input."); }
+            else { voiceReplyTarget = null; showRideMessage("Allow microphone access to use voice input."); }
         }
         if (requestCode == REQUEST_BLUETOOTH) refreshDeviceStatus();
     }

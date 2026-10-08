@@ -2,7 +2,7 @@ Current review: [v0.11.9 pre-ride checks and limits](docs/PRE_RIDE_REVIEW.md). A
 
 # RideBridge
 
-An independent Android motorcycle cockpit targeting the Yamaha XMAX 2024 Tech MAX. It brings together Google Maps, Spotify, Yamaha Y-Connect, Garmin StreetCross, WhatsApp and Google voice, with large controls, headset status, a timer and signed in-app updates. Previously called GX12 Companion; the package identity and release download name stay the same so existing installations can update.
+An independent Android motorcycle cockpit targeting the Yamaha XMAX 2024 Tech MAX. It brings together Google Maps, Spotify, Yamaha Y-Connect, Garmin StreetCross, WhatsApp and Google voice, with large controls, headset status, a timer and signed in-app updates. The existing package identity remains stable so installed copies can update.
 
 ## Mount position and app choices
 
@@ -41,7 +41,7 @@ Android must approve every screen-sharing session. Frames remain in memory and a
 
 Pillion-derived code is licensed under PolyForm Noncommercial 1.0.0. This distribution is for noncommercial personal and hobby use. Required Notice: Copyright 2026 the Pillion authors.
 
-The phone's Bluetooth diagnostics show standard A2DP, AVRCP, HFP, and PBAP services, but no documented GX12-specific control service. The app does not claim to change headset settings or read its battery.
+Headsets use standard Bluetooth audio and call profiles. The app displays connected audio devices without filtering their brand or model. Voice input also works with the phone microphone.
 
 ## Ride tools
 
@@ -98,10 +98,6 @@ For local release builds, set `GX12_KEYSTORE_PATH`, `GX12_KEYSTORE_PASSWORD`, `G
 ## Privacy
 
 The app has no analytics or backend. It reads paired devices after nearby-device permission. Optional notification access provides Spotify controls and the selected message previews held only in memory. Screen sharing is separately approved by Android for each casting session; whole-screen sharing includes any visible messages. Timer and checklist state stay in local preferences. The update button contacts GitHub and downloads the APK and checksum. Bluetooth addresses and messages are not uploaded to GitHub.
-
-## Hardware investigation
-
-The GX12's external USB-C port is documented for charging. These diagnostics do not establish that it exposes USB data or firmware access. Do not connect exposed internal board pins to a computer or open the housing casually: the unit contains a rechargeable lithium battery and opening it can damage the seal. External photos of labels, ports, and cable ends are safe and may help identify the exact hardware revision.
 
 ## Quick camera
 

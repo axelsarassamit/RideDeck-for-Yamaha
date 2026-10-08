@@ -123,11 +123,32 @@ object NavigationUi {
         dialog.setOnDismissListener { generation++; pending?.let(main::removeCallbacks) }
         dialog.show(); initial?.let { field.setText(it) }
     }
+    @JvmStatic fun mapMenu(activity: Activity) {
+        AlertDialog.Builder(activity).setTitle("Map")
+            .setItems(arrayOf("Search destination", "Stop route", "Voice guidance")) { _, choice ->
+                when (choice) {
+                    0 -> search(activity, null)
+                    1 -> NativeNavigation.stopRoute()
+                    2 -> {
+                        val prefs = RidePreferences.prefs(activity)
+                        AlertDialog.Builder(activity).setTitle("Voice guidance")
+                            .setSingleChoiceItems(arrayOf("On", "Off"), if (prefs.getBoolean("navigation_voice", true)) 0 else 1) { dialog, selected ->
+                                prefs.edit().putBoolean("navigation_voice", selected == 0).apply()
+                                dialog.dismiss()
+                            }.setNegativeButton("Close", null).show()
+                    }
+                }
+            }.setNegativeButton("Close", null).show()
+    }
     @JvmStatic fun panel(activity: Activity): View {
         val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff151c17.toInt()) }
-        val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Navigation panel"; setOnClickListener { search(activity,null) } }
+        val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Map; tap for navigation menu"; setOnClickListener { mapMenu(activity) } }
         val state=TextView(activity).apply {
             setTextColor(0xfff4f6fa.toInt()); gravity=Gravity.CENTER; textSize=14f
+            val logo = activity.getDrawable(R.drawable.maptiler_logo)!!
+            val density = activity.resources.displayMetrics.density
+            logo.setBounds(0, 0, (70 * density).toInt(), (20 * density).toInt())
+            setCompoundDrawables(logo, null, null, null)
             setOnClickListener {
                 val credit=TextView(activity).apply {
                     text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a><br>Routing: GraphHopper<br>Search results: MapTiler",android.text.Html.FROM_HTML_MODE_LEGACY)
@@ -136,21 +157,33 @@ object NavigationUi {
                 AlertDialog.Builder(activity).setTitle("Map credits").setView(credit).setPositiveButton("Close",null).show()
             }
         }
-        page.addView(image,LinearLayout.LayoutParams(-1,0,1f)); page.addView(state)
-        val actions=LinearLayout(activity)
-        listOf("Search","+","−","Panels").forEachIndexed { i,label ->
-            actions.addView(Button(activity).apply { text=label; isAllCaps=false; setOnClickListener { when(i) { 0 -> search(activity,null); 1 -> NativeNavigation.zoom(true); 2 -> NativeNavigation.zoom(false); 3 -> configure(activity) } } },LinearLayout.LayoutParams(0,-2,1f))
+        val mapArea = FrameLayout(activity)
+        mapArea.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ -> NativeNavigation.phoneViewport(right - left, bottom - top) }
+        mapArea.addView(image, FrameLayout.LayoutParams(-1, -1))
+        val zoom = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val density = activity.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        listOf("+", "−").forEachIndexed { index, label ->
+            zoom.addView(Button(activity).apply {
+                text = label; textSize = 24f; isAllCaps = false
+                contentDescription = if (index == 0) "Zoom in" else "Zoom out"
+                setOnClickListener { NativeNavigation.zoom(index == 0) }
+            }, LinearLayout.LayoutParams(dp(52), dp(52)))
         }
-        page.addView(actions)
+        mapArea.addView(zoom, FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL).apply {
+            leftMargin = dp(8)
+        })
+        page.addView(mapArea, LinearLayout.LayoutParams(-1, 0, 1f))
+        page.addView(state)
         val refresh=object: Runnable { override fun run() {
             if(!page.isAttachedToWindow) return
             image.setImageBitmap(NativeNavigation.phoneBitmap(RidePreferences.prefs(activity).getString("phone_panel","map") ?: "map"))
-            state.text=NativeNavigation.status
+            state.text=NativeNavigation.status + "\n© MapTiler  © OpenStreetMap contributors"
             main.postDelayed(this,750)
         } }
         page.addOnAttachStateChangeListener(object: View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) { main.post(refresh) }
-            override fun onViewDetachedFromWindow(v: View) { main.removeCallbacks(refresh) }
+            override fun onViewDetachedFromWindow(v: View) { main.removeCallbacks(refresh); NativeNavigation.phoneViewport(0, 0) }
         })
         return page
     }

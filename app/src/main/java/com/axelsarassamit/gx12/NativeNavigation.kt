@@ -31,11 +31,22 @@ object NativeNavigation {
     @Volatile var status = "Start navigation to get a GPS position"
     @Volatile var mapBitmap: Bitmap? = null
     @Volatile private var mapJpeg: ByteArray? = null
+    @Volatile var acquisitionStatus = "Waiting for a GPS fix. Move outdoors if needed"
     @Volatile private var guidance = "Waiting for GPS"
     @Volatile private var maneuver = 0
     private var zoomLevel = 16.0
     private var height = 234
     private var snapshotter: MapSnapshotter? = null
+    private var phoneSnapshotter: MapSnapshotter? = null
+    private var phoneHeight = 234
+    private var phoneVisible = false
+    private var phoneInFlight = false
+    private var phoneFrameAt = 0L
+    private var phoneRenderStarted = 0L
+    private var phoneMapBitmap: Bitmap? = null
+    private var englishStyle: String? = null
+    private var styleLoading = false
+    private var styleRetryAt = 0L
     private var inFlight = false
     private var frameAt = 0L
     private var renderStarted = 0L
@@ -64,6 +75,7 @@ object NativeNavigation {
     }
     fun attach(c: Context) {
         context = c.applicationContext; running = true
+        acquisitionStatus = "Waiting for a GPS fix. Move outdoors if needed"
         MapLibre.getInstance(c)
         speaker = TextToSpeech(c) { result -> speechReady = result == TextToSpeech.SUCCESS }
         speaker?.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -74,6 +86,7 @@ object NativeNavigation {
         running = false; routeGeneration++; routeBusy = false; pendingDestination = null
         main.removeCallbacks(tick); snapshotter?.cancel(); snapshotter = null; inFlight = false
         speaker?.shutdown(); speaker = null; speechReady = false
+        phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapBitmap = null; englishStyle = null; styleLoading = false
         location = null; mapJpeg = null; mapBitmap = null
         status = "Navigation stopped"
     }
@@ -81,10 +94,22 @@ object NativeNavigation {
         require(width == 480 && h in listOf(234, 240))
         main.post { height = h; snapshotter?.cancel(); snapshotter = null; inFlight = false }
     }
+    fun phoneViewport(width: Int, h: Int) {
+        phoneVisible = width > 0 && h > 0
+        if (!phoneVisible) { phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; return }
+        val next = (480.0 * h / width).roundToInt().coerceIn(120, 1600)
+        if (next != phoneHeight) {
+            phoneHeight = next; phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false
+            phoneMapBitmap = null; phoneFrameAt = 0
+        }
+    }
     fun update(next: Location) {
         if (!next.hasAccuracy() || next.accuracy > 50f || SystemClock.elapsedRealtimeNanos() - next.elapsedRealtimeNanos > 30_000_000_000L) {
-            status = "Waiting for a precise GPS fix"; return
+            acquisitionStatus = "Waiting for a precise GPS fix"
+            status = acquisitionStatus; return
         }
+        val previous = location
+        if (previous != null && next.elapsedRealtimeNanos < previous.elapsedRealtimeNanos) return
         location = Location(next)
         pendingDestination?.let { target ->
             pendingDestination = null
@@ -176,12 +201,16 @@ object NativeNavigation {
             val c = context ?: return
             val fix = location
             val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos < 30_000_000_000L
-            if (!fresh) { status = "GPS signal unavailable"; guidance = "Waiting for GPS" }
+            if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS" }
             if (inFlight && SystemClock.elapsedRealtime() - renderStarted > 15000) {
                 snapshotter?.cancel(); snapshotter = null; inFlight = false
                 BikeDiagnostics.record(c, "Native map render timeout")
             }
+            if (phoneInFlight && SystemClock.elapsedRealtime() - phoneRenderStarted > 15000) {
+                phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false
+            }
             if (fresh && !inFlight && SystemClock.elapsedRealtime() - frameAt > 750) render(c, fix!!)
+            if (fresh && phoneVisible && !phoneInFlight && SystemClock.elapsedRealtime() - phoneFrameAt > 750) render(c, fix!!, true)
             if (SystemClock.elapsedRealtime() - lastSummary > 10000) {
                 lastSummary = SystemClock.elapsedRealtime()
                 BikeDiagnostics.record(c, "Native map status gpsFresh=$fresh route=${route != null} renderBusy=$inFlight frameAgeMs=${if(frameAt==0L)-1 else lastSummary-frameAt}")
@@ -189,23 +218,44 @@ object NativeNavigation {
             main.postDelayed(this, 500)
         }
     }
-    private fun render(c: Context, fix: Location) {
+    private fun render(c: Context, fix: Location, phone: Boolean = false) {
         val key = NavigationSecrets.read(c, "maptiler")
         if (key.isBlank()) { status = "Add your map provider key in Setup"; return }
-        inFlight = true; renderStarted = SystemClock.elapsedRealtime()
+        val style = englishStyle
+        if (style == null) {
+            if (!styleLoading && SystemClock.elapsedRealtime() >= styleRetryAt) {
+                styleLoading = true
+                worker.execute {
+                    val result = runCatching { NavigationApi.englishMapStyle(c) }
+                    main.post {
+                        styleLoading = false
+                        if (!running) return@post
+                        result.onSuccess { englishStyle = it }.onFailure {
+                            styleRetryAt = SystemClock.elapsedRealtime() + 15000
+                            status = "Map unavailable. Check provider key and internet connection"
+                            BikeDiagnostics.record(c, "English map style failed exception=${it.javaClass.simpleName}")
+                        }
+                    }
+                }
+            }
+            return
+        }
+        val renderHeight = if (phone) phoneHeight else height
+        if (phone) { phoneInFlight = true; phoneRenderStarted = SystemClock.elapsedRealtime() }
+        else { inFlight = true; renderStarted = SystemClock.elapsedRealtime() }
         try {
             val camera = CameraPosition.Builder().target(LatLng(fix.latitude, fix.longitude)).zoom(zoomLevel).bearing(if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else 0.0).build()
-            val renderer = snapshotter ?: MapSnapshotter(c, MapSnapshotter.Options(480, height).withPixelRatio(1f)
-                .withStyleBuilder(Style.Builder().fromUri("https://api.maptiler.com/maps/streets-v4/style.json?key=${android.net.Uri.encode(key)}"))
+            val renderer = (if (phone) phoneSnapshotter else snapshotter) ?: MapSnapshotter(c, MapSnapshotter.Options(480, renderHeight).withPixelRatio(1f)
+                .withStyleBuilder(Style.Builder().fromJson(style))
                 .withCameraPosition(camera))
-            snapshotter = renderer
+            if (phone) phoneSnapshotter = renderer else snapshotter = renderer
             renderer.setCameraPosition(camera)
             renderer.start({ snapshot ->
-                if (!running || snapshotter !== renderer) return@start
+                if (!running || (if (phone) phoneSnapshotter else snapshotter) !== renderer) return@start
                 val bitmap = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(bitmap)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-                canvas.save(); canvas.clipRect(0, 34, 480, height - 20)
+                canvas.save(); canvas.clipRect(0, 34, 480, renderHeight - 20)
                 route?.let { r ->
                     val path = Path()
                     r.points.drop((progressIndex-1).coerceAtLeast(0)).forEachIndexed { i, point ->
@@ -221,16 +271,17 @@ object NativeNavigation {
                 canvas.restore()
                 banner(canvas, paint, guidance, 0, 34, 19f)
                 // Attribution remains visible on every streamed frame, including the small dashboard.
-                paint.color=Color.WHITE; canvas.drawRect(0f,(height-20).toFloat(),480f,height.toFloat(),paint)
+                paint.color=Color.WHITE; canvas.drawRect(0f,(renderHeight-20).toFloat(),480f,renderHeight.toFloat(),paint)
                 val logo=c.getDrawable(R.drawable.maptiler_logo)!!
-                logo.setBounds(3,height-20,70,height); logo.draw(canvas)
+                logo.setBounds(3,renderHeight-20,70,renderHeight); logo.draw(canvas)
                 paint.color=Color.BLACK; paint.textSize=11f; paint.typeface=Typeface.DEFAULT
-                canvas.drawText("© MapTiler  © OpenStreetMap contributors",83f,height-6f,paint)
-                mapBitmap=bitmap; mapJpeg=jpeg(bitmap); frameAt=SystemClock.elapsedRealtime(); inFlight=false
+                canvas.drawText("© MapTiler  © OpenStreetMap contributors",83f,renderHeight-6f,paint)
+                if (phone) { phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false }
+                else { mapBitmap=bitmap; mapJpeg=jpeg(bitmap); frameAt=SystemClock.elapsedRealtime(); inFlight=false }
             }) { _ ->
-                if (snapshotter === renderer) { inFlight=false; snapshotter=null; status="Map unavailable. Check provider key and internet connection"; BikeDiagnostics.record(c,"Native map render failed") }
+                if ((if (phone) phoneSnapshotter else snapshotter) === renderer) { if (phone) { phoneInFlight=false; phoneSnapshotter=null } else { inFlight=false; snapshotter=null }; status="Map unavailable. Check provider key and internet connection"; BikeDiagnostics.record(c,"Native map render failed") }
             }
-        } catch (e: Exception) { inFlight=false; snapshotter=null; status="Map rendering unavailable"; BikeDiagnostics.record(c,"Native map render exception=${e.javaClass.simpleName}") }
+        } catch (e: Exception) { if (phone) { phoneInFlight=false; phoneSnapshotter=null } else { inFlight=false; snapshotter=null }; status="Map rendering unavailable"; BikeDiagnostics.record(c,"Native map render exception=${e.javaClass.simpleName}") }
     }
     private fun banner(canvas: Canvas, paint: Paint, text: String, top: Int, bottom: Int, size: Float) {
         paint.style=Paint.Style.FILL; paint.color=0xff14251c.toInt(); canvas.drawRect(0f,top.toFloat(),480f,bottom.toFloat(),paint)
@@ -269,7 +320,7 @@ object NativeNavigation {
         return jpeg(bitmap)
     }
     fun phoneBitmap(mode: String): Bitmap? = if(mode=="map") {
-        if(SystemClock.elapsedRealtime()-frameAt<10000) mapBitmap else frame("map")?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
+        if(phoneMapBitmap != null && SystemClock.elapsedRealtime()-phoneFrameAt<10000) phoneMapBitmap else if(mapBitmap != null && SystemClock.elapsedRealtime()-frameAt<10000) mapBitmap else frame("map")?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
     } else frame(mode)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
 }
 
@@ -290,12 +341,40 @@ class NativeNavigationService : Service(), LocationListener {
         try {
             locations=getSystemService(LocationManager::class.java)
             NativeNavigation.attach(this)
-            locations!!.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000,1f,this,Looper.getMainLooper())
-            locations!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let { NativeNavigation.update(it) }
+            val available = locations!!.allProviders
+            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                .filter { it in available }
+            var registered = 0
+            providers.forEach { provider ->
+                try {
+                    // Zero distance also delivers fixes while the rider is stationary.
+                    locations!!.requestLocationUpdates(provider, 1000L, 0f, this, Looper.getMainLooper())
+                    registered++
+                } catch (e: Exception) {
+                    BikeDiagnostics.record(this, "Native location registration failed provider=$provider exception=${e.javaClass.simpleName}")
+                }
+            }
+            if (registered == 0) {
+                NativeNavigation.acquisitionStatus = "Location provider unavailable on this phone"
+            } else {
+                refreshProviderStatus()
+                providers.mapNotNull { provider ->
+                    runCatching { locations!!.getLastKnownLocation(provider) }.getOrNull()
+                }.sortedBy { it.elapsedRealtimeNanos }.forEach { NativeNavigation.update(it) }
+            }
         } catch(e: Exception) { BikeDiagnostics.record(this,"Native GPS start failed exception=${e.javaClass.simpleName}"); stopSelf() }
         return START_NOT_STICKY
     }
     override fun onLocationChanged(location: Location) { NativeNavigation.update(location) }
-    override fun onProviderDisabled(provider: String) { NativeNavigation.status="Enable phone location to continue navigation" }
+    private fun refreshProviderStatus() {
+        val enabled = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).any {
+            runCatching { locations?.isProviderEnabled(it) == true }.getOrDefault(false)
+        }
+        NativeNavigation.acquisitionStatus = if (enabled) "Waiting for a GPS fix. Move outdoors if needed"
+            else "Enable phone location to continue navigation"
+        if (NativeNavigation.location == null) NativeNavigation.status = NativeNavigation.acquisitionStatus
+    }
+    override fun onProviderDisabled(provider: String) { refreshProviderStatus() }
+    override fun onProviderEnabled(provider: String) { refreshProviderStatus() }
     override fun onDestroy() { locations?.removeUpdates(this); NativeNavigation.detach(); super.onDestroy() }
 }

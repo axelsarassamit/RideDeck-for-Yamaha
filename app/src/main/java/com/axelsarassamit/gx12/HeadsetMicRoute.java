@@ -9,7 +9,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import java.util.function.Consumer;
 
-/** Connect the Bluetooth call-audio route before asking Android to listen. */
+/** Prefer a connected headset microphone; use the phone when no headset route is available. */
 public final class HeadsetMicRoute {
     private final Context context;
     private final AudioManager audio;
@@ -38,12 +38,16 @@ public final class HeadsetMicRoute {
                 for (AudioDeviceInfo device : audio.getAvailableCommunicationDevices()) {
                     if (bluetooth(device.getType(), Build.VERSION.SDK_INT)) { headset = device; break; }
                 }
-                if (headset == null) { fail("No headset microphone connection. Connect your headset and enable Calls in its Bluetooth settings."); return; }
+                if (headset == null) { usePhoneMicrophone(); return; }
                 previousDevice = audio.getCommunicationDevice(); owned = true;
                 audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                if (!audio.setCommunicationDevice(headset)) { fail("Android could not select the headset microphone."); return; }
+                if (!audio.setCommunicationDevice(headset)) { usePhoneMicrophone(); return; }
             } else {
-                if (!audio.isBluetoothScoAvailableOffCall()) { fail("This phone does not support headset microphone audio outside calls."); return; }
+                boolean hasHeadset = false;
+                for (AudioDeviceInfo device : audio.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+                    if (bluetooth(device.getType(), Build.VERSION.SDK_INT)) { hasHeadset = true; break; }
+                }
+                if (!hasHeadset || !audio.isBluetoothScoAvailableOffCall()) { usePhoneMicrophone(); return; }
                 owned = true; audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 scoConnected = false;
                 context.registerReceiver(scoState, new android.content.IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED));
@@ -52,7 +56,7 @@ public final class HeadsetMicRoute {
             }
             active = true; deadline = SystemClock.elapsedRealtime() + 10000;
             handler.post(check);
-        } catch (RuntimeException error) { fail("Could not connect headset microphone. Check Bluetooth call audio and permissions."); }
+        } catch (RuntimeException error) { usePhoneMicrophone(); }
     }
     static boolean bluetooth(int type, int sdk) {
         return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || (sdk >= 31 && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
@@ -70,13 +74,22 @@ public final class HeadsetMicRoute {
             try {
                 if (connected()) {
                     if (ready != null) { BikeDiagnostics.record(context, "Headset microphone route connected"); Runnable next = ready; ready = null; next.run(); }
-                } else if (ready == null || SystemClock.elapsedRealtime() >= deadline) {
-                    fail("Headset microphone disconnected or did not connect. Phone microphone was not requested."); return;
+                } else if (ready == null) {
+                    fail("Headset microphone disconnected. Tap voice again to use the phone microphone."); return;
+                } else if (SystemClock.elapsedRealtime() >= deadline) {
+                    usePhoneMicrophone(); return;
                 }
                 if (active) handler.postDelayed(this, 300);
             } catch (RuntimeException error) { fail("Headset audio connection failed."); }
         }
     };
+    private void usePhoneMicrophone() {
+        Runnable next = ready;
+        release();
+        BikeDiagnostics.record(context, "Voice input using the default phone or wired microphone");
+        active = true;
+        if (next != null) next.run();
+    }
     private void fail(String message) {
         BikeDiagnostics.record(context, "Headset microphone failed: " + message);
         Consumer<String> callback = failed; release(); if (callback != null) callback.accept(message);
