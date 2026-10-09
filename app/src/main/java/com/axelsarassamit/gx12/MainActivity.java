@@ -67,7 +67,6 @@ public class MainActivity extends android.app.Activity {
     private TextView trackStatus, trackArtist, musicSource;
     private PlaybackTimelineView playbackTimeline;
     private TextView phoneGuidance;
-    private TextView phoneTripSummary;
     private SpeedLimitIcon phoneSpeedLimit;
     private TextView messagePreview;
     private TextView messageSource;
@@ -115,10 +114,6 @@ public class MainActivity extends android.app.Activity {
             refreshWhatsAppPreview();
             if (castStatus != null) castStatus.setText(YamahaCastService.status);
             if (phoneGuidance != null) phoneGuidance.setText(NativeNavigation.phoneGuidance());
-            if (phoneTripSummary != null) {
-                String summary = NativeNavigation.phoneTripSummary();
-                phoneTripSummary.setText(summary); phoneTripSummary.setVisibility(summary.isEmpty() ? View.GONE : View.VISIBLE);
-            }
             if (phoneSpeedLimit != null) phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
             if (!setupVisible && RidePreferences.automaticMap(MainActivity.this) && YamahaCastService.automaticFallbackPending && !YamahaCastService.active) {
                 YamahaCastService.automaticFallbackPending = false;
@@ -286,7 +281,7 @@ public class MainActivity extends android.app.Activity {
         setupVisible = true; cockpitVisible = false;
         albumArt = null; messagePreview = null; messageSource = null; dockMessage = null;
         trackArtist = null; musicSource = null; playbackTimeline = null;
-        phoneGuidance = null; phoneTripSummary = null; phoneSpeedLimit = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
+        phoneGuidance = null; phoneSpeedLimit = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(16), dp(16), dp(16), dp(16));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
@@ -430,7 +425,7 @@ public class MainActivity extends android.app.Activity {
         labels.addView(text(title, 20, RideStyle.TEXT, true));
         TextView detail = text(summary, 14, RideStyle.MUTED, false); detail.setPadding(0, dp(4), dp(8), 0); labels.addView(detail);
         heading.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView toggle = text(expanded ? "⌃" : "⌄", 22, RideTheme.accent(this), true);
+        TextView toggle = text(expanded ? "âŒƒ" : "âŒ„", 22, RideTheme.accent(this), true);
         toggle.setGravity(Gravity.CENTER); heading.addView(toggle, new LinearLayout.LayoutParams(dp(40), dp(48)));
         card.addView(heading);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
@@ -438,7 +433,7 @@ public class MainActivity extends android.app.Activity {
         heading.setFocusable(true); heading.setContentDescription(title + ". " + summary + (expanded ? ". Expanded" : ". Collapsed"));
         heading.setOnClickListener(v -> {
             boolean open = content.getVisibility() != View.VISIBLE;
-            content.setVisibility(open ? View.VISIBLE : View.GONE); toggle.setText(open ? "⌃" : "⌄");
+            content.setVisibility(open ? View.VISIBLE : View.GONE); toggle.setText(open ? "âŒƒ" : "âŒ„");
             heading.setContentDescription(title + ". " + summary + (open ? ". Expanded" : ". Collapsed"));
         });
         return content;
@@ -591,7 +586,7 @@ public class MainActivity extends android.app.Activity {
         if (phoneMapPending) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
         messagePreview = null; messageSource = null; dockMessage = null; albumArt = null;
         trackArtist = null; musicSource = null; playbackTimeline = null;
-        rideClock = null; rideButton = null; phoneGuidance = null; phoneTripSummary = null; phoneSpeedLimit = null;
+        rideClock = null; rideButton = null; phoneGuidance = null; phoneSpeedLimit = null;
         deviceStatus = text("", 12, 0xffaab4c0, false);
         updateStatus = text("", 12, 0xffaab4c0, false);
         boolean portrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
@@ -625,11 +620,7 @@ public class MainActivity extends android.app.Activity {
         header.addView(logoSlot, new LinearLayout.LayoutParams(dp(80), dp(64)));
         castStatus = text(YamahaCastService.status, 11, RideStyle.MUTED, false);
         castStatus.setMaxLines(1); castStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        TextView clock = new android.widget.TextClock(this); ((android.widget.TextClock) clock).setFormat24Hour("HH:mm");
-        ((android.widget.TextClock) clock).setFormat12Hour("h:mm");
-        clock.setTextColor(RideStyle.TEXT); clock.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        clock.setGravity(Gravity.CENTER); clock.setIncludeFontPadding(false); clock.setSingleLine(true);
-        clock.setAutoSizeTextTypeUniformWithConfiguration(24, 36, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+        CockpitClockView clock = new CockpitClockView(this);
         header.addView(clock, new LinearLayout.LayoutParams(0, dp(64), 1));
         if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
@@ -644,20 +635,14 @@ public class MainActivity extends android.app.Activity {
                     .setMessage(NativeNavigation.phoneGuidance()).setPositiveButton("Close", null).show();
                 return true;
             });
-            LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
-            guidanceParams.topMargin = dp(8);
-            root.addView(phoneGuidance, guidanceParams);
-            String trip = NativeNavigation.phoneTripSummary();
-            phoneTripSummary = text(trip, compact ? 16 : 20, RideTheme.accent(this), true);
-            phoneTripSummary.setMaxLines(2); phoneTripSummary.setPadding(dp(12), dp(4), dp(12), dp(4));
-            phoneTripSummary.setVisibility(trip.isEmpty() ? View.GONE : View.VISIBLE);
-            LinearLayout tripRow = new LinearLayout(this);
-            tripRow.setGravity(Gravity.CENTER_VERTICAL);
-            tripRow.addView(phoneTripSummary, new LinearLayout.LayoutParams(0, -2, 1));
+            LinearLayout guidanceRow = new LinearLayout(this); guidanceRow.setGravity(Gravity.CENTER_VERTICAL);
+            guidanceRow.addView(phoneGuidance, new LinearLayout.LayoutParams(0, -2, 1));
             phoneSpeedLimit = new SpeedLimitIcon(this);
             phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
-            tripRow.addView(phoneSpeedLimit, new LinearLayout.LayoutParams(dp(compact ? 48 : 64), dp(compact ? 48 : 64)));
-            root.addView(tripRow, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams limitParams = new LinearLayout.LayoutParams(dp(compact ? 48 : 64), dp(compact ? 48 : 64));
+            limitParams.leftMargin = dp(8); guidanceRow.addView(phoneSpeedLimit, limitParams);
+            LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
+            guidanceParams.topMargin = dp(8); root.addView(guidanceRow, guidanceParams);
         }
 
 
@@ -707,11 +692,11 @@ public class MainActivity extends android.app.Activity {
             music.addView(playbackTimeline, timelineParams);
         }
         LinearLayout transport = new LinearLayout(this);
-        previousButton = rideAction("|◀", false); previousButton.setContentDescription("Previous track");
+        previousButton = rideAction("|â—€", false); previousButton.setContentDescription("Previous track");
         previousButton.setOnClickListener(v -> sendMedia(MediaAction.PREVIOUS));
-        playPauseButton = rideAction("▶", true); playPauseButton.setContentDescription("Play or pause music");
+        playPauseButton = rideAction("â–¶", true); playPauseButton.setContentDescription("Play or pause music");
         playPauseButton.setOnClickListener(v -> sendMedia(MediaAction.TOGGLE));
-        nextButton = rideAction("▶|", false); nextButton.setContentDescription("Next track");
+        nextButton = rideAction("â–¶|", false); nextButton.setContentDescription("Next track");
         nextButton.setOnClickListener(v -> sendMedia(MediaAction.NEXT));
         transport.setGravity(Gravity.CENTER_VERTICAL);
         transport.addView(previousButton, rideWeight(compact ? 56 : 64));
@@ -824,7 +809,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private Button rideAction(String label, boolean primary) {
-        boolean icon = java.util.Arrays.asList("Yamaha", "Map", "Camera", "Voice", "Setup", "|◀", "▶", "▶|").contains(label);
+        boolean icon = java.util.Arrays.asList("Yamaha", "Map", "Camera", "Voice", "Setup", "|â—€", "â–¶", "â–¶|").contains(label);
         Button action = icon ? new ControlIconButton(this, label, primary) : button(label); action.setAllCaps(false); action.setTextSize(16);
         action.setTypeface(Typeface.DEFAULT, Typeface.BOLD); action.setMinWidth(0); action.setMinimumWidth(0);
         action.setMinHeight(dp(56)); action.setMinimumHeight(dp(56));
@@ -1097,7 +1082,7 @@ public class MainActivity extends android.app.Activity {
                     if (candidate != null && (best == null || candidate.getElapsedRealtimeNanos() > best.getElapsedRealtimeNanos())) best = candidate;
                 } } catch (SecurityException ignored) { }
                 if (best == null || android.os.SystemClock.elapsedRealtimeNanos() - best.getElapsedRealtimeNanos() > 300000000000L) {
-                    displayError("A recent location is needed. Enable phone location, open Maps to update your position, then try again."); return;
+                    displayError("A recent location is needed. Enable phone location and open Navigation in Setup to get a GPS fix, then try again."); return;
                 }
                 final android.location.Location origin = best;
                 android.widget.Toast.makeText(this, "Finding nearby stations...", android.widget.Toast.LENGTH_SHORT).show();
@@ -1127,13 +1112,13 @@ public class MainActivity extends android.app.Activity {
         LinearLayout items = new LinearLayout(this); items.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < labels.length; i++) {
             if (!BuildConfig.YAMAHA && i >= 7) continue;
-            if (BuildConfig.YAMAHA && i == 7) continue;
+            if (BuildConfig.YAMAHA && (i == 2 || i == 7)) continue;
             final int choice = i;
             LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(16), dp(12), dp(12), dp(12));
             row.setBackground(RideStyle.row(this));
             LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
-            words.addView(text(labels[i], 18, RideStyle.TEXT, true));
+            words.addView(text(BuildConfig.YAMAHA && i == 4 ? "Phone panel placement" : labels[i], 18, RideStyle.TEXT, true));
             String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0)]
                 : i == 7 ? RidePreferences.BIKE_MAP_SIZE_NAMES[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("bike_map_size", 0)))]
                 : i == 6 ? RidePreferences.musicName(this) : i == 2 ? RidePreferences.MAP_NAMES[Math.max(0, java.util.Arrays.asList(RidePreferences.MAP_PACKAGES).indexOf(RidePreferences.selectedMap(this)))]
@@ -1141,7 +1126,7 @@ public class MainActivity extends android.app.Activity {
                 : i == 1 ? "Choose which apps appear in Messages" : i == 3 ? "Voice text or voice message" : "Choose the control position";
             TextView detailText = text(detail, 14, RideStyle.MUTED, false); detailText.setPadding(0, dp(4), dp(8), 0);
             words.addView(detailText); row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
-            TextView chevron = text("›", 26, RideStyle.MUTED, false);
+            TextView chevron = text("â€º", 26, RideStyle.MUTED, false);
             row.addView(chevron, new LinearLayout.LayoutParams(dp(24), -2));
             row.setMinimumHeight(dp(80)); row.setOnClickListener(v -> { menu.dismiss(); choose.onClick(menu, choice); });
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2); rowParams.topMargin = dp(6); items.addView(row, rowParams);
@@ -1195,8 +1180,8 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showLayoutChoice() {
-        new android.app.AlertDialog.Builder(this).setTitle("Controls / map placement")
-            .setSingleChoiceItems(new String[]{"Automatic: left for left/centre mount", "Controls left / map right", "Controls right / map left"},
+        new android.app.AlertDialog.Builder(this).setTitle(BuildConfig.YAMAHA ? "Phone panel placement" : "Controls / map placement")
+            .setSingleChoiceItems(BuildConfig.YAMAHA ? new String[]{"Automatic based on phone mount", "Map / music left, messages right", "Messages left, map / music right"} : new String[]{"Automatic: left for left/centre mount", "Controls left / map right", "Controls right / map left"},
                 RidePreferences.prefs(this).getInt("controls_side", 0), (dialog, choice) -> {
                     RidePreferences.prefs(this).edit().putInt("controls_side", choice).apply();
                     dialog.dismiss(); buildScreen(); showSplitPlacementGuide();
@@ -1204,6 +1189,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showSplitPlacementGuide() {
+        if (BuildConfig.YAMAHA) return;
         String arrangement = controlsOnRight() ? "Maps on the left and RideDeck on the right" : "RideDeck on the left and Maps on the right";
         new android.app.AlertDialog.Builder(this).setTitle("Arrange split screen while parked")
             .setMessage("Preferred landscape layout: " + arrangement + ".\n\nAndroid controls the positions of separate apps. Open split screen from Recent apps, then use your phone's swap control or choose the first app to arrange them. Rotate to landscape for side-by-side panels. In portrait Android normally stacks the apps.\n\nThis preference arranges RideDeck's own controls; it cannot move another app's window automatically.")
@@ -1336,7 +1322,7 @@ public class MainActivity extends android.app.Activity {
             }
             if (mediaController == null) {
                 showMusicEmpty("Open " + RidePreferences.musicName(this), "Start a track to show its details");
-                if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("▶");
+                if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("â–¶");
                 playPauseButton.setContentDescription("Open " + RidePreferences.musicName(this));
                 updateMediaButtons(false, false, false);
                 return;
@@ -1349,7 +1335,7 @@ public class MainActivity extends android.app.Activity {
             String label = title == null || title.isBlank() ? "Active media player" : title;
             if (trackArtist == null && artist != null && !artist.isBlank()) label += "\n" + artist;
             if (trackArtist != null) trackArtist.setText(artist == null || artist.isBlank() ? (playing ? "Playing" : "Paused") : artist);
-            if (musicSource != null) musicSource.setText(RidePreferences.musicName(this) + (playing ? " · Playing" : ""));
+            if (musicSource != null) musicSource.setText(RidePreferences.musicName(this) + (playing ? " Â· Playing" : ""));
             if (playbackTimeline != null) {
                 long duration = metadata == null ? 0 : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
                 long position = state == null ? -1 : state.getPosition();
@@ -1367,7 +1353,7 @@ public class MainActivity extends android.app.Activity {
             long actions = state == null ? 0 : state.getActions();
             updateMediaButtons(true, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0,
                     (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0);
-            if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl(playing ? "Ⅱ" : "▶");
+            if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl(playing ? "â…¡" : "â–¶");
             else playPauseButton.setText(playing ? "Pause" : "Play");
             playPauseButton.setContentDescription(playing ? "Pause music" : "Play music");
         } catch (SecurityException | IllegalStateException error) {
@@ -1383,7 +1369,7 @@ public class MainActivity extends android.app.Activity {
         if (musicSource != null) musicSource.setText(RidePreferences.musicName(this));
         if (albumArt != null) albumArt.setImageDrawable(new MusicArtworkDrawable());
         if (playbackTimeline != null) playbackTimeline.update(0, 0);
-        if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("▶");
+        if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("â–¶");
         if (playPauseButton != null) playPauseButton.setContentDescription("Open " + RidePreferences.musicName(this));
     }
 
@@ -1422,7 +1408,7 @@ public class MainActivity extends android.app.Activity {
         }
         new android.app.AlertDialog.Builder(this)
         .setTitle("Music controls and selected messages")
-                .setMessage("Android Notification access is a broad, sensitive permission. If enabled, this app reads Spotify playback details, new notifications from your selected messaging apps, and call notifications from calling apps so it can show their call controls. Notifications may include alerts beyond chats. It ignores unselected apps' notification text except call notifications, keeps the preview temporarily on this phone, and never uploads it. You can revoke access in Android Settings. On some phones, first open App info, tap ⋮, and choose Allow restricted settings.")
+                .setMessage("Android Notification access is a broad, sensitive permission. If enabled, this app reads Spotify playback details, new notifications from your selected messaging apps, and call notifications from calling apps so it can show their call controls. Notifications may include alerts beyond chats. It ignores unselected apps' notification text except call notifications, keeps the preview temporarily on this phone, and never uploads it. You can revoke access in Android Settings. On some phones, first open App info, tap â‹®, and choose Allow restricted settings.")
                 .setNegativeButton("Not now", null)
                 .setNeutralButton("App info", (dialog, which) -> {
                     Intent appInfo = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
@@ -1469,7 +1455,7 @@ public class MainActivity extends android.app.Activity {
         if (messageSource != null) messageSource.setText(preview == null
             ? (messageApp == null ? "LATEST MESSAGE" : RidePreferences.appName(this, messageApp).toUpperCase(java.util.Locale.ROOT))
             : preview.appName.toUpperCase(java.util.Locale.ROOT) + (preview.acknowledged ? " - SEEN" : ""));
-        String label = preview == null ? "No message received yet." : preview.appName + " • " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text);
+        String label = preview == null ? "No message received yet." : preview.appName + " â€¢ " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text);
         if (messagePreview != null) messagePreview.setText(label);
         if (dockMessage != null) dockMessage.setText("Messages\n" + (preview == null ? "No new preview" : preview.appName + " - " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text)));
     }
@@ -1738,7 +1724,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void checkForUpdate() {
-        updateStatus.setText("Checking the latest public GitHub release…");
+        updateStatus.setText("Checking the latest public GitHub releaseâ€¦");
         worker.execute(() -> {
             try {
                 JSONObject release = getJson("https://api.github.com/repos/" + REPOSITORY + "/releases/latest");
@@ -1771,7 +1757,7 @@ public class MainActivity extends android.app.Activity {
     private void downloadFile(String address, File target) throws Exception { HttpURLConnection c = openConnection(address); try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(target)) { byte[] buffer = new byte[8192]; int count; while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count); } finally { c.disconnect(); } }
     private String sha256(File file) throws Exception { MessageDigest d = MessageDigest.getInstance("SHA-256"); try (InputStream in = new java.io.FileInputStream(file)) { byte[] b = new byte[8192]; int n; while ((n = in.read(b)) != -1) d.update(b, 0, n); } StringBuilder s = new StringBuilder(); for (byte v : d.digest()) s.append(String.format(Locale.ROOT, "%02x", v & 0xff)); return s.toString(); }
     private boolean canInstallPackages() { return Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls(); }
-    private void openInstaller(File apk) { try { Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".apkprovider", apk); Intent i = new Intent(Intent.ACTION_INSTALL_PACKAGE); i.setDataAndType(uri, "application/vnd.android.package-archive"); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); if (downloadedApk != null && downloadedApk.equals(apk)) downloadedApk = null; startActivity(i); } catch (Exception e) { showUpdateMessage("Could not open Android’s installer: " + safeMessage(e)); } }
+    private void openInstaller(File apk) { try { Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".apkprovider", apk); Intent i = new Intent(Intent.ACTION_INSTALL_PACKAGE); i.setDataAndType(uri, "application/vnd.android.package-archive"); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); if (downloadedApk != null && downloadedApk.equals(apk)) downloadedApk = null; startActivity(i); } catch (Exception e) { showUpdateMessage("Could not open Androidâ€™s installer: " + safeMessage(e)); } }
     private void showUpdateMessage(String message) { runOnUiThread(() -> { if (updateStatus != null) updateStatus.setText(message); }); }
     private String safeMessage(Exception error) { String m = error.getMessage(); return m == null || m.isBlank() ? error.getClass().getSimpleName() : m; }
     private String appVersion() { try { PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0); return info.versionName + " (" + info.versionCode + ")"; } catch (Exception ignored) { return "unknown"; } }

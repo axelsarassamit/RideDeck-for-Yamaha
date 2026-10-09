@@ -152,6 +152,13 @@ object NativeNavigation {
         if(!running || route == null || routeBusy || offRouteSamples > 0 || SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 30_000_000_000L) return null
         return speedLimit
     }
+    @JvmStatic fun cockpitTrip(): CockpitTrip? {
+        val fix=location ?: return null
+        val progress=dashRoute ?: return null
+        if (!running || route == null || routeBusy || offRouteSamples > 0 || progress.revision != dashRouteRevision ||
+            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 30_000_000_000L || !remaining.isFinite()) return null
+        return CockpitTrip(progress.remainingMillis?.let { RouteTimeEstimator.arrivalMillis(System.currentTimeMillis(),it) },remaining.coerceAtLeast(0.0))
+    }
     @JvmStatic fun phoneTripSummary(): String {
         if (route == null) return ""
         val fix=location
@@ -390,7 +397,7 @@ object NativeNavigation {
                 canvas.restore()
                 banner(canvas, paint, guidance, 0, 34, 19f,frameNight)
                 val trip=phoneTripSummary()
-                if(trip.isNotBlank()) banner(canvas,paint,trip,renderHeight-44,renderHeight-20,18f,frameNight)
+                if(!phone && trip.isNotBlank()) banner(canvas,paint,trip,renderHeight-44,renderHeight-20,18f,frameNight)
                 if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
                 // Attribution remains visible on every streamed frame, including the small dashboard.
                 paint.color=if(frameNight) 0xff14251c.toInt() else Color.WHITE; canvas.drawRect(0f,(renderHeight-20).toFloat(),480f,renderHeight.toFloat(),paint)
@@ -420,8 +427,9 @@ object NativeNavigation {
         return (Math.toDegrees(atan2(sin(dLon) * cos(lat2), cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon))) + 360.0) % 360.0
     }
     private fun jpeg(bitmap: Bitmap): ByteArray = ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG,85,it); it.toByteArray() }
-    @JvmStatic fun frame(mode: String): ByteArray? {
-        if (mode == "map" && mapJpeg != null && SystemClock.elapsedRealtime()-frameAt < 10000) return mapJpeg
+    @JvmStatic fun frame(mode: String): ByteArray? = renderFrame(mode,false)
+    private fun renderFrame(mode: String, phone: Boolean): ByteArray? {
+        if (!phone && mode == "map" && mapJpeg != null && SystemClock.elapsedRealtime()-frameAt < 10000) return mapJpeg
         val bitmap=Bitmap.createBitmap(480,height,Bitmap.Config.ARGB_8888)
         val night=isNightMap()
         val canvas=Canvas(bitmap); canvas.drawColor(if(night) 0xff151c17.toInt() else 0xfff4f6fa.toInt())
@@ -431,7 +439,7 @@ object NativeNavigation {
             paint.color=if(night) 0xffb5ff76.toInt() else 0xff14251c.toInt(); paint.textSize=112f; paint.typeface=Typeface.DEFAULT_BOLD
             val arrow=when { maneuver==6 -> "↻"; maneuver==5 -> "●"; maneuver<0 -> "←"; maneuver in 1..3 || maneuver==7 -> "→"; else -> "↑" }
             canvas.drawText(arrow,205f,167f,paint)
-            banner(canvas,paint,"${distance(remaining)}  |  ${phoneTripSummary()}",height-34,height,18f)
+            if(!phone) banner(canvas,paint,"${distance(remaining)}  |  ${phoneTripSummary()}",height-34,height,18f)
             currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
         } else {
             banner(canvas,paint,if(mode=="map") status else guidance,0,48,22f)
@@ -441,8 +449,8 @@ object NativeNavigation {
         return jpeg(bitmap)
     }
     fun phoneBitmap(mode: String): Bitmap? = if(mode=="map") {
-        if(phoneMapBitmap != null && SystemClock.elapsedRealtime()-phoneFrameAt<10000) phoneMapBitmap else if(mapBitmap != null && SystemClock.elapsedRealtime()-frameAt<10000) mapBitmap else frame("map")?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
-    } else frame(mode)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
+        if(phoneMapBitmap != null && SystemClock.elapsedRealtime()-phoneFrameAt<10000) phoneMapBitmap else renderFrame("map",true)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
+    } else renderFrame(mode,true)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
 }
 
 class NativeNavigationService : Service(), LocationListener {
