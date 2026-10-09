@@ -123,6 +123,7 @@ object NativeNavigation {
         else if (!routeBusy && !status.startsWith("Route unavailable:")) status = "GPS ready. Choose a destination"
         updateGuidance(next)
     }
+    @JvmStatic fun phoneGuidance(): String = if (route != null) guidance else status
     @JvmStatic fun stopRoute() {
         main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; guidance = "Choose a destination"; lastSpoken = ""; progressIndex = 0; speaker?.stop() }
     }

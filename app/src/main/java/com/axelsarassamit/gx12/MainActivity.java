@@ -65,6 +65,7 @@ public class MainActivity extends android.app.Activity {
     private TextView deviceStatus;
     private TextView updateStatus;
     private TextView trackStatus;
+    private TextView phoneGuidance;
     private TextView messagePreview;
     private TextView messageSource;
     private TextView dockMessage;
@@ -110,6 +111,7 @@ public class MainActivity extends android.app.Activity {
             refreshMediaSession();
             refreshWhatsAppPreview();
             if (castStatus != null) castStatus.setText(YamahaCastService.status);
+            if (phoneGuidance != null) phoneGuidance.setText(NativeNavigation.phoneGuidance());
             if (!setupVisible && RidePreferences.automaticMap(MainActivity.this) && YamahaCastService.automaticFallbackPending && !YamahaCastService.active) {
                 YamahaCastService.automaticFallbackPending = false;
                 autoMapSession = null;
@@ -275,7 +277,7 @@ public class MainActivity extends android.app.Activity {
         }
         setupVisible = true; cockpitVisible = false;
         albumArt = null; messagePreview = null; messageSource = null; dockMessage = null;
-        trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
+        phoneGuidance = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xff151715); root.setPadding(dp(16), dp(16), dp(16), dp(16));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
@@ -548,7 +550,7 @@ public class MainActivity extends android.app.Activity {
         renderedPanel = RidePreferences.prefs(this).getString("phone_panel", "map");
         if (phoneMapPending) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
         messagePreview = null; messageSource = null; dockMessage = null; albumArt = null;
-        rideClock = null; rideButton = null;
+        rideClock = null; rideButton = null; phoneGuidance = null;
         deviceStatus = text("", 12, 0xffaab4c0, false);
         updateStatus = text("", 12, 0xffaab4c0, false);
         boolean portrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
@@ -589,6 +591,23 @@ public class MainActivity extends android.app.Activity {
         clock.setAutoSizeTextTypeUniformWithConfiguration(24, 52, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         header.addView(clock, new LinearLayout.LayoutParams(0, dp(64), 1));
         if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
+        if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
+            phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, 0xfff4f6fa, true);
+            phoneGuidance.setMaxLines(portrait && !compact ? 3 : 2);
+            phoneGuidance.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            phoneGuidance.setPadding(dp(12), dp(10), dp(12), dp(10));
+            phoneGuidance.setBackground(rideBackground(0xff14251c, 14));
+            phoneGuidance.setOnClickListener(v -> NavigationUi.mapMenu(this));
+            phoneGuidance.setOnLongClickListener(v -> {
+                new android.app.AlertDialog.Builder(this).setTitle("Navigation instruction")
+                    .setMessage(NativeNavigation.phoneGuidance()).setPositiveButton("Close", null).show();
+                return true;
+            });
+            LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
+            guidanceParams.topMargin = dp(8);
+            root.addView(phoneGuidance, guidanceParams);
+        }
+
 
         LinearLayout workspace = new LinearLayout(this);
         workspace.setOrientation(LinearLayout.HORIZONTAL);
