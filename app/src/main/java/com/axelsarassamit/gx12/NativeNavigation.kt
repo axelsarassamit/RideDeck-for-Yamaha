@@ -372,6 +372,8 @@ object NativeNavigation {
             if (activeRoute != null) cameraBuilder.tilt(55.0)
             val camera = cameraBuilder.build()
             val renderer = (if (phone) phoneSnapshotter else snapshotter) ?: MapSnapshotter(c, MapSnapshotter.Options(480, renderHeight).withPixelRatio(1f)
+                // RideDeck supplies visible MapTiler/OSM credits on the phone and each bike frame.
+                .withLogo(false).withAttribution(false)
                 .withStyleBuilder(Style.Builder().fromJson(style))
                 .withCameraPosition(camera))
             if (phone) phoneSnapshotter = renderer else snapshotter = renderer
