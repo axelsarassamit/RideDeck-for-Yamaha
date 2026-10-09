@@ -425,7 +425,7 @@ public class MainActivity extends android.app.Activity {
         labels.addView(text(title, 20, RideStyle.TEXT, true));
         TextView detail = text(summary, 14, RideStyle.MUTED, false); detail.setPadding(0, dp(4), dp(8), 0); labels.addView(detail);
         heading.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView toggle = text(expanded ? "âŒƒ" : "âŒ„", 22, RideTheme.accent(this), true);
+        TextView toggle = text(expanded ? "⌃" : "⌄", 22, RideTheme.accent(this), true);
         toggle.setGravity(Gravity.CENTER); heading.addView(toggle, new LinearLayout.LayoutParams(dp(40), dp(48)));
         card.addView(heading);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
@@ -433,7 +433,7 @@ public class MainActivity extends android.app.Activity {
         heading.setFocusable(true); heading.setContentDescription(title + ". " + summary + (expanded ? ". Expanded" : ". Collapsed"));
         heading.setOnClickListener(v -> {
             boolean open = content.getVisibility() != View.VISIBLE;
-            content.setVisibility(open ? View.VISIBLE : View.GONE); toggle.setText(open ? "âŒƒ" : "âŒ„");
+            content.setVisibility(open ? View.VISIBLE : View.GONE); toggle.setText(open ? "⌃" : "⌄");
             heading.setContentDescription(title + ". " + summary + (open ? ". Expanded" : ". Collapsed"));
         });
         return content;
@@ -692,11 +692,11 @@ public class MainActivity extends android.app.Activity {
             music.addView(playbackTimeline, timelineParams);
         }
         LinearLayout transport = new LinearLayout(this);
-        previousButton = rideAction("|â—€", false); previousButton.setContentDescription("Previous track");
+        previousButton = rideAction("|◀", false); previousButton.setContentDescription("Previous track");
         previousButton.setOnClickListener(v -> sendMedia(MediaAction.PREVIOUS));
-        playPauseButton = rideAction("â–¶", true); playPauseButton.setContentDescription("Play or pause music");
+        playPauseButton = rideAction("▶", true); playPauseButton.setContentDescription("Play or pause music");
         playPauseButton.setOnClickListener(v -> sendMedia(MediaAction.TOGGLE));
-        nextButton = rideAction("â–¶|", false); nextButton.setContentDescription("Next track");
+        nextButton = rideAction("▶|", false); nextButton.setContentDescription("Next track");
         nextButton.setOnClickListener(v -> sendMedia(MediaAction.NEXT));
         transport.setGravity(Gravity.CENTER_VERTICAL);
         transport.addView(previousButton, rideWeight(compact ? 56 : 64));
@@ -809,7 +809,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private Button rideAction(String label, boolean primary) {
-        boolean icon = java.util.Arrays.asList("Yamaha", "Map", "Camera", "Voice", "Setup", "|â—€", "â–¶", "â–¶|").contains(label);
+        boolean icon = java.util.Arrays.asList("Yamaha", "Map", "Camera", "Voice", "Setup", "|◀", "▶", "▶|").contains(label);
         Button action = icon ? new ControlIconButton(this, label, primary) : button(label); action.setAllCaps(false); action.setTextSize(16);
         action.setTypeface(Typeface.DEFAULT, Typeface.BOLD); action.setMinWidth(0); action.setMinimumWidth(0);
         action.setMinHeight(dp(56)); action.setMinimumHeight(dp(56));
@@ -1126,7 +1126,7 @@ public class MainActivity extends android.app.Activity {
                 : i == 1 ? "Choose which apps appear in Messages" : i == 3 ? "Voice text or voice message" : "Choose the control position";
             TextView detailText = text(detail, 14, RideStyle.MUTED, false); detailText.setPadding(0, dp(4), dp(8), 0);
             words.addView(detailText); row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
-            TextView chevron = text("â€º", 26, RideStyle.MUTED, false);
+            TextView chevron = text("›", 26, RideStyle.MUTED, false);
             row.addView(chevron, new LinearLayout.LayoutParams(dp(24), -2));
             row.setMinimumHeight(dp(80)); row.setOnClickListener(v -> { menu.dismiss(); choose.onClick(menu, choice); });
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2); rowParams.topMargin = dp(6); items.addView(row, rowParams);
@@ -1322,7 +1322,7 @@ public class MainActivity extends android.app.Activity {
             }
             if (mediaController == null) {
                 showMusicEmpty("Open " + RidePreferences.musicName(this), "Start a track to show its details");
-                if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("â–¶");
+                if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("▶");
                 playPauseButton.setContentDescription("Open " + RidePreferences.musicName(this));
                 updateMediaButtons(false, false, false);
                 return;
@@ -1335,7 +1335,7 @@ public class MainActivity extends android.app.Activity {
             String label = title == null || title.isBlank() ? "Active media player" : title;
             if (trackArtist == null && artist != null && !artist.isBlank()) label += "\n" + artist;
             if (trackArtist != null) trackArtist.setText(artist == null || artist.isBlank() ? (playing ? "Playing" : "Paused") : artist);
-            if (musicSource != null) musicSource.setText(RidePreferences.musicName(this) + (playing ? " Â· Playing" : ""));
+            if (musicSource != null) musicSource.setText(RidePreferences.musicName(this) + (playing ? " · Playing" : ""));
             if (playbackTimeline != null) {
                 long duration = metadata == null ? 0 : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
                 long position = state == null ? -1 : state.getPosition();
@@ -1353,7 +1353,7 @@ public class MainActivity extends android.app.Activity {
             long actions = state == null ? 0 : state.getActions();
             updateMediaButtons(true, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0,
                     (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0);
-            if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl(playing ? "â…¡" : "â–¶");
+            if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl(playing ? "Ⅱ" : "▶");
             else playPauseButton.setText(playing ? "Pause" : "Play");
             playPauseButton.setContentDescription(playing ? "Pause music" : "Play music");
         } catch (SecurityException | IllegalStateException error) {
@@ -1369,7 +1369,7 @@ public class MainActivity extends android.app.Activity {
         if (musicSource != null) musicSource.setText(RidePreferences.musicName(this));
         if (albumArt != null) albumArt.setImageDrawable(new MusicArtworkDrawable());
         if (playbackTimeline != null) playbackTimeline.update(0, 0);
-        if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("â–¶");
+        if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("▶");
         if (playPauseButton != null) playPauseButton.setContentDescription("Open " + RidePreferences.musicName(this));
     }
 
@@ -1408,7 +1408,7 @@ public class MainActivity extends android.app.Activity {
         }
         new android.app.AlertDialog.Builder(this)
         .setTitle("Music controls and selected messages")
-                .setMessage("Android Notification access is a broad, sensitive permission. If enabled, this app reads Spotify playback details, new notifications from your selected messaging apps, and call notifications from calling apps so it can show their call controls. Notifications may include alerts beyond chats. It ignores unselected apps' notification text except call notifications, keeps the preview temporarily on this phone, and never uploads it. You can revoke access in Android Settings. On some phones, first open App info, tap â‹®, and choose Allow restricted settings.")
+                .setMessage("Android Notification access is a broad, sensitive permission. If enabled, this app reads Spotify playback details, new notifications from your selected messaging apps, and call notifications from calling apps so it can show their call controls. Notifications may include alerts beyond chats. It ignores unselected apps' notification text except call notifications, keeps the preview temporarily on this phone, and never uploads it. You can revoke access in Android Settings. On some phones, first open App info, tap ⋮, and choose Allow restricted settings.")
                 .setNegativeButton("Not now", null)
                 .setNeutralButton("App info", (dialog, which) -> {
                     Intent appInfo = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
@@ -1455,7 +1455,7 @@ public class MainActivity extends android.app.Activity {
         if (messageSource != null) messageSource.setText(preview == null
             ? (messageApp == null ? "LATEST MESSAGE" : RidePreferences.appName(this, messageApp).toUpperCase(java.util.Locale.ROOT))
             : preview.appName.toUpperCase(java.util.Locale.ROOT) + (preview.acknowledged ? " - SEEN" : ""));
-        String label = preview == null ? "No message received yet." : preview.appName + " â€¢ " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text);
+        String label = preview == null ? "No message received yet." : preview.appName + " • " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text);
         if (messagePreview != null) messagePreview.setText(label);
         if (dockMessage != null) dockMessage.setText("Messages\n" + (preview == null ? "No new preview" : preview.appName + " - " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text)));
     }
@@ -1724,7 +1724,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void checkForUpdate() {
-        updateStatus.setText("Checking the latest public GitHub releaseâ€¦");
+        updateStatus.setText("Checking the latest public GitHub release…");
         worker.execute(() -> {
             try {
                 JSONObject release = getJson("https://api.github.com/repos/" + REPOSITORY + "/releases/latest");
@@ -1757,7 +1757,7 @@ public class MainActivity extends android.app.Activity {
     private void downloadFile(String address, File target) throws Exception { HttpURLConnection c = openConnection(address); try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(target)) { byte[] buffer = new byte[8192]; int count; while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count); } finally { c.disconnect(); } }
     private String sha256(File file) throws Exception { MessageDigest d = MessageDigest.getInstance("SHA-256"); try (InputStream in = new java.io.FileInputStream(file)) { byte[] b = new byte[8192]; int n; while ((n = in.read(b)) != -1) d.update(b, 0, n); } StringBuilder s = new StringBuilder(); for (byte v : d.digest()) s.append(String.format(Locale.ROOT, "%02x", v & 0xff)); return s.toString(); }
     private boolean canInstallPackages() { return Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls(); }
-    private void openInstaller(File apk) { try { Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".apkprovider", apk); Intent i = new Intent(Intent.ACTION_INSTALL_PACKAGE); i.setDataAndType(uri, "application/vnd.android.package-archive"); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); if (downloadedApk != null && downloadedApk.equals(apk)) downloadedApk = null; startActivity(i); } catch (Exception e) { showUpdateMessage("Could not open Androidâ€™s installer: " + safeMessage(e)); } }
+    private void openInstaller(File apk) { try { Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".apkprovider", apk); Intent i = new Intent(Intent.ACTION_INSTALL_PACKAGE); i.setDataAndType(uri, "application/vnd.android.package-archive"); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); if (downloadedApk != null && downloadedApk.equals(apk)) downloadedApk = null; startActivity(i); } catch (Exception e) { showUpdateMessage("Could not open Android’s installer: " + safeMessage(e)); } }
     private void showUpdateMessage(String message) { runOnUiThread(() -> { if (updateStatus != null) updateStatus.setText(message); }); }
     private String safeMessage(Exception error) { String m = error.getMessage(); return m == null || m.isBlank() ? error.getClass().getSimpleName() : m; }
     private String appVersion() { try { PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0); return info.versionName + " (" + info.versionCode + ")"; } catch (Exception ignored) { return "unknown"; } }
