@@ -24,7 +24,7 @@ public final class CockpitClockView extends LinearLayout {
         super(context); setOrientation(VERTICAL); setGravity(Gravity.CENTER);
         caption = new TextView(context); caption.setTextColor(RideStyle.MUTED); caption.setTextSize(10);
         caption.setGravity(Gravity.CENTER); caption.setIncludeFontPadding(false); caption.setSingleLine(true);
-        caption.setLetterSpacing(0.08f); addView(caption, new LayoutParams(-1, -2));
+        caption.setLetterSpacing(0.02f); addView(caption, new LayoutParams(-1, -2));
         value = new TextView(context); value.setTextColor(RideStyle.TEXT);
         value.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
         value.setGravity(Gravity.CENTER); value.setIncludeFontPadding(false); value.setSingleLine(true);
@@ -38,21 +38,24 @@ public final class CockpitClockView extends LinearLayout {
         CockpitTrip trip=NativeNavigation.cockpitTrip();
         Long arrival=trip == null ? null : trip.getArrivalMillis();
         CockpitClockCycle.Mode mode=CockpitClockCycle.mode(SystemClock.elapsedRealtime()-startedAt+manualOffset,arrival!=null,trip!=null);
-        String label="TIME", reading=android.text.format.DateFormat.getTimeFormat(getContext()).format(new Date(now));
-        if (mode == CockpitClockCycle.Mode.ETA) {
-            label="ETA";
+        String label="Time", reading=android.text.format.DateFormat.getTimeFormat(getContext()).format(new Date(now));
+        if (mode == CockpitClockCycle.Mode.REMAINING_TIME) {
+            label="Time remaining";
+            reading=app.pillion.core.RouteTimeEstimator.INSTANCE.durationText(trip.getRemainingMillis());
+        } else if (mode == CockpitClockCycle.Mode.ETA) {
+            label="Arrival time";
             Calendar today=Calendar.getInstance(), target=Calendar.getInstance();
             today.setTimeInMillis(now); target.setTimeInMillis(arrival);
             if (today.get(Calendar.YEAR)!=target.get(Calendar.YEAR) || today.get(Calendar.DAY_OF_YEAR)!=target.get(Calendar.DAY_OF_YEAR))
                 label += " · " + new java.text.SimpleDateFormat("EEE",Locale.getDefault()).format(new Date(arrival));
             reading=android.text.format.DateFormat.getTimeFormat(getContext()).format(new Date(arrival));
         } else if (mode == CockpitClockCycle.Mode.DISTANCE) {
-            label="KM TO GO";
+            label="Distance remaining";
             double kilometers=trip.getRemainingMeters()/1000.0;
-            reading=String.format(Locale.getDefault(),kilometers<1 ? "%.2f" : "%.1f",kilometers);
+            reading=String.format(Locale.getDefault(),"%.1f km",kilometers);
         }
         caption.setText(label); value.setText(reading);
-        setContentDescription((mode==CockpitClockCycle.Mode.DISTANCE ? "Kilometers remaining " : label+" ")+reading+". Tap to switch.");
+        setContentDescription((mode==CockpitClockCycle.Mode.DISTANCE ? "Distance remaining " : label+" ")+reading+". Tap to switch.");
     }
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow(); attached=true; main.removeCallbacks(refresh); main.post(refresh);

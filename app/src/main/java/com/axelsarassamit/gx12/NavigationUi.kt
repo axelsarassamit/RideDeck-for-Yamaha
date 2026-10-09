@@ -38,17 +38,19 @@ object NavigationUi {
                 2 -> AlertDialog.Builder(activity).setTitle("Bike display")
                     .setMessage("Select Default view, Turn-by-turn or Turn list from Navigation > Change view on the bike. RideDeck sends map images and native turn guidance. Music controls are available in the Phone panel; the bike's built-in player uses its Yamaha connection.")
                     .setPositiveButton("Close",null).show()
-                3 -> permission(activity)
+                3 -> permission(activity,true)
                 4 -> {
                     val prefs=RidePreferences.prefs(activity)
-                    AlertDialog.Builder(activity).setTitle("Voice guidance").setSingleChoiceItems(arrayOf("On","Off"),if(prefs.getBoolean("navigation_voice",true))0 else 1) { d,i -> prefs.edit().putBoolean("navigation_voice",i==0).apply(); d.dismiss() }.show()
+                    AlertDialog.Builder(activity).setTitle("Voice guidance").setSingleChoiceItems(arrayOf("On","Off"),if(prefs.getBoolean("navigation_voice",true))0 else 1) { d,i -> prefs.edit().putBoolean("navigation_voice",i==0).apply(); d.dismiss() }.setNegativeButton("Close",null).show()
                 }
                 5 -> activity.startService(Intent(activity,NativeNavigationService::class.java).setAction("STOP"))
             }
         }.setNegativeButton("Close",null).show()
     }
-    private fun permission(activity: Activity): Boolean {
-        if(activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED) return true
+    private fun permission(activity: Activity, notifyGranted: Boolean = false): Boolean {
+        if(activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED) {
+            if(notifyGranted) Toast.makeText(activity,"Precise location is allowed",Toast.LENGTH_SHORT).show(); return true
+        }
         activity.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION),74)
         Toast.makeText(activity,"Allow precise location, then tap Map again",Toast.LENGTH_LONG).show()
         return false
@@ -100,10 +102,15 @@ object NavigationUi {
                                         text=place.label; isAllCaps=false
                                         setOnClickListener {
                                             AlertDialog.Builder(activity).setTitle(place.label).setMessage("Start navigation to this destination?")
-                                                .setNegativeButton("Cancel",null).setNeutralButton("Save favorite") { _,_ ->
-                                                    runCatching { BikePlaces.add(activity,place.label.take(80),"${place.latitude},${place.longitude}") }
-                                                        .onSuccess { Toast.makeText(activity,"Favorite saved",Toast.LENGTH_SHORT).show() }
-                                                        .onFailure { status.text="Favorite could not be saved" }
+                                                .setNegativeButton("Cancel",null).setNeutralButton("Save place") { _,_ ->
+                                                    AlertDialog.Builder(activity).setTitle("Save place").setItems(arrayOf("Favorite","Home","Work")) { _,slot ->
+                                                        runCatching {
+                                                            val coordinate="${place.latitude},${place.longitude}"
+                                                            if(slot==0) BikePlaces.add(activity,place.label.take(80),coordinate)
+                                                            else RidePreferences.prefs(activity).edit().putString(if(slot==1) "bike_home" else "bike_work",coordinate).apply()
+                                                        }.onSuccess { Toast.makeText(activity,"${arrayOf("Favorite","Home","Work")[slot]} saved",Toast.LENGTH_SHORT).show() }
+                                                            .onFailure { status.text="Place could not be saved" }
+                                                    }.setNegativeButton("Cancel",null).show()
                                                 }.setPositiveButton("Navigate") { _,_ ->
                                                     NativeNavigation.navigate(activity,place); dialog.dismiss()
                                                 }.show()
@@ -141,14 +148,14 @@ object NavigationUi {
         val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff151c17.toInt()) }
         val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Map; tap for navigation menu"; setOnClickListener { mapMenu(activity) } }
         val state=TextView(activity).apply {
-            setTextColor(0xfff4f6fa.toInt()); gravity=Gravity.CENTER; textSize=14f
+            setTextColor(0xfff4f6fa.toInt()); gravity=Gravity.CENTER_VERTICAL; textSize=11f; setPadding(8,4,8,4)
             val logo = activity.getDrawable(R.drawable.maptiler_logo)!!
             val density = activity.resources.displayMetrics.density
-            logo.setBounds(0, 0, (70 * density).toInt(), (20 * density).toInt())
-            setCompoundDrawables(logo, null, null, null)
+            logo.setBounds(0, 0, (48 * density).toInt(), (16 * density).toInt())
+            setCompoundDrawables(logo, null, null, null); compoundDrawablePadding=(6*density).toInt(); contentDescription="Map credits"
             setOnClickListener {
                 val credit=TextView(activity).apply {
-                    text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a><br>Routing: GraphHopper<br>Search results: MapTiler",android.text.Html.FROM_HTML_MODE_LEGACY)
+                    text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a><br>Routing: Valhalla (FOSSGIS)<br>Search results: MapTiler",android.text.Html.FROM_HTML_MODE_LEGACY)
                     movementMethod=android.text.method.LinkMovementMethod.getInstance(); setPadding(24,20,24,20)
                 }
                 AlertDialog.Builder(activity).setTitle("Map credits").setView(credit).setPositiveButton("Close",null).show()
@@ -175,7 +182,7 @@ object NavigationUi {
         val refresh=object: Runnable { override fun run() {
             if(!page.isAttachedToWindow) return
             image.setImageBitmap(NativeNavigation.phoneBitmap(RidePreferences.prefs(activity).getString("phone_panel","map") ?: "map"))
-            state.text=NativeNavigation.status + "\n© MapTiler  © OpenStreetMap contributors"
+            state.text="© MapTiler  © OpenStreetMap contributors"
             main.postDelayed(this,750)
         } }
         page.addOnAttachStateChangeListener(object: View.OnAttachStateChangeListener {

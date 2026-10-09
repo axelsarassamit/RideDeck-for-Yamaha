@@ -517,7 +517,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showAbout() {
-        String notice = BuildConfig.YAMAHA ? "MapLibre renders the map. MapTiler supplies map data and search, and GraphHopper supplies routes when configured. Provider terms and attribution apply.\n\nYamaha protocol adapted from Pillion, revision 29497f4. Required Notice: Copyright 2026 the Pillion authors. PolyForm Noncommercial 1.0.0. Personal and hobby use. Independent of Yamaha, Garmin and Pillion." : "Phone controls and split screen with your chosen navigation app. Independent of navigation and music providers.";
+        String notice = BuildConfig.YAMAHA ? "MapLibre renders the map. MapTiler supplies map data and search, and Valhalla supplies routes through the public FOSSGIS server. Provider terms and attribution apply.\n\nYamaha protocol adapted from Pillion, revision 29497f4. Required Notice: Copyright 2026 the Pillion authors. PolyForm Noncommercial 1.0.0. Personal and hobby use. Independent of Yamaha, Garmin and Pillion." : "Phone controls and split screen with your chosen navigation app. Independent of navigation and music providers.";
         new android.app.AlertDialog.Builder(this).setTitle(BuildConfig.YAMAHA ? "RideDeck for Yamaha" : "RideDeck").setMessage(notice).setPositiveButton("Close", null).show();
     }
 
@@ -1010,21 +1010,31 @@ public class MainActivity extends android.app.Activity {
                 else if (which == 5) new android.app.AlertDialog.Builder(this).setTitle("Color theme")
                     .setSingleChoiceItems(RideTheme.NAMES, RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("color_theme", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
-                    });
+                    }).setNegativeButton("Cancel", null).show();
                 else if (which == 6) chooseMusicPlayer();
                 else if (which == 9) showBikeFavorites();
                 else if (which == 10) prepareFuelStations();
                 else if (which == 11) YamahaPositionMarker.showPicker(this);
                 else if (which == 8) {
                     LinearLayout fields = new LinearLayout(this); fields.setOrientation(LinearLayout.VERTICAL); fields.setPadding(dp(24), dp(12), dp(24), 0);
-                    EditText home = new EditText(this); home.setHint("Home address or place"); home.setText(RidePreferences.prefs(this).getString("bike_home", ""));
-                    EditText work = new EditText(this); work.setHint("Work address or place"); work.setText(RidePreferences.prefs(this).getString("bike_work", "")); fields.addView(home); fields.addView(work);
-                    new android.app.AlertDialog.Builder(this).setTitle("Bike destinations")
-                        .setMessage("Enter latitude,longitude for the bike Home and Work commands. Use Search to find and save other destinations. Saved only on this phone. Reconnect the bike after changes.")
-                        .setView(fields).setNegativeButton("Cancel", null).setPositiveButton("Save", (d, w) -> {
+                    EditText home = new EditText(this); home.setHint("Home: latitude,longitude"); home.setText(RidePreferences.prefs(this).getString("bike_home", ""));
+                    EditText work = new EditText(this); work.setHint("Work: latitude,longitude"); work.setText(RidePreferences.prefs(this).getString("bike_work", "")); fields.addView(home); fields.addView(work);
+                    android.app.AlertDialog destinations = new android.app.AlertDialog.Builder(this).setTitle("Bike destinations")
+                        .setMessage("Enter latitude,longitude, or use destination search > Save place > Home or Work. Leave a field blank to clear it. Saved only on this phone. Reconnect the bike after changes.")
+                        .setView(fields).setNegativeButton("Cancel", null).setPositiveButton("Save", null).create();
+                    destinations.setOnShowListener(d -> destinations.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                            boolean valid = true;
+                            for (EditText field : new EditText[]{home, work}) {
+                                String coordinate = field.getText().toString().trim();
+                                if (!coordinate.isEmpty() && !validBikeCoordinate(coordinate)) {
+                                    field.setError("Use latitude,longitude or save a destination search result"); valid = false;
+                                }
+                            }
+                            if (!valid) return;
                             RidePreferences.prefs(this).edit().putString("bike_home", home.getText().toString().trim()).putString("bike_work", work.getText().toString().trim()).apply();
+                            destinations.dismiss();
                             buildSetupScreen(); showPersonalization();
-                        }).show();
+                        })); destinations.show();
                 }
                 else if (which == 7) {
                     if (YamahaCastService.active) { displayError("Stop the bike display before changing map size."); return; }
@@ -1035,10 +1045,10 @@ public class MainActivity extends android.app.Activity {
                             d.dismiss(); buildSetupScreen(); showPersonalization();
                         }).setNegativeButton("Close", null).show();
                 }
-                else new android.app.AlertDialog.Builder(this).setTitle("Reply method")
+                else if (which == 3) new android.app.AlertDialog.Builder(this).setTitle("Reply method")
                     .setSingleChoiceItems(new String[]{"Voice to text - confirm before sending", "Voice message - open original app"}, RidePreferences.prefs(this).getInt("reply_mode", 0), (d, choice) -> {
-                        RidePreferences.prefs(this).edit().putInt("reply_mode", choice).apply(); d.dismiss();
-                    });
+                        RidePreferences.prefs(this).edit().putInt("reply_mode", choice).apply(); d.dismiss(); showPersonalization();
+                    }).setNegativeButton("Cancel", null).show();
             });
     }
 
@@ -1057,14 +1067,25 @@ public class MainActivity extends android.app.Activity {
                 }
                 LinearLayout fields = new LinearLayout(this); fields.setOrientation(LinearLayout.VERTICAL); fields.setPadding(dp(24), dp(12), dp(24), 0);
                 EditText name = new EditText(this); name.setHint("Name");
-                EditText destination = new EditText(this); destination.setHint("Address, place or coordinates");
+                EditText destination = new EditText(this); destination.setHint("Latitude,longitude (or save a search result)");
                 fields.addView(name); fields.addView(destination);
-                new android.app.AlertDialog.Builder(this).setTitle("Add bike favorite").setView(fields)
-                    .setNegativeButton("Cancel", null).setPositiveButton("Save", (d, w) -> {
-                        try { BikePlaces.add(this, name.getText().toString().trim(), destination.getText().toString().trim()); showBikeFavorites(); }
+                android.app.AlertDialog favorite = new android.app.AlertDialog.Builder(this).setTitle("Add bike favorite").setView(fields)
+                    .setNegativeButton("Cancel", null).setPositiveButton("Save", null).create();
+                favorite.setOnShowListener(d -> favorite.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                        if (name.getText().toString().trim().isEmpty()) { name.setError("Enter a name"); return; }
+                        if (!validBikeCoordinate(destination.getText().toString().trim())) {
+                            destination.setError("Enter latitude,longitude or save a destination search result"); return;
+                        }
+                        try {
+                            BikePlaces.add(this, name.getText().toString().trim(), destination.getText().toString().trim()); favorite.dismiss(); showBikeFavorites();
+                        }
                         catch (Exception e) { displayError(safeMessage(e)); }
-                    }).show();
+                    })); favorite.show();
             }).setNegativeButton("Close", null).show();
+    }
+    private boolean validBikeCoordinate(String coordinate) {
+        try { return NavigationApi.INSTANCE.coordinate(coordinate) != null; }
+        catch (IllegalArgumentException invalid) { return false; }
     }
     private void prepareFuelStations() {
         new android.app.AlertDialog.Builder(this).setTitle("Nearby fuel stations")
@@ -1119,11 +1140,11 @@ public class MainActivity extends android.app.Activity {
             row.setBackground(RideStyle.row(this));
             LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
             words.addView(text(BuildConfig.YAMAHA && i == 4 ? "Phone panel placement" : labels[i], 18, RideStyle.TEXT, true));
-            String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0)]
+            String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[Math.max(0, Math.min(RideTheme.NAMES.length - 1, RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0)))]
                 : i == 7 ? RidePreferences.BIKE_MAP_SIZE_NAMES[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("bike_map_size", 0)))]
                 : i == 6 ? RidePreferences.musicName(this) : i == 2 ? RidePreferences.MAP_NAMES[Math.max(0, java.util.Arrays.asList(RidePreferences.MAP_PACKAGES).indexOf(RidePreferences.selectedMap(this)))]
-                : i == 0 ? new String[]{"Left", "Centre", "Right"}[RidePreferences.prefs(this).getInt("mount", 1)]
-                : i == 1 ? "Choose which apps appear in Messages" : i == 3 ? "Voice text or voice message" : "Choose the control position";
+                : i == 0 ? new String[]{"Left", "Centre", "Right"}[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("mount", 1)))]
+                : i == 1 ? "Choose which apps appear in Messages" : i == 3 ? (RidePreferences.prefs(this).getInt("reply_mode", 0) == 1 ? "Voice message in original app" : "Voice to text with send confirmation") : (RidePreferences.prefs(this).getInt("controls_side", 0) == 1 ? "Map / music left, messages right" : RidePreferences.prefs(this).getInt("controls_side", 0) == 2 ? "Messages left, map / music right" : "Automatic based on phone mount");
             TextView detailText = text(detail, 14, RideStyle.MUTED, false); detailText.setPadding(0, dp(4), dp(8), 0);
             words.addView(detailText); row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
             TextView chevron = text("›", 26, RideStyle.MUTED, false);
@@ -1408,7 +1429,7 @@ public class MainActivity extends android.app.Activity {
         }
         new android.app.AlertDialog.Builder(this)
         .setTitle("Music controls and selected messages")
-                .setMessage("Android Notification access is a broad, sensitive permission. If enabled, this app reads Spotify playback details, new notifications from your selected messaging apps, and call notifications from calling apps so it can show their call controls. Notifications may include alerts beyond chats. It ignores unselected apps' notification text except call notifications, keeps the preview temporarily on this phone, and never uploads it. You can revoke access in Android Settings. On some phones, first open App info, tap ⋮, and choose Allow restricted settings.")
+                .setMessage("Android Notification access is a broad, sensitive permission. If enabled, this app reads playback details from your selected music player, new notifications from your selected messaging apps, and call notifications from calling apps so it can show their call controls. Notifications may include alerts beyond chats. It ignores unselected apps' notification text except call notifications, keeps the preview temporarily on this phone, and never uploads it. You can revoke access in Android Settings. On some phones, first open App info, tap ⋮, and choose Allow restricted settings.")
                 .setNegativeButton("Not now", null)
                 .setNeutralButton("App info", (dialog, which) -> {
                     Intent appInfo = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));

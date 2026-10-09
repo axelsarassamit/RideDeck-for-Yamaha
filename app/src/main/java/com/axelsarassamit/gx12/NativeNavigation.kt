@@ -157,7 +157,7 @@ object NativeNavigation {
         val progress=dashRoute ?: return null
         if (!running || route == null || routeBusy || offRouteSamples > 0 || progress.revision != dashRouteRevision ||
             SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 30_000_000_000L || !remaining.isFinite()) return null
-        return CockpitTrip(progress.remainingMillis?.let { RouteTimeEstimator.arrivalMillis(System.currentTimeMillis(),it) },remaining.coerceAtLeast(0.0))
+        return CockpitTrip(progress.remainingMillis?.let { RouteTimeEstimator.arrivalMillis(System.currentTimeMillis(),it) },remaining.coerceAtLeast(0.0),progress.remainingMillis)
     }
     @JvmStatic fun phoneTripSummary(): String {
         if (route == null) return ""
@@ -381,7 +381,7 @@ object NativeNavigation {
                 val bitmap = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(bitmap)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-                canvas.save(); canvas.clipRect(0, 34, 480, renderHeight - 20)
+                canvas.save(); canvas.clipRect(0, 34, 480, if(phone) renderHeight else renderHeight - 20)
                 activeRoute?.let { r ->
                     val path = Path()
                     r.points.drop((progressIndex-1).coerceAtLeast(0)).forEachIndexed { i, point ->
@@ -399,12 +399,14 @@ object NativeNavigation {
                 val trip=phoneTripSummary()
                 if(!phone && trip.isNotBlank()) banner(canvas,paint,trip,renderHeight-44,renderHeight-20,18f,frameNight)
                 if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
-                // Attribution remains visible on every streamed frame, including the small dashboard.
+                // The phone has a single tappable attribution row. Bike frames carry their own credits.
+                if(!phone) {
                 paint.color=if(frameNight) 0xff14251c.toInt() else Color.WHITE; canvas.drawRect(0f,(renderHeight-20).toFloat(),480f,renderHeight.toFloat(),paint)
                 val logo=c.getDrawable(R.drawable.maptiler_logo)!!
                 logo.setBounds(3,renderHeight-20,70,renderHeight); logo.draw(canvas)
                 paint.color=if(frameNight) Color.WHITE else Color.BLACK; paint.textSize=11f; paint.typeface=Typeface.DEFAULT
                 canvas.drawText("© MapTiler  © OpenStreetMap contributors",83f,renderHeight-6f,paint)
+                }
                 if (phone) { phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false }
                 else { mapBitmap=bitmap; mapJpeg=jpeg(bitmap); frameAt=SystemClock.elapsedRealtime(); inFlight=false }
             }) { _ ->
