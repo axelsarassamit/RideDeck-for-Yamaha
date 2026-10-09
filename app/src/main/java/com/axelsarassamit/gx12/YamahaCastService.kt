@@ -13,6 +13,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import java.io.File
 
 /** Screen frames stay in memory and travel only to the explicitly selected paired CCU. */
@@ -37,6 +38,8 @@ class YamahaCastService : Service() {
     private var waitingForFrameSince = 0L
     @Volatile private var imageRequested = true
     @Volatile private var receiverFailure: String? = null
+    private val refreshTurnList = AtomicBoolean(false)
+    @Volatile private var turnListRequested = false
     private var receiver: Thread? = null
     private val ackQueue = ArrayBlockingQueue<Int>(8)
 
@@ -67,15 +70,17 @@ class YamahaCastService : Service() {
             val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             val notice = Notification.Builder(this, "yamaha_cast")
                 .setSmallIcon(android.R.drawable.ic_menu_compass).setContentTitle("RideDeck bike-only navigation")
-                .setContentText("Yamaha dash • tap Stop to end sharing")
+                .setContentText("Yamaha dash â€¢ tap Stop to end sharing")
                 .setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
             if (Build.VERSION.SDK_INT >= 29) startForeground(22, notice,
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
             else startForeground(22, notice)
             running = true; active = true
+            // Custom images never replace the bike's native music player or navigation views.
+            RidePreferences.prefs(this).edit().putString("dash_panel","map").apply()
             diagnostic("Session started automatic=$automatic map=${RidePreferences.selectedMap(this)} density=${RidePreferences.bikeMapDensity(this)} Android=${Build.VERSION.SDK_INT}")
             BikeDiagnostics.snapshot(this)
-            status = "Connecting to the selected Yamaha dash…"
+            status = "Connecting to the selected Yamaha dashâ€¦"
             deadline = SystemClock.elapsedRealtime() + 20000
             watchdog.scheduleWithFixedDelay({
                 if (running && SystemClock.elapsedRealtime() > deadline) {
@@ -153,6 +158,20 @@ class YamahaCastService : Service() {
                             }
                             continue
                         }
+                        val content = DashContentCommand.contentType(incoming)
+                        if (content != null) diagnostic("Content request service=${incoming.serviceType} content=$content")
+                        if (content == 2) {
+                            if (incoming.serviceType == 55) {
+                                imageRequested = false
+                                turnListRequested = true
+                                refreshTurnList.set(true)
+                                status = "Bike requested native Turn List."
+                            } else {
+                                turnListRequested = false
+                                status = "Bike left Turn List."
+                            }
+                            continue
+                        }
                         if (incoming.frameType == 1 && incoming.payloadDataType == 0 && incoming.serviceType == 55
                             && incoming.payload.size == 2 && incoming.payload[1].toInt() == 0 && incoming.payload[0].toInt() in listOf(3, 4)) {
                             imageRequested = false
@@ -204,12 +223,13 @@ class YamahaCastService : Service() {
                             DashContentCommand.Action.START -> {
                                 imageRequested = true
                                 deadline = SystemClock.elapsedRealtime() + 30000
-                                link.write(NaviLiteCodec.build(6, 2, 0, byteArrayOf(1, 0)))
+                                link.write(NaviLiteCodec.build(6, 2, 0, byteArrayOf(if (NativeNavigation.dashRoute != null) 1 else 0, 0)))
                                 link.write(NaviLiteCodec.build(6, 12, 0, byteArrayOf(1, 0)))
                                 status = "Bike requested navigation images."
                             }
                             DashContentCommand.Action.STOP -> {
                                 imageRequested = false
+                                link.write(NativeDashNavigation.imageStopped())
                                 status = "Bike paused navigation images. Open navigation on the bike to resume."
                             }
                             DashContentCommand.Action.IGNORE -> Unit
@@ -224,11 +244,41 @@ class YamahaCastService : Service() {
             var sequence = 1
             var count = 0
             var started = SystemClock.elapsedRealtime()
+            var lastNativeUpdate = 0L
+            var lastRouteRevision: Int? = null
+            var nativeStateSent = false
             while (running) {
                 receiverFailure?.let { error(it) }
                 deadline = SystemClock.elapsedRealtime() + 15000
+                val currentTime = SystemClock.elapsedRealtime()
+                if (size.height == 234 && (refreshTurnList.get() || currentTime-lastNativeUpdate >= 1000)) {
+                    val nav = NativeNavigation.dashRoute
+                    val revisionChanged = !nativeStateSent || lastRouteRevision != nav?.revision
+                    val forceList = refreshTurnList.getAndSet(false)
+                    if (revisionChanged) {
+                        link.write(NaviLiteCodec.build(6,2,0,byteArrayOf(if(nav != null) 1 else 0,0)))
+                    }
+                    if (revisionChanged || forceList) {
+                        val turns = nav?.turns.orEmpty()
+                        link.write(NativeDashNavigation.listSize(turns.size))
+                        turns.forEachIndexed { index,turn -> link.write(NativeDashNavigation.listItem(index,turn)) }
+                        diagnostic("Native turn list sent items=${turns.size} requested=$turnListRequested")
+                    }
+                    if (nav != null && nav.turns.isNotEmpty()) {
+                        val index = nav.activeIndex.coerceIn(nav.turns.indices)
+                        val turn = nav.turns[index]
+                        val fix = NativeNavigation.location
+                        val fresh = fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L
+                        link.write(NaviLiteCodec.build(6,13,0,byteArrayOf(if(fresh) 1 else 0,0)))
+                        link.write(NativeDashNavigation.nextTurn(turn.sign,nav.nextMeters,if(fresh) turn.road.ifBlank { turn.instruction } else "Waiting for GPS"))
+                        link.write(NativeDashNavigation.activeIndex(index))
+                    }
+                    lastRouteRevision = nav?.revision
+                    nativeStateSent = true
+                    lastNativeUpdate = currentTime
+                }
                 if (!imageRequested) { Thread.sleep(100); continue }
-                val sourceJpeg = NativeNavigation.frame(RidePreferences.prefs(this).getString("dash_panel", "map") ?: "map")
+                val sourceJpeg = NativeNavigation.frame("map")
                 if (sourceJpeg == null) {
                     check(DedicatedDisplay.receiving()) { DedicatedDisplay.status }
                     if (waitingForFrameSince == 0L) waitingForFrameSince = SystemClock.elapsedRealtime()
@@ -257,7 +307,7 @@ class YamahaCastService : Service() {
                 }
                 val now = SystemClock.elapsedRealtime()
                 if (now - started >= 1000) {
-                    status = "Casting • ${size.width} × ${size.height} • $count frames/s"
+                    status = "Casting â€¢ ${size.width} Ã— ${size.height} â€¢ $count frames/s"
                     count = 0; started = now
                 }
                 Thread.sleep(100) // At most 10 frames/s, with dash acknowledgement for every frame.

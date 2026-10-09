@@ -10,7 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class NavigationPlace(val label: String, val latitude: Double, val longitude: Double)
-data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int)
+data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int, val road: String = "")
 data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long) {
     val cumulative = DoubleArray(points.size).also { distances ->
         val result = FloatArray(1)
@@ -118,11 +118,13 @@ object NavigationApi {
         val points = decodePolyline(leg.getString("shape"))
         require(points.size in 2..100000) { "Route geometry unavailable." }
         val raw = leg.getJSONArray("maneuvers")
+        require(raw.length() in 1..65535) { "Route instruction list is unavailable or too large." }
         val turns = (0 until raw.length()).map { i ->
             val item = raw.getJSONObject(i)
             NavigationTurn(
                 item.optString("instruction", "Continue"), valhallaTurnSign(item.optInt("type")),
-                item.optInt("begin_shape_index").coerceIn(points.indices), item.optInt("end_shape_index").coerceIn(points.indices)
+                item.optInt("begin_shape_index").coerceIn(points.indices), item.optInt("end_shape_index").coerceIn(points.indices),
+                item.optJSONArray("street_names")?.optString(0).orEmpty()
             )
         }
         val summary = trip.getJSONObject("summary")

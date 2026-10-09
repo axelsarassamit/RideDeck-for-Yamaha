@@ -7,8 +7,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.location.*
-import android.media.MediaMetadata
-import android.media.session.MediaSessionManager
+import app.pillion.core.DashRoute
+import app.pillion.core.DashTurn
 import android.os.*
 import android.speech.tts.TextToSpeech
 import org.maplibre.android.MapLibre
@@ -28,6 +28,8 @@ object NativeNavigation {
     @Volatile var running = false
     @Volatile var location: Location? = null
     @Volatile var route: NavigationRoute? = null
+    @Volatile var dashRoute: DashRoute? = null
+        private set
     @Volatile var status = "Start navigation to get a GPS position"
     @Volatile var mapBitmap: Bitmap? = null
     @Volatile private var mapJpeg: ByteArray? = null
@@ -51,6 +53,7 @@ object NativeNavigation {
     private var frameAt = 0L
     private var renderStarted = 0L
     private var routeGeneration = 0
+    private var dashRouteRevision = 0
     private var routeBusy = false
     private var pendingDestination: NavigationPlace? = null
     private var progressIndex = 0
@@ -87,7 +90,7 @@ object NativeNavigation {
         main.removeCallbacks(tick); snapshotter?.cancel(); snapshotter = null; inFlight = false
         speaker?.shutdown(); speaker = null; speechReady = false
         phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapBitmap = null; englishStyle = null; styleLoading = false
-        location = null; mapJpeg = null; mapBitmap = null
+        location = null; mapJpeg = null; mapBitmap = null; dashRoute = null
         status = "Navigation stopped"
     }
     fun resize(width: Int, h: Int) {
@@ -121,7 +124,7 @@ object NativeNavigation {
         updateGuidance(next)
     }
     @JvmStatic fun stopRoute() {
-        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; guidance = "Choose a destination"; lastSpoken = ""; progressIndex = 0; speaker?.stop() }
+        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; guidance = "Choose a destination"; lastSpoken = ""; progressIndex = 0; speaker?.stop() }
     }
     @JvmStatic fun routeText(text: String) {
         val c = context ?: error("Open RideDeck navigation first")
@@ -144,7 +147,7 @@ object NativeNavigation {
                 if (generation != routeGeneration) return@post
                 routeBusy = false
                 result.onSuccess {
-                    route = it; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
+                    route = it; dashRouteRevision++; dashRoute = null; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
                     status = "Navigating"; location?.let(::updateGuidance)
                     BikeDiagnostics.record(c, "Native route ready points=${it.points.size} instructions=${it.turns.size}")
                 }.onFailure { error ->
@@ -195,6 +198,11 @@ object NativeNavigation {
         val next = r.turns.firstOrNull { it.start > bestIndex } ?: r.turns.lastOrNull()
         maneuver = next?.sign ?: 0
         val meters = if (next == null) remaining else max(0.0, r.cumulative[next.start] - travelled)
+        val turns = dashRoute?.takeIf { it.revision == dashRouteRevision }?.turns ?: r.turns.mapIndexed { index,it ->
+            val previous = r.turns.getOrNull(index-1)?.start ?: 0
+            DashTurn(it.sign, max(0.0,r.cumulative[it.start]-r.cumulative[previous]), it.text, it.road)
+        }
+        dashRoute = DashRoute(dashRouteRevision,turns,r.turns.indexOf(next).coerceAtLeast(0),meters)
         guidance = if (remaining < 25 && bestIndex >= r.points.size - 4) "Arriving at destination" else "${distance(meters)}  ${next?.text ?: "Continue"}"
         val speechId = "${routeGeneration}:${next?.start}"
         if (meters < 200 && lastSpoken != speechId && speechReady && context?.let { RidePreferences.prefs(it).getBoolean("navigation_voice", true) } == true) {
@@ -317,18 +325,7 @@ object NativeNavigation {
         val bitmap=Bitmap.createBitmap(480,height,Bitmap.Config.ARGB_8888)
         val canvas=Canvas(bitmap); canvas.drawColor(0xff151c17.toInt())
         val paint=Paint(Paint.ANTI_ALIAS_FLAG)
-        val c=context
-        if (mode=="music" && c!=null) {
-            val sessions=runCatching { c.getSystemService(MediaSessionManager::class.java).getActiveSessions(android.content.ComponentName(c,GX12NotificationListener::class.java)) }.getOrDefault(emptyList())
-            val controller=sessions.firstOrNull { it.packageName==RidePreferences.selectedMusic(c) }
-            banner(canvas,paint,"MUSIC",0,38,22f)
-            paint.color=Color.WHITE; paint.textSize=25f; paint.typeface=Typeface.DEFAULT_BOLD
-            val title=controller?.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Open ${RidePreferences.musicName(c)} on phone"
-            canvas.drawText(android.text.TextUtils.ellipsize(title,android.text.TextPaint(paint),450f,android.text.TextUtils.TruncateAt.END).toString(),15f,105f,paint)
-            paint.textSize=19f
-            val artist=controller?.metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
-            canvas.drawText(android.text.TextUtils.ellipsize(artist,android.text.TextPaint(paint),450f,android.text.TextUtils.TruncateAt.END).toString(),15f,145f,paint)
-        } else if(mode=="arrows" && route!=null) {
+        if(mode=="arrows" && route!=null) {
             banner(canvas,paint,guidance,0,40,20f)
             paint.color=0xffb5ff76.toInt(); paint.textSize=112f; paint.typeface=Typeface.DEFAULT_BOLD
             val arrow=when { maneuver==6 -> "↻"; maneuver==5 -> "●"; maneuver<0 -> "←"; maneuver in 1..3 || maneuver==7 -> "→"; else -> "↑" }

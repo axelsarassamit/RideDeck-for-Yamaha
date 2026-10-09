@@ -1,0 +1,807 @@
+{
+  "investigated_on": "2026-10-09",
+  "target_application": "RideDeck for Yamaha",
+  "bike_as_reported_by_user": "XMAX 2024",
+  "method": "Read-only extraction of DEX identifier tables from installed executable APKs. Identifiers may be definitions or references; no executable code is reproduced.",
+  "limitations": [
+    "SDK support is multi-model and does not prove XMAX compatibility.",
+    "Identifier presence does not verify packet layouts or hardware behavior.",
+    "No original app launched, no settings changed, no protocol command transmitted during static inspection.",
+    "Wire layout and Yamaha accessory handshake remain incomplete."
+  ],
+  "original_apps": [
+    {
+      "package": "jp.co.yamahamotor.yamahamotorcycleconnect.sccu",
+      "version": "3.9.0",
+      "base_apk_sha256": "2f02f003e7006b439867e0dd89b64df44909ae4de9c43f3b03e9eb0d05e05434"
+    },
+    {
+      "package": "com.garmin.android.apps.streetcross",
+      "version": "1.87",
+      "base_apk_sha256": "84a9b95eac565bcd0c7b3a5fbcc3b586bc6e91091b240011ce14bc87dd2e063c"
+    }
+  ],
+  "yamaha": {
+    "write_method_count": 75,
+    "write_methods": [
+      "writeAddNotification",
+      "writeAfter1DayWeatherInformation",
+      "writeAfter1HourWeatherInformation",
+      "writeAfter2DayWeatherInformation",
+      "writeAfter2HourWeatherInformation",
+      "writeAfter3DayWeatherInformation",
+      "writeAfter3HourWeatherInformation",
+      "writeAfter4DayWeatherInformation",
+      "writeAfter5DayWeatherInformation",
+      "writeAfter6DayWeatherInformation",
+      "writeAuthenticationV2Request",
+      "writeBleConnectInformationRequest",
+      "writeBluetoothHeadsetStateResponse",
+      "writeBluetoothMusicMetaData",
+      "writeCallChangeNotification",
+      "writeCanIntervalRequest",
+      "writeCanRequest",
+      "writeCcuidRequest",
+      "writeClearVirtualPitBoard",
+      "writeCommandError",
+      "writeConnectAppId",
+      "writeConnectServerListRequest",
+      "writeCumulativeInjectionQuantityRequest",
+      "writeData",
+      "writeDatetimeChangeNotification",
+      "writeDeviceName",
+      "writeEnterFactoryModeRequest",
+      "writeFfdRequest",
+      "writeFinishPhotoFrameResponse",
+      "writeFinishPushNotificationResponse",
+      "writeIconArrangementList",
+      "writeImageClear",
+      "writeImageDisplay",
+      "writeIncomingCallInformation",
+      "writeLanguageType",
+      "writeLapSectorTime",
+      "writeLastOccurredCommandErrorRequest",
+      "writeLoadYrcSettingsData",
+      "writeMalfunctionIntervalRequest",
+      "writeMalfunctionRequest",
+      "writeMarketDataRequest",
+      "writeNotificationCategory",
+      "writeNotificationDataV2",
+      "writeNotifySaveYrcSettingsDataResult",
+      "writeOtaStopRequest",
+      "writeOtaStopResponse",
+      "writeOtaUpdateDataResponse",
+      "writeOtaUpdateInformation",
+      "writePhoneBattery",
+      "writePhoneCellSignalLevelResponse",
+      "writePhoneStateCombined",
+      "writePhoneThermalState",
+      "writePhoneVolumeControllableResponse",
+      "writePhoneVolumeLevel",
+      "writePhotoFrameGraphicResponseNG",
+      "writePhotoFrameRequest",
+      "writePushNotificationGraphicResponseNG",
+      "writePushNotificationRequest",
+      "writeRemoveNotification",
+      "writeRequestYrcSettingsInfo",
+      "writeResponseSavedYrcSettingsData",
+      "writeSendPhotoFrameGraphic",
+      "writeSendPushNotificationGraphic",
+      "writeSendVirtualPitBoardGraphic",
+      "writeUpdateNotification",
+      "writeVehicleIdentificationRequest",
+      "writeVehicleInformationIntervalRequest",
+      "writeVehicleInformationRequest",
+      "writeVehicleInformationSubscribeInterval",
+      "writeVehicleInformationSupportIdListRequest",
+      "writeVehicleSettingDatetime",
+      "writeVirtualPitBoardGraphicResponseNG",
+      "writeVirtualPitBoardRequest",
+      "writeWeatherInformation",
+      "writeWeatherLocation"
+    ],
+    "receive_listener_methods": [
+      "addAuthenticationListener",
+      "addAuthenticationV2ResponseListener",
+      "addBleConnectInformationResponseListener",
+      "addBluetoothHeadsetStateRequestListener",
+      "addBluetoothMusicControlListener",
+      "addCanResponseListener",
+      "addCcuidResponseListener",
+      "addClearVirtualPitBoardResponseNGListener",
+      "addClearVirtualPitBoardResponseOKListener",
+      "addCommandErrorListener",
+      "addConnectServerListResponseListener",
+      "addConnectionListener",
+      "addCreateOtaConnectionRequestListener",
+      "addCumulativeInjectionQuantityListener",
+      "addFfdResponseListener",
+      "addFinishPhotoFrameListener",
+      "addFinishPushNotificationListener",
+      "addIconArrangementRequestListener",
+      "addIgnitionStateChangeListener",
+      "addImageClearRequestListener",
+      "addImageClearResponseListener",
+      "addImageDisplayRequestListener",
+      "addImageDisplayResponseListener",
+      "addIncomingCallControlListener",
+      "addLanguageTypeRequestListener",
+      "addLapSectorTimeListener",
+      "addLibVersionListener",
+      "addMalfunctionResponseListener",
+      "addMarketDataResponseListener",
+      "addOtaAbortListener",
+      "addOtaLinkcardInformationListener",
+      "addOtaStopRequestListener",
+      "addOtaStopResponseListener",
+      "addOtaUpdateCompletedListener",
+      "addOtaUpdateDataRequestListener",
+      "addPhoneCellSignalLevelRequestListener",
+      "addPhoneVolumeControlListener",
+      "addPhoneVolumeControllableRequestListener",
+      "addPhotoFrameGraphicRequestListener",
+      "addPhotoFrameResponseNGListener",
+      "addPushNotificationGraphicRequestListener",
+      "addPushNotificationResponseNGListener",
+      "addPushedSWInfoForNotificationListener",
+      "addPushedSWInfoForPhotoFrameListener",
+      "addReceiveNotifyLoadYrcSettingsDataResultListener",
+      "addReceiveRequestLoadYrcSettingsDataListener",
+      "addReceiveRequestSavedYrcSettingsDataListener",
+      "addReceiveResponseYrcSettingsInfoListener",
+      "addReceiveSaveYrcSettingsDataListener",
+      "addRemovedNotificationListener",
+      "addScanListener",
+      "addSendPhotoFrameGraphicResponseListener",
+      "addSendPushNotificationGraphicResponseListener",
+      "addSendVirtualPitBoardGraphicResponseListener",
+      "addSppConnectionListener",
+      "addVehicleIdentificationResponseListener",
+      "addVehicleInformationListener",
+      "addVehicleInformationResponseListener",
+      "addVehicleInformationSupportIdListResponseListener",
+      "addVehicleSettingRequestListener",
+      "addVirtualPitBoardGraphicRequestListener",
+      "addVirtualPitBoardResponseNGListener",
+      "addWeatherRequestListener",
+      "addWifiHostListener"
+    ],
+    "music_actions": [
+      "NextTrack",
+      "Pause",
+      "Play",
+      "PreviousTrack"
+    ],
+    "music_metadata_fields": [
+      "albumName",
+      "artistName",
+      "duration",
+      "elapsedTime",
+      "playbackRate",
+      "playbackState",
+      "songName"
+    ],
+    "phone_battery_fields": [
+      "battery",
+      "charging"
+    ]
+  },
+  "garmin_protocol_identifiers": {
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteBorderSubType;": {
+      "fields": [
+        "BORDER_TYPE_COUNTRY",
+        "BORDER_TYPE_STATE"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteButtonType;": {
+      "fields": [
+        "BUTTON_CANCEL",
+        "BUTTON_DISMISS",
+        "BUTTON_NO",
+        "BUTTON_OK",
+        "BUTTON_YES"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteConstant;": {
+      "fields": [
+        "CHECKSUM_ENABLED",
+        "MAGIC_CODE",
+        "MAX_LENGTH_DIALOG_MESSAGE_STRING",
+        "MAX_LENGTH_POI_NAME_STRING",
+        "MAX_LENGTH_ROAD_NAME_STRING",
+        "MAX_LENGTH_STRING",
+        "MAX_LENGTH_TBT_DESCRIPTION_STRING",
+        "PROTOCOL_VERSION_MAJOR",
+        "PROTOCOL_VERSION_MINOR"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteContentType;": {
+      "fields": [
+        "FAVORITE_LIST",
+        "NAVI_IMAGE",
+        "NAVI_IMAGE_FOR_THROUGHPUT_MODE",
+        "STATIONS_LIST",
+        "TBT_LIST"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteDayNightModeType;": {
+      "fields": [
+        "AUTO",
+        "DAY",
+        "NIGHT"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteDialogStringType;": {
+      "fields": [
+        "DIALOG_STRING_NO_ROUTE_FOUND_TO_THIS_DEST",
+        "DIALOG_STRING_NO_TOLL_FREE_ROUTE_TO_THIS_DEST",
+        "DIALOG_STRING_ROUTE_HAS_TOLLS_FIND_FREE_ROUTE_INSTEAD",
+        "DIALOG_STRING_UNDEFINED"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteDialogType;": {
+      "fields": [
+        "DIALOG_DISMISS_DIALOG",
+        "DIALOG_OK",
+        "DIALOG_OK_CANCEL",
+        "DIALOG_YES_NO",
+        "DIALOG_YES_NO_CANCEL"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteEventSubType;": {
+      "fields": [
+        "EVENT_SUBTYPE_UNDEFINED"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteFrameType;": {
+      "fields": [
+        "NAVILITE_FRAME_TYPE_MCU_REQUEST",
+        "NAVILITE_FRAME_TYPE_MCU_RESPONSE",
+        "NAVILITE_FRAME_TYPE_MCU_UPDATE",
+        "NAVILITE_FRAME_TYPE_MOBILE_REQUEST",
+        "NAVILITE_FRAME_TYPE_MOBILE_RESPONSE",
+        "NAVILITE_FRAME_TYPE_MOBILE_UPDATE"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteHeader;": {
+      "fields": [
+        "mFrameType",
+        "mMagicCode",
+        "mPayloadDataType",
+        "mPayloadSize",
+        "mServiceType",
+        "mVersion"
+      ],
+      "methods": [
+        "<init>",
+        "getFrameType",
+        "getMagicCode",
+        "getPayloadDataType",
+        "getPayloadSize",
+        "getServiceType",
+        "getVersion",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteHeaderUtil$CppProxy;": {
+      "fields": [
+        "destroyed",
+        "nativeRef"
+      ],
+      "methods": [
+        "<init>",
+        "_djinni_private_destroy",
+        "finalize",
+        "getFrameTypeLogString",
+        "getHeaderLogString",
+        "getMcuUpdateHeader",
+        "getMobileRequestHeader",
+        "getMobileUpdateHeader",
+        "getPayloadDataTypeLogString",
+        "getServiceTypeLogShortString",
+        "getServiceTypeLogString",
+        "isValidHeader",
+        "nativeDestroy",
+        "packHeader",
+        "unpackHeader"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteHeaderUtil;": {
+      "fields": [
+        "HEADER_SIZE"
+      ],
+      "methods": [
+        "<init>",
+        "getFrameTypeLogString",
+        "getHeaderLogString",
+        "getMcuUpdateHeader",
+        "getMobileRequestHeader",
+        "getMobileUpdateHeader",
+        "getPayloadDataTypeLogString",
+        "getServiceTypeLogShortString",
+        "getServiceTypeLogString",
+        "isValidHeader",
+        "packHeader",
+        "unpackHeader"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteImageType;": {
+      "fields": [
+        "IMAGE_JCV",
+        "IMAGE_NAVIGATION",
+        "IMAGE_NAVIGATION_EXPANDED",
+        "IMAGE_OTHER",
+        "IMAGE_THROUGHPUT_TEST_DATA"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteLaneImageType;": {
+      "fields": [
+        "INVALID_LANE_45_LEFT",
+        "INVALID_LANE_45_RIGHT",
+        "INVALID_LANE_90_LEFT",
+        "INVALID_LANE_90_RIGHT",
+        "INVALID_LANE_STRAIGHT",
+        "INVALID_LANE_TRUNCATE",
+        "UNUSED",
+        "VALID_LANE_45_LEFT",
+        "VALID_LANE_45_RIGHT",
+        "VALID_LANE_90_LEFT",
+        "VALID_LANE_90_RIGHT",
+        "VALID_LANE_STRAIGHT",
+        "VALID_LANE_TRUNCATE"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteMessagePacker$CppProxy;": {
+      "fields": [
+        "destroyed",
+        "nativeRef"
+      ],
+      "methods": [
+        "<init>",
+        "_djinni_private_destroy",
+        "failedPacker",
+        "finalize",
+        "getActiveTurnByTurnIndexUpdateMessage",
+        "getAuthRequestAckMessage",
+        "getAuthRequestMessage",
+        "getAuthRequestSecDataMessage",
+        "getAuthSecDataAckMessage",
+        "getBorderNotificationUpdateMessage",
+        "getBtThroughputTimeoutUpdateMessage",
+        "getCurrentRoadMessage",
+        "getDayNightModeMessage",
+        "getDialogActionSelectedUpdateMessage",
+        "getDialogMessage",
+        "getDialogMessageWithId",
+        "getEsnAckMessage",
+        "getEsnUpdateMessage",
+        "getEtaMessage",
+        "getFavoritePoiDataUpdateMessage",
+        "getFavoritePoiUpdateMessage",
+        "getGasPoiDataUpdateMessage",
+        "getGasPoiUpdateMessage",
+        "getGoHomeRequest",
+        "getGoOfficeRequest",
+        "getGpsStatusUpdateMessage",
+        "getHomeSettingUpdateMessage",
+        "getImageAckMessage",
+        "getImageStoppedMessage",
+        "getInitSetupCompleteUpdateMessage",
+        "getMapZoomInRequest",
+        "getMapZoomOutRequest",
+        "getNaviEventTextUpdateMessage",
+        "getNaviImageMessage",
+        "getNavigationInfoUpdateMessage",
+        "getNavigationStatusUpdateMessage",
+        "getNextTurnDistanceMessage",
+        "getNoSpeedLimitMessage",
+        "getOfficeSettingUpdateMessage",
+        "getRouteCalcProgressUpdateMessage",
+        "getSchoolZoneTextUpdateMessage",
+        "getSkipNextWaypointRequest",
+        "getSpeedCameraTextUpdateMessage",
+        "getSpeedLimitMessage",
+        "getStartContentUpdateRequest",
+        "getStartRouteRequest",
+        "getStopContentUpdateRequest",
+        "getStopRouteRequest",
+        "getSysInfoUpdateMessage",
+        "getTollRoadCannotAvoidDialogMessage",
+        "getTollRoadCannotAvoidDialogMessageWithId",
+        "getTollRoadConfirmationDialogMessage",
+        "getTollRoadConfirmationDialogMessageWithId",
+        "getTrafficRerouteUpdateMessage",
+        "getTurnByTurnDataUpdateMessage",
+        "getTurnByTurnUpdateMessage",
+        "getVehicleSpeedUpdateMessage",
+        "getViaCountMessage",
+        "getZoomLevelMessage",
+        "nativeDestroy",
+        "packer"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteMessagePriority;": {
+      "fields": [
+        "$VALUES",
+        "PRIORITY_HIGH",
+        "PRIORITY_NORMAL"
+      ],
+      "methods": [
+        "$values",
+        "<clinit>",
+        "<init>",
+        "valueOf",
+        "values"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteMessageUnpacker$CppProxy;": {
+      "fields": [
+        "destroyed",
+        "nativeRef"
+      ],
+      "methods": [
+        "<init>",
+        "_djinni_private_destroy",
+        "finalize",
+        "nativeDestroy",
+        "unpack",
+        "unpackMultiple"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteNaviEventType;": {
+      "fields": [
+        "BORDER",
+        "CAMERA",
+        "OTHER",
+        "SCHOOL",
+        "SPEED",
+        "TRAFFIC"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLitePackedMessage;": {
+      "fields": [
+        "mChecksum",
+        "mContent",
+        "mHeader",
+        "mStatus"
+      ],
+      "methods": [
+        "<init>",
+        "getChecksum",
+        "getContent",
+        "getHeader",
+        "getStatus",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLitePackedMessageStatus;": {
+      "fields": [
+        "STATUS_ERROR_ARGUMENT_INVALID",
+        "STATUS_ERROR_INTERNAL_HELPER_ERROR",
+        "STATUS_OK"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLitePayloadDataType;": {
+      "fields": [
+        "PAYLOAD_DATA_TYPE_AS_POINTER",
+        "PAYLOAD_DATA_TYPE_AS_VALUE"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLitePoiDirectionType;": {
+      "fields": [
+        "POI_DIRECTION_BACK",
+        "POI_DIRECTION_BACK_LEFT",
+        "POI_DIRECTION_BACK_RIGHT",
+        "POI_DIRECTION_FRONT",
+        "POI_DIRECTION_FRONT_LEFT",
+        "POI_DIRECTION_FRONT_RIGHT",
+        "POI_DIRECTION_LEFT",
+        "POI_DIRECTION_RIGHT",
+        "POI_DIRECTION_UNDEFINED"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteProgressType;": {
+      "fields": [
+        "PROGRESS_INVALID",
+        "PROGRESS_INVALID_I32"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteRouteOptionType;": {
+      "fields": [
+        "LAST_STOP",
+        "NEW_ROUTE",
+        "NEXT_STOP",
+        "UNKNOWN"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteServiceType;": {
+      "fields": [
+        "NAVILITE_SERVICE_TYPE_ACTIVE_TURN_LIST_UPDATE",
+        "NAVILITE_SERVICE_TYPE_APP_GO_HOME_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_GO_OFFICE_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_MAP_ZOOM_IN_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_MAP_ZOOM_OUT_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_SETTING_UPDATE",
+        "NAVILITE_SERVICE_TYPE_APP_SKIP_NEXT_WAYPOINT_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_START_CONTENT_UPDATE_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_START_ROUTE_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_STOP_CONTENT_UPDATE_REQUEST",
+        "NAVILITE_SERVICE_TYPE_APP_STOP_ROUTE_REQUEST",
+        "NAVILITE_SERVICE_TYPE_AUTH_REQUEST",
+        "NAVILITE_SERVICE_TYPE_AUTH_REQUEST_ACK",
+        "NAVILITE_SERVICE_TYPE_AUTH_REQUEST_SEC_DATA",
+        "NAVILITE_SERVICE_TYPE_AUTH_REQUEST_SEC_DATA_ACK",
+        "NAVILITE_SERVICE_TYPE_BT_THROUGHPUT_TIMEOUT_UPDATE",
+        "NAVILITE_SERVICE_TYPE_CUR_ROAD_NAME_UPDATE",
+        "NAVILITE_SERVICE_TYPE_DAY_NIGHT_MODE_UPDATE",
+        "NAVILITE_SERVICE_TYPE_DIALOG_LC_PROMPT_UPDATE",
+        "NAVILITE_SERVICE_TYPE_DIALOG_PROMPT_UPDATE",
+        "NAVILITE_SERVICE_TYPE_ETA_UPDATE",
+        "NAVILITE_SERVICE_TYPE_FAV_POI_LIST_DATA_UPDATE",
+        "NAVILITE_SERVICE_TYPE_FAV_POI_LIST_UPDATE",
+        "NAVILITE_SERVICE_TYPE_GAS_POI_LIST_DATA_UPDATE",
+        "NAVILITE_SERVICE_TYPE_GAS_POI_LIST_UPDATE",
+        "NAVILITE_SERVICE_TYPE_GPS_STATUS_UPDATE",
+        "NAVILITE_SERVICE_TYPE_HOME_SETTING_UPDATE",
+        "NAVILITE_SERVICE_TYPE_IMAGE_FRAME_UPDATE",
+        "NAVILITE_SERVICE_TYPE_IMAGE_FRAME_UPDATE_ACK",
+        "NAVILITE_SERVICE_TYPE_IMAGE_STOPPED_UPDATE",
+        "NAVILITE_SERVICE_TYPE_MAP_ZOOM_LEVEL_UPDATE",
+        "NAVILITE_SERVICE_TYPE_MCU_DIALOG_USER_SELECT_UPDATE",
+        "NAVILITE_SERVICE_TYPE_MCU_ESN_UPDATE",
+        "NAVILITE_SERVICE_TYPE_MCU_ESN_UPDATE_ACK",
+        "NAVILITE_SERVICE_TYPE_MCU_SYSINFO_UPDATE",
+        "NAVILITE_SERVICE_TYPE_MCU_VEHICLE_SPEED_UPDATE",
+        "NAVILITE_SERVICE_TYPE_NAVIGATION_INFO_UPDATE",
+        "NAVILITE_SERVICE_TYPE_NAVIGATION_STATUS_UPDATE",
+        "NAVILITE_SERVICE_TYPE_NAVI_EVENT_TEXT_UPDATE",
+        "NAVILITE_SERVICE_TYPE_NEXT_TURN_DIST_UPDATE",
+        "NAVILITE_SERVICE_TYPE_OFFICE_SETTING_UPDATE",
+        "NAVILITE_SERVICE_TYPE_ROUTE_CALC_PROGRESS_UPDATE",
+        "NAVILITE_SERVICE_TYPE_SPEED_LIMIT_UPDATE",
+        "NAVILITE_SERVICE_TYPE_TBT_LIST_DATA_UPDATE",
+        "NAVILITE_SERVICE_TYPE_TBT_LIST_UPDATE",
+        "NAVILITE_SERVICE_TYPE_VIA_POINT_COUNT_UPDATE"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteUnpackedMessage;": {
+      "fields": [
+        "mCalculatedChecksum",
+        "mHeader",
+        "mListedChecksum",
+        "mParameter",
+        "mPayload",
+        "mStatus"
+      ],
+      "methods": [
+        "<init>",
+        "getCalculatedChecksum",
+        "getHeader",
+        "getListedChecksum",
+        "getParameter",
+        "getPayload",
+        "getStatus",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteUnpackedMessageMultiple;": {
+      "fields": [
+        "mUnpackedMessages"
+      ],
+      "methods": [
+        "<init>",
+        "getUnpackedMessages",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteUnpackedMessageParameter;": {
+      "fields": [
+        "mParamBinary1",
+        "mParamFloat1",
+        "mParamFloat2",
+        "mParamInt1",
+        "mParamInt2",
+        "mParamInt3",
+        "mParamInt4",
+        "mParamInt5",
+        "mParamIntList1",
+        "mParamString1",
+        "mParamString2",
+        "mParamString3"
+      ],
+      "methods": [
+        "<init>",
+        "getParamBinary1",
+        "getParamFloat1",
+        "getParamFloat2",
+        "getParamInt1",
+        "getParamInt2",
+        "getParamInt3",
+        "getParamInt4",
+        "getParamInt5",
+        "getParamIntList1",
+        "getParamString1",
+        "getParamString2",
+        "getParamString3",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteUnpackedMessageStatus;": {
+      "fields": [
+        "STATUS_ERROR_CHECKSUM_FAIL",
+        "STATUS_ERROR_MAGIC_CODE_FAIL",
+        "STATUS_ERROR_PAYLOAD_CONTENT_ERROR",
+        "STATUS_ERROR_PAYLOAD_LEGNTH_NOT_MATCH",
+        "STATUS_ERROR_SERVICE_TYPE_NOT_MATCH_FRAME_TYPE",
+        "STATUS_ERROR_SERVICE_TYPE_NOT_MATCH_PAYLOAD",
+        "STATUS_ERROR_SIZE_LESS_THAN_HEADER",
+        "STATUS_OK"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteVehicleSpeedUnitType;": {
+      "fields": [
+        "UNIT_KPH",
+        "UNIT_MPH"
+      ],
+      "methods": [
+        "<init>",
+        "toString"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteMessagePacker;": {
+      "fields": [],
+      "methods": [
+        "<init>",
+        "failedPacker",
+        "getActiveTurnByTurnIndexUpdateMessage",
+        "getAuthRequestAckMessage",
+        "getAuthRequestMessage",
+        "getAuthRequestSecDataMessage",
+        "getAuthSecDataAckMessage",
+        "getBorderNotificationUpdateMessage",
+        "getBtThroughputTimeoutUpdateMessage",
+        "getCurrentRoadMessage",
+        "getDayNightModeMessage",
+        "getDialogActionSelectedUpdateMessage",
+        "getDialogMessage",
+        "getDialogMessageWithId",
+        "getEsnAckMessage",
+        "getEsnUpdateMessage",
+        "getEtaMessage",
+        "getFavoritePoiDataUpdateMessage",
+        "getFavoritePoiUpdateMessage",
+        "getGasPoiDataUpdateMessage",
+        "getGasPoiUpdateMessage",
+        "getGoHomeRequest",
+        "getGoOfficeRequest",
+        "getGpsStatusUpdateMessage",
+        "getHomeSettingUpdateMessage",
+        "getImageAckMessage",
+        "getImageStoppedMessage",
+        "getInitSetupCompleteUpdateMessage",
+        "getMapZoomInRequest",
+        "getMapZoomOutRequest",
+        "getNaviEventTextUpdateMessage",
+        "getNaviImageMessage",
+        "getNavigationInfoUpdateMessage",
+        "getNavigationStatusUpdateMessage",
+        "getNextTurnDistanceMessage",
+        "getNoSpeedLimitMessage",
+        "getOfficeSettingUpdateMessage",
+        "getRouteCalcProgressUpdateMessage",
+        "getSchoolZoneTextUpdateMessage",
+        "getSkipNextWaypointRequest",
+        "getSpeedCameraTextUpdateMessage",
+        "getSpeedLimitMessage",
+        "getStartContentUpdateRequest",
+        "getStartRouteRequest",
+        "getStopContentUpdateRequest",
+        "getStopRouteRequest",
+        "getSysInfoUpdateMessage",
+        "getTollRoadCannotAvoidDialogMessage",
+        "getTollRoadCannotAvoidDialogMessageWithId",
+        "getTollRoadConfirmationDialogMessage",
+        "getTollRoadConfirmationDialogMessageWithId",
+        "getTrafficRerouteUpdateMessage",
+        "getTurnByTurnDataUpdateMessage",
+        "getTurnByTurnUpdateMessage",
+        "getVehicleSpeedUpdateMessage",
+        "getViaCountMessage",
+        "getZoomLevelMessage",
+        "packer"
+      ]
+    },
+    "Lcom/garmin/android/lib/navilite/protocol/NaviLiteMessageUnpacker;": {
+      "fields": [],
+      "methods": [
+        "<init>",
+        "unpack",
+        "unpackMultiple"
+      ]
+    }
+  },
+  "navigation_content_selectors_from_upstream_research": {
+    "1": "navigation_images",
+    "2": "turn_list",
+    "3": "favourites",
+    "4": "fuel_stations",
+    "11": "throughput_test"
+  },
+  "source_checkout_head": "eea18219453cf940aeb4c90e4f24bd8619581416"
+}

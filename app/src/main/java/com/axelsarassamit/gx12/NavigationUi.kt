@@ -26,8 +26,8 @@ object NavigationUi {
         AlertDialog.Builder(activity).setTitle("Navigation and panels").setItems(arrayOf("Map and routing accounts", "Phone panel", "Bike display", "Precise location", "Voice guidance", "Stop navigation")) { _, choice ->
             when(choice) {
                 0 -> credentials(activity)
-                1,2 -> {
-                    val key=if(choice==1)"phone_panel" else "dash_panel"
+                1 -> {
+                    val key="phone_panel"
                     val selected=modes.indexOf(RidePreferences.prefs(activity).getString(key,"map")).coerceAtLeast(0)
                     AlertDialog.Builder(activity).setTitle(if(choice==1)"Phone panel" else "Bike display")
                         .setSingleChoiceItems(names,selected) { dialog,index ->
@@ -35,6 +35,9 @@ object NavigationUi {
                             Toast.makeText(activity,if(choice==1)"Saved. Return to the cockpit to see this panel." else "Bike display updated",Toast.LENGTH_LONG).show()
                         }.setNegativeButton("Close",null).show()
                 }
+                2 -> AlertDialog.Builder(activity).setTitle("Bike display")
+                    .setMessage("Select Default view, Turn-by-turn or Turn list from Navigation > Change view on the bike. RideDeck sends map images and native turn guidance. Music controls are available in the Phone panel; the bike's built-in player uses its Yamaha connection.")
+                    .setPositiveButton("Close",null).show()
                 3 -> permission(activity)
                 4 -> {
                     val prefs=RidePreferences.prefs(activity)

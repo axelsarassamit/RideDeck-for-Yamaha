@@ -1,5 +1,9 @@
 # Yamaha dashboard feature investigation
 
+## XMAX 2024 investigation update, 2026-10-09
+
+See [the function inventory](XMAX_2024_FUNCTION_PARITY.md) and [installed API identifier catalogue](XMAX_2024_FUNCTION_CATALOG.json) for current findings. The earlier slice below describes the older implementation, not complete protocol coverage. Current upstream NaviLite observations identify Turn List as content type 2 on services 55/56, list metadata service 5, active index service 6 and row data service 97. RideDeck does not implement those updates. Its existing diagnostics omit the content selector, so image-stop records do not rule out bike view-selection requests. Installed Y-Connect 3.9.0 identifiers confirm explicit music metadata/control APIs, but their accessory transport and packet behavior are not yet verified for this bike. The phone's installed StreetCross version is 1.87. No runtime behavior was changed during this inventory.
+
 ## Implemented first slice
 
 RideDeck reads NaviLite dashboard commands independently of image acknowledgements. Valid navigation-image start requests (55) resume JPEG transmission and refresh navigation/app state. Stop requests (56) pause images without closing Bluetooth. Other services are recorded as metadata only and ignored. The IMAGE_STOPPED (20) payload is not documented, so RideDeck does not guess it. Hardware testing remains required.

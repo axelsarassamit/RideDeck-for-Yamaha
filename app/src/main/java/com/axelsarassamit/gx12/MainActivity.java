@@ -762,12 +762,12 @@ public class MainActivity extends android.app.Activity {
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
             .setTitle("Yamaha bike screen")
             .setItems(new String[]{YamahaCastService.active ? "Disconnect bike" : "Connect bike",
-                "Map on bike screen", "Turn arrows on bike screen", "Music on bike screen"},
+                "Bike navigation views"},
                 (d, choice) -> {
                     if (choice == 0) { castOrStop(); return; }
-                    String mode = new String[]{"map", "arrows", "music"}[choice - 1];
-                    RidePreferences.prefs(this).edit().putString("dash_panel", mode).apply();
-                    android.widget.Toast.makeText(this, "Bike screen updated", android.widget.Toast.LENGTH_SHORT).show();
+                    new android.app.AlertDialog.Builder(this).setTitle("Bike navigation views")
+                        .setMessage("Use Navigation > Change view on the bike to choose Default view, Turn-by-turn or Turn list. Music controls stay on the phone. The bike's built-in music player uses its Yamaha connection.")
+                        .setPositiveButton("Close", null).show();
                 }).setNegativeButton("Close", null).create();
         dialog.show();
     }
