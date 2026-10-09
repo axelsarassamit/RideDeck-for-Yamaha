@@ -289,8 +289,8 @@ object NativeNavigation {
                     paint.color=0xff087eff.toInt(); paint.strokeWidth=5f; canvas.drawPath(path,paint)
                 }
                 val pixel = snapshot.pixelForLatLng(LatLng(fix.latitude,fix.longitude))
-                paint.style=Paint.Style.FILL; paint.color=Color.WHITE; canvas.drawCircle(pixel.x,pixel.y,10f,paint)
-                paint.color=0xff087eff.toInt(); canvas.drawCircle(pixel.x,pixel.y,7f,paint)
+                val riderHeading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else heading
+                YamahaPositionMarker.draw(c,canvas,pixel.x,pixel.y,(riderHeading-camera.bearing).toFloat())
                 canvas.restore()
                 banner(canvas, paint, guidance, 0, 34, 19f)
                 // Attribution remains visible on every streamed frame, including the small dashboard.

@@ -335,6 +335,8 @@ public class MainActivity extends android.app.Activity {
             Button cast = button(YamahaCastService.active ? "DISCONNECT BIKE" : "CONNECT BIKE");
             cast.setOnClickListener(v -> { if (YamahaCastService.active) startService(new Intent(this, YamahaCastService.class).setAction(YamahaCastService.STOP)); else chooseDash(); });
             page.addView(cast, buttonParams());
+            Button marker = button("BIKE POSITION ICON"); marker.setOnClickListener(v -> YamahaPositionMarker.showPicker(this));
+            page.addView(marker, buttonParams());
         }
         page = setupGroup(sections, "Help & diagnostics", "View connection details and share a log file", false);
         Button diagnostics = button("View and share diagnostic log");
@@ -937,7 +939,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showPersonalization() {
-        showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Navigation / rider app", "Reply method", "Controls / map placement", "Color theme", "Music player", "Bike map size", "Home and Work destinations", "Favorites", "Nearby fuel stations"}, (dialog, which) -> {
+        showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Navigation / rider app", "Reply method", "Controls / map placement", "Color theme", "Music player", "Bike map size", "Home and Work destinations", "Favorites", "Nearby fuel stations", "Bike position icon"}, (dialog, which) -> {
                 if (which == 0) new android.app.AlertDialog.Builder(this).setTitle("Phone mount position")
                     .setSingleChoiceItems(new String[]{"Left: music controls on left", "Centre: controls on left", "Right: music controls on right"}, RidePreferences.prefs(this).getInt("mount", 1), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("mount", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
@@ -951,6 +953,7 @@ public class MainActivity extends android.app.Activity {
                 else if (which == 6) chooseMusicPlayer();
                 else if (which == 9) showBikeFavorites();
                 else if (which == 10) prepareFuelStations();
+                else if (which == 11) YamahaPositionMarker.showPicker(this);
                 else if (which == 8) {
                     LinearLayout fields = new LinearLayout(this); fields.setOrientation(LinearLayout.VERTICAL); fields.setPadding(dp(24), dp(12), dp(24), 0);
                     EditText home = new EditText(this); home.setHint("Home address or place"); home.setText(RidePreferences.prefs(this).getString("bike_home", ""));
@@ -1051,7 +1054,7 @@ public class MainActivity extends android.app.Activity {
             if (BuildConfig.YAMAHA && i == 7) continue;
             final int choice = i;
             LinearLayout row = rideCard(labels[i].toUpperCase(java.util.Locale.ROOT));
-            String detail = i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[RidePreferences.prefs(this).getInt("color_theme", 0)]
+            String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[RidePreferences.prefs(this).getInt("color_theme", 0)]
                 : i == 7 ? RidePreferences.BIKE_MAP_SIZE_NAMES[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("bike_map_size", 0)))]
                 : i == 6 ? RidePreferences.musicName(this) : i == 2 ? RidePreferences.MAP_NAMES[Math.max(0, java.util.Arrays.asList(RidePreferences.MAP_PACKAGES).indexOf(RidePreferences.selectedMap(this)))]
                 : i == 0 ? new String[]{"Left", "Centre", "Right"}[RidePreferences.prefs(this).getInt("mount", 1)]
