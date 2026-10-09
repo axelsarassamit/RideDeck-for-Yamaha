@@ -66,6 +66,8 @@ public class MainActivity extends android.app.Activity {
     private TextView updateStatus;
     private TextView trackStatus;
     private TextView phoneGuidance;
+    private TextView phoneTripSummary;
+    private SpeedLimitIcon phoneSpeedLimit;
     private TextView messagePreview;
     private TextView messageSource;
     private TextView dockMessage;
@@ -112,6 +114,11 @@ public class MainActivity extends android.app.Activity {
             refreshWhatsAppPreview();
             if (castStatus != null) castStatus.setText(YamahaCastService.status);
             if (phoneGuidance != null) phoneGuidance.setText(NativeNavigation.phoneGuidance());
+            if (phoneTripSummary != null) {
+                String summary = NativeNavigation.phoneTripSummary();
+                phoneTripSummary.setText(summary); phoneTripSummary.setVisibility(summary.isEmpty() ? View.GONE : View.VISIBLE);
+            }
+            if (phoneSpeedLimit != null) phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
             if (!setupVisible && RidePreferences.automaticMap(MainActivity.this) && YamahaCastService.automaticFallbackPending && !YamahaCastService.active) {
                 YamahaCastService.automaticFallbackPending = false;
                 autoMapSession = null;
@@ -277,7 +284,7 @@ public class MainActivity extends android.app.Activity {
         }
         setupVisible = true; cockpitVisible = false;
         albumArt = null; messagePreview = null; messageSource = null; dockMessage = null;
-        phoneGuidance = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
+        phoneGuidance = null; phoneTripSummary = null; phoneSpeedLimit = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xff151715); root.setPadding(dp(16), dp(16), dp(16), dp(16));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
@@ -304,6 +311,22 @@ public class MainActivity extends android.app.Activity {
         }
         page = setupGroup(sections, "Cockpit appearance", "Music player, colours, messages and control placement", false);
         page.addView(personalize, buttonParams());
+        page = setupGroup(sections, "Keep running", "Screen awake and navigation in the background", false);
+        page.addView(text("RideDeck keeps the screen on while open. Navigation and the bike connection continue when you use another app or remove RideDeck from Recent apps. Use their Stop buttons to end the session.", 14, 0xffaab4c0, false));
+        android.os.PowerManager ridePower = getSystemService(android.os.PowerManager.class);
+        boolean backgroundAllowed = ridePower.isIgnoringBatteryOptimizations(getPackageName());
+        Button battery = button(backgroundAllowed ? "BACKGROUND BATTERY ACCESS ALLOWED" : "ALLOW BACKGROUND BATTERY ACCESS");
+        battery.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(backgroundAllowed ? Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS : Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    backgroundAllowed ? null : Uri.parse("package:" + getPackageName())));
+            } catch (Exception error) { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+        });
+        page.addView(battery, buttonParams());
+        page.addView(text("If your phone still limits background use, choose No restrictions or Unrestricted in its app battery settings. On Xiaomi phones, also allow Background autostart.", 14, 0xffaab4c0, false));
+        Button appBackground = button("PHONE APP SETTINGS");
+        appBackground.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+        page.addView(appBackground, buttonParams());
         page = setupGroup(sections, "Permissions & quiet mode", "Music and messages, notifications and interruption control", false);
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
@@ -552,7 +575,7 @@ public class MainActivity extends android.app.Activity {
         renderedPanel = RidePreferences.prefs(this).getString("phone_panel", "map");
         if (phoneMapPending) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
         messagePreview = null; messageSource = null; dockMessage = null; albumArt = null;
-        rideClock = null; rideButton = null; phoneGuidance = null;
+        rideClock = null; rideButton = null; phoneGuidance = null; phoneTripSummary = null; phoneSpeedLimit = null;
         deviceStatus = text("", 12, 0xffaab4c0, false);
         updateStatus = text("", 12, 0xffaab4c0, false);
         boolean portrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
@@ -608,6 +631,17 @@ public class MainActivity extends android.app.Activity {
             LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
             guidanceParams.topMargin = dp(8);
             root.addView(phoneGuidance, guidanceParams);
+            String trip = NativeNavigation.phoneTripSummary();
+            phoneTripSummary = text(trip, compact ? 16 : 20, 0xffb5ff76, true);
+            phoneTripSummary.setMaxLines(2); phoneTripSummary.setPadding(dp(12), dp(4), dp(12), dp(4));
+            phoneTripSummary.setVisibility(trip.isEmpty() ? View.GONE : View.VISIBLE);
+            LinearLayout tripRow = new LinearLayout(this);
+            tripRow.setGravity(Gravity.CENTER_VERTICAL);
+            tripRow.addView(phoneTripSummary, new LinearLayout.LayoutParams(0, -2, 1));
+            phoneSpeedLimit = new SpeedLimitIcon(this);
+            phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
+            tripRow.addView(phoneSpeedLimit, new LinearLayout.LayoutParams(dp(compact ? 48 : 64), dp(compact ? 48 : 64)));
+            root.addView(tripRow, new LinearLayout.LayoutParams(-1, -2));
         }
 
 
@@ -732,7 +766,6 @@ public class MainActivity extends android.app.Activity {
         ScreenChrome.apply(getWindow(), true);
         androidx.core.view.ViewCompat.requestApplyInsets(root);
         refreshMediaSession(); refreshWhatsAppPreview();
-        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     private LinearLayout rideCard(String label) {

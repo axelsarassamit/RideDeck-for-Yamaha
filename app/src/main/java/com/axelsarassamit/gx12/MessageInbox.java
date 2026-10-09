@@ -4,6 +4,8 @@ import java.util.*;
 
 /** Pending notification previews, newest first. All data stays in memory. */
 public final class MessageInbox<T> {
+    /** Metadata only, shared with the Yamaha accessory indicator. */
+    public enum Indicator { UNAVAILABLE, CLEAR, PENDING }
     private static final class Entry<T> {
         final String app, key, fingerprint; final T value;
         Entry(String app, String key, String fingerprint, T value) {
@@ -36,6 +38,11 @@ public final class MessageInbox<T> {
         List<T> result = new ArrayList<>();
         for (Entry<T> entry : entries.values()) result.add(entry.value);
         Collections.reverse(result); return result;
+    }
+    /** Uses the exact phone inbox selection and acknowledgement policy. */
+    public synchronized Indicator indicator(Set<String> apps, boolean sourceAvailable) {
+        if (!sourceAvailable) return Indicator.UNAVAILABLE;
+        return selected(apps).isEmpty() ? Indicator.CLEAR : Indicator.PENDING;
     }
     public synchronized void clear() { entries.clear(); seen.clear(); }
 }

@@ -41,6 +41,7 @@ class YamahaCastService : Service() {
     private val refreshTurnList = AtomicBoolean(false)
     @Volatile private var turnListRequested = false
     private var receiver: Thread? = null
+    private var wake: RideSessionWakeLock? = null
     private val ackQueue = ArrayBlockingQueue<Int>(8)
 
     private fun diagnostic(message: String) {
@@ -50,15 +51,16 @@ class YamahaCastService : Service() {
     override fun onBind(intent: Intent?) = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == STOP) { autoReconnectPaused = true; automatic = false; automaticFallbackPending = false; stopSelf(); return START_NOT_STICKY }
-        if (running || active) return START_NOT_STICKY
+        if (intent?.action == STOP) { RideBackgroundSession.castStopped(this); autoReconnectPaused = true; automatic = false; automaticFallbackPending = false; running=false; try { socket?.close() } catch(_: Exception) { }; stopSelf(); return START_NOT_STICKY }
+        if (running || active) return START_STICKY
         autoReconnectPaused = false
-        sessionId = intent?.getStringExtra("session") ?: "manual"
-        automatic = intent?.getBooleanExtra("automatic", false) == true
+        sessionId = intent?.getStringExtra("session") ?: if(intent == null) RideBackgroundSession.castSession(this) else "manual"
+        automatic = if(intent == null) RideBackgroundSession.castAutomatic(this) else intent.getBooleanExtra("automatic",false)
         automaticFallbackPending = false
-        val address = intent?.getStringExtra("device")
+        val address = intent?.getStringExtra("device") ?: if(intent == null) RideBackgroundSession.castAddress(this) else null
         dedicated = true
         if (address == null) {
+            RideBackgroundSession.castStopped(this)
             status = "Choose a paired Yamaha dash in Setup."
             automaticFallbackPending = automatic
             stopSelf(); return START_NOT_STICKY
@@ -76,6 +78,8 @@ class YamahaCastService : Service() {
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
             else startForeground(22, notice)
             running = true; active = true
+            RideBackgroundSession.castStarted(this,address,automatic,sessionId)
+            wake=RideSessionWakeLock(this,"bike_connection")
             // Custom images never replace the bike's native music player or navigation views.
             RidePreferences.prefs(this).edit().putString("dash_panel","map").apply()
             diagnostic("Session started automatic=$automatic map=${RidePreferences.selectedMap(this)} density=${RidePreferences.bikeMapDensity(this)} Android=${Build.VERSION.SDK_INT}")
@@ -83,46 +87,66 @@ class YamahaCastService : Service() {
             status = "Connecting to the selected Yamaha dashâ€¦"
             deadline = SystemClock.elapsedRealtime() + 20000
             watchdog.scheduleWithFixedDelay({
+                val timedOutSocket=socket
                 if (running && SystemClock.elapsedRealtime() > deadline) {
                     diagnostic("Watchdog timeout receiving=${DedicatedDisplay.receiving()} imageRequested=$imageRequested")
-                    status = "Dash connection timed out. Close StreetCross or another casting app, then try again."
-                    automaticFallbackPending = automatic
-                    running = false
-                    try { socket?.close() } catch (_: Exception) { }
-                    main.post { stopSelf() }
+                    status = "Bike connection timed out. Retrying in the background."
+                    deadline=SystemClock.elapsedRealtime()+60000
+                    try { timedOutSocket?.close() } catch (_: Exception) { }
                 }
             }, 1, 1, TimeUnit.SECONDS)
-            worker = Thread({ cast(address) }, "RideDeckBluetooth").also { it.start() }
+            worker = Thread({
+                try {
+                    while(running) {
+                        receiverFailure=null; imageRequested=true; turnListRequested=false; refreshTurnList.set(false); ackQueue.clear()
+                        deadline=SystemClock.elapsedRealtime()+20000
+                        wake?.start()
+                        try { cast(address) } finally { wake?.stop() }
+                        if(running) {
+                            status="Bike disconnected. Retrying in 45 seconds."
+                            deadline=SystemClock.elapsedRealtime()+60000
+                            Thread.sleep(45000)
+                        }
+                    }
+                } catch(_: InterruptedException) { Thread.currentThread().interrupt() }
+                catch(error: Exception) { running=false; RideBackgroundSession.castStopped(this); status="Bike connection stopped. Open RideDeck to reconnect."; diagnostic("Connection worker failed exception=${error.javaClass.simpleName}") }
+                finally { wake?.stop(); main.post { stopSelf() } }
+            }, "RideDeckBluetooth").also { it.start() }
         } catch (_: Exception) {
             status = "Could not start sharing. Check nearby-device access and try again."
             automaticFallbackPending = automatic
+            RideBackgroundSession.castStopped(this)
             stopSelf()
+            return START_NOT_STICKY
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun cast(address: String) {
         try {
             if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                running=false; RideBackgroundSession.castStopped(this)
+                status="Nearby-device permission was revoked. Allow access to reconnect."
                 error("Nearby-device permission was revoked")
             }
-            val adapter = BluetoothAdapter.getDefaultAdapter() ?: error("Bluetooth is unavailable")
+            val adapter = BluetoothAdapter.getDefaultAdapter() ?: run { running=false; RideBackgroundSession.castStopped(this); status="Bluetooth is unavailable"; error(status) }
             check(adapter.isEnabled) { "Turn on Bluetooth before casting" }
             val device = adapter.bondedDevices.firstOrNull { it.address == address }
-                ?: error("Selected Yamaha is no longer paired")
+                ?: run { running=false; RideBackgroundSession.castStopped(this); status="Selected Yamaha is no longer paired"; error(status) }
+            var attemptSocket: BluetoothSocket? = null
             val link = object : ByteChannel {
                 override fun open() {
                     check(running)
                     val next = device.createInsecureRfcommSocketToServiceRecord(UUID.fromString("00007220-0000-1000-8000-00805f9b34fb"))
                     // Assign before blocking connect, so Stop and the timeout can always close it.
-                    synchronized(lock) { if (!running) { next.close(); error("Stopped") }; socket = next }
+                    synchronized(lock) { if (!running) { next.close(); error("Stopped") }; socket = next; attemptSocket=next }
                     diagnostic("Bluetooth connect begin")
                     next.connect()
                     diagnostic("Bluetooth socket connected")
                 }
-                override fun read(buffer: ByteArray) = socket!!.inputStream.read(buffer)
-                override fun write(bytes: ByteArray) { synchronized(lock) { socket!!.outputStream.write(bytes) } }
-                override fun close() { socket?.close() }
+                override fun read(buffer: ByteArray) = attemptSocket!!.inputStream.read(buffer)
+                override fun write(bytes: ByteArray) { synchronized(lock) { attemptSocket!!.outputStream.write(bytes) } }
+                override fun close() { attemptSocket?.close() }
             }
             status = "Connecting directly through Bluetooth..."
             check(running) { "Stopped" }
@@ -139,7 +163,7 @@ class YamahaCastService : Service() {
                 val available = googleMaps && !places.getString(key, "").isNullOrBlank()
                 link.write(NaviLiteCodec.build(6, service, 0, byteArrayOf(if (available) 1 else 0, 0)))
             }
-            check(size.width == 480 && size.height in listOf(234, 240)) { "Unsupported NaviLite display size" }
+            if(size.width != 480 || size.height !in listOf(234,240)) { running=false; RideBackgroundSession.castStopped(this); status="Unsupported NaviLite display size"; error(status) }
             status = "Bike connected. Starting selected map on the bike display..."
             deadline = SystemClock.elapsedRealtime() + 30000
             NativeNavigation.resize(size.width, size.height)
@@ -247,11 +271,18 @@ class YamahaCastService : Service() {
             var lastNativeUpdate = 0L
             var lastRouteRevision: Int? = null
             var nativeStateSent = false
+            var lastNightMode: Boolean? = null
             while (running) {
                 receiverFailure?.let { error(it) }
                 deadline = SystemClock.elapsedRealtime() + 15000
                 val currentTime = SystemClock.elapsedRealtime()
+                val night=NativeNavigation.isNightMap()
+                if(lastNightMode != night) {
+                    link.write(NativeDashNavigation.dayNight(night)); lastNightMode=night
+                    diagnostic("Navigation sun mode=${if(night) "night" else "day"}")
+                }
                 if (size.height == 234 && (refreshTurnList.get() || currentTime-lastNativeUpdate >= 1000)) {
+                    link.write(NativeDashNavigation.speedLimit(NativeNavigation.currentSpeedLimitKph()))
                     val nav = NativeNavigation.dashRoute
                     val revisionChanged = !nativeStateSent || lastRouteRevision != nav?.revision
                     val forceList = refreshTurnList.getAndSet(false)
@@ -272,6 +303,10 @@ class YamahaCastService : Service() {
                         link.write(NaviLiteCodec.build(6,13,0,byteArrayOf(if(fresh) 1 else 0,0)))
                         link.write(NativeDashNavigation.nextTurn(turn.sign,nav.nextMeters,if(fresh) turn.road.ifBlank { turn.instruction } else "Waiting for GPS"))
                         link.write(NativeDashNavigation.activeIndex(index))
+                        if(fresh && nav.remainingMillis != null) {
+                            val arrival=java.util.Calendar.getInstance().apply { timeInMillis=RouteTimeEstimator.arrivalMillis(System.currentTimeMillis(),nav.remainingMillis) }
+                            link.write(NativeDashNavigation.arrivalTime(arrival.get(java.util.Calendar.HOUR_OF_DAY),arrival.get(java.util.Calendar.MINUTE)))
+                        }
                     }
                     lastRouteRevision = nav?.revision
                     nativeStateSent = true
@@ -313,18 +348,21 @@ class YamahaCastService : Service() {
                 Thread.sleep(100) // At most 10 frames/s, with dash acknowledgement for every frame.
             }
         } catch (e: SecurityException) {
-            if (running) status = "Nearby-device permission was denied. Allow access and tap Cast again."
+            status = "Nearby-device permission was denied. Allow access and tap Cast again."
+            running=false; RideBackgroundSession.castStopped(this)
         } catch (e: Exception) {
             if (running) status = "Casting stopped: " + (e.message ?: "Bluetooth connection lost")
         } finally {
             diagnostic(status)
-            if (running) automaticFallbackPending = automatic
-            running = false
-            main.post { stopSelf() }
+            try { socket?.close() } catch(_: Exception) { }
+            receiver?.interrupt()
+            receiver?.join(1500)
+            if(receiver?.isAlive == true) { running=false; RideBackgroundSession.castStopped(this); diagnostic("Receiver did not stop; reconnect paused") }
+            receiver=null; socket=null
         }
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) { automatic = false; automaticFallbackPending = false; stopSelf() }
+    override fun onTaskRemoved(rootIntent: Intent?) { diagnostic("Bike connection continues after Recent apps removal"); super.onTaskRemoved(rootIntent) }
 
     override fun onDestroy() {
         running = false; active = false
@@ -334,6 +372,7 @@ class YamahaCastService : Service() {
         socket = null
         worker?.interrupt()
         receiver?.interrupt()
+        wake?.close(); wake=null
         // The phone's navigation session can continue after the dashboard disconnects.
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()

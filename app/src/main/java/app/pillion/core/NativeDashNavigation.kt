@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 data class DashTurn(val sign: Int, val meters: Double, val instruction: String, val road: String = "")
-data class DashRoute(val revision: Int, val turns: List<DashTurn>, val activeIndex: Int, val nextMeters: Double)
+data class DashRoute(val revision: Int, val turns: List<DashTurn>, val activeIndex: Int, val nextMeters: Double, val remainingMillis: Long? = null)
 
 /** Original interoperability encoder. Layouts checked against StreetCross 1.87 native packers. */
 object NativeDashNavigation {
@@ -53,5 +53,20 @@ object NativeDashNavigation {
         require(index in 0..65535)
         return NaviLiteCodec.build(6,6,0,byteArrayOf(index.toByte(),(index ushr 8).toByte()))
     }
+    fun arrivalTime(hour: Int, minute: Int): ByteArray {
+        require(hour in 0..23 && minute in 0..59)
+        // Installed GetEtaMessage packs minutes after midnight as UInt32 LE, POINTER.
+        val payload=ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(hour*60+minute).array()
+        return NaviLiteCodec.build(6,1,1,payload)
+    }
     fun imageStopped(): ByteArray = NaviLiteCodec.build(6,20,0,byteArrayOf())
+    fun dayNight(dark: Boolean): ByteArray = NaviLiteCodec.build(6,31,0,byteArrayOf(if(dark) 2 else 1,0))
+    fun speedLimit(kph: Int?): ByteArray {
+        require(kph == null || kph in 1..254)
+        // GetNoSpeedLimitMessage delegates to GetSpeedLimitMessage with a zero float.
+        val unit="km/h".toByteArray(Charsets.UTF_8)
+        val payload=ByteBuffer.allocate(5+unit.size).order(ByteOrder.LITTLE_ENDIAN)
+            .putFloat((kph ?: 0).toFloat()).put(unit.size.toByte()).put(unit).array()
+        return NaviLiteCodec.build(6,17,1,payload)
+    }
 }

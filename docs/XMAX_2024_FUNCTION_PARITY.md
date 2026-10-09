@@ -36,9 +36,9 @@ Investigated 2026-10-09. Scope: RideDeck for Yamaha only. User identifies the bi
 | Nearby fuel stations | Cached list/rows implemented | Fresh phone search and populated bike list still need verification |
 | Add destination as next/final stop | Rejected with an explicit unsupported message | Multi-stop route model and route options 2/3 missing |
 | Skip next stop | Service 50 not handled | Requires multi-stop route support |
-| Speed limit and speed-related guidance | Static unknown limit at setup | Reliable limit data and live service 17 updates missing |
+| Speed limit and speed-related guidance | Pending local change: mapped numeric limits, map/phone road-sign icon and native service 17 updates | Coverage depends on mapped road limits; native appearance and physical riding verification pending |
 | Lane guidance | Not implemented | Richer service 19 applies to a different CCU family; first identify the model |
-| Day/night appearance | Fixed setup value | Dynamic mode and bike response verification missing |
+| Day/night appearance | Pending local change: solar day/night styles and native service 31 updates (DAY=1, NIGHT=2) | Physical bike appearance and sunrise/sunset switching verification pending |
 | Traffic, rerouting, camera, border and school alerts | Not implemented | Region/provider-dependent data and native event updates/dialogs |
 | Toll/route-choice prompts and bike responses | Not implemented | Verified dialog layout, IDs, callback handling and timeout behavior |
 | Bike speed feedback | Service 65 ignored and suppressed in diagnostics | Unit/schema verification; navigation input only, not engine diagnostics |
@@ -55,12 +55,12 @@ These belong to Yamaha's accessory functionality. RideDeck's current navigation-
 | Music track information and progress | `writeBluetoothMusicMetaData`; song, artist, album, duration, elapsed time, rate, playback state fields | Phone controls retained; custom bike Music image removed; native dashboard transport absent |
 | Music Play/Pause/Next/Previous | `addBluetoothMusicControlListener`; enum fields Play, Pause, NextTrack, PreviousTrack | Phone playback controls; native bike callbacks absent |
 | Music/call volume and adjustable-state reporting | PhoneVolumeControl listener; volume-level and controllable-state writes | Native dashboard volume absent |
-| Headset connected state | Headset-state request listener and response write | Android audio route checks; native bike status absent |
+| Headset connected state | Headset-state request listener and response write | Verified 0x011C packet codec prepared locally; accessory transport and native bike status absent |
 | Incoming call details and call state | IncomingCallInformation and CallChangeNotification writes | Native bike call state absent |
 | Answer, reject or end call | IncomingCallControl listener | Native commands absent; Android permission/role compatibility needs investigation |
 | Notification add/update/remove, categories and content | NotificationDataV2, Add/Update/RemoveNotification writes and removal listener | Phone message card exists; native bike history/notification channel absent |
-| Phone battery and charging | PhoneBattery model has battery and charging fields | Available in local diagnostics; native bike updates absent |
-| Phone cellular signal | Signal-level request listener and response write | Native bike updates absent |
+| Phone battery and charging | PhoneBattery model has battery and charging fields | Verified 0x0115 packet codec prepared locally; native bike updates absent |
+| Phone cellular signal | Signal-level request listener and response write | Verified 0x0133 packet codec and signal enum prepared locally; native bike updates absent |
 | Phone connection, combined state and thermal state | PhoneStateCombined and PhoneThermalState writes | Native bike indicators absent |
 | Clock/date synchronization | DatetimeChangeNotification and VehicleSettingDatetime writes | Phone clock only |
 | Current/location weather | Weather request listener, location and information writes | Native weather absent |

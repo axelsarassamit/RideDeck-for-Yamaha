@@ -1,5 +1,11 @@
 package com.axelsarassamit.gx12
 
+import app.pillion.core.RouteTimeLeg
+import app.pillion.core.RoadSpeedLimits
+import app.pillion.core.SpeedLimitEdge
+import app.pillion.core.SpeedLimitWindow
+import app.pillion.core.SpeedLimitPoint
+import app.pillion.core.SolarMapTheme
 import android.content.Context
 import android.location.Location
 import android.net.Uri
@@ -10,7 +16,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class NavigationPlace(val label: String, val latitude: Double, val longitude: Double)
-data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int, val road: String = "")
+data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int, val road: String = "", val millis: Long = 0)
 data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long) {
     val cumulative = DoubleArray(points.size).also { distances ->
         val result = FloatArray(1)
@@ -19,13 +25,14 @@ data class NavigationRoute(val destination: NavigationPlace, val points: List<La
             distances[i] = distances[i-1] + result[0]
         }
     }
+    val timeLegs = turns.map { RouteTimeLeg(cumulative[it.start],cumulative[it.end],it.millis) }
 }
 
 object NavigationApi {
-    fun englishMapStyle(context: Context): String {
+    fun englishMapStyle(context: Context, dark: Boolean = false): String {
         val key = NavigationSecrets.read(context, "maptiler")
         check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
-        val style = request(Uri.parse("https://api.maptiler.com/maps/streets-v4/style.json?key=${Uri.encode(key)}"))
+        val style = request(Uri.parse("https://api.maptiler.com/maps/${SolarMapTheme.styleId(dark)}/style.json?key=${Uri.encode(key)}"))
         val layers = style.getJSONArray("layers")
         for (i in 0 until layers.length()) {
             val layout = layers.getJSONObject(i).optJSONObject("layout") ?: continue
@@ -37,13 +44,20 @@ object NavigationApi {
         }
         return style.toString()
     }
-    private fun request(uri: Uri, provider: String = "MapTiler"): JSONObject {
+    private fun request(uri: Uri, provider: String = "MapTiler", body: JSONObject? = null): JSONObject {
         val connection = URL(uri.toString()).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 10000; connection.readTimeout = 15000
             connection.setRequestProperty("User-Agent", "RideDeck-Yamaha")
             if (provider == "Valhalla") connection.setRequestProperty("X-Client-Id", "RideDeck-for-Yamaha")
+            if(body != null) {
+                connection.requestMethod="POST"; connection.doOutput=true
+                connection.setRequestProperty("Content-Type","application/json")
+                val bytes=body.toString().toByteArray(Charsets.UTF_8)
+                connection.setFixedLengthStreamingMode(bytes.size)
+                connection.outputStream.use { it.write(bytes) }
+            }
             val responseCode = connection.responseCode
             if (responseCode != 200) {
                 val apiKey = uri.getQueryParameter("key").orEmpty()
@@ -60,8 +74,7 @@ object NavigationApi {
                     } ?: return@runCatching ""
                     JSONObject(String(bytes, Charsets.UTF_8)).optString("message")
                 }.getOrDefault("")
-                val safeMessage = message
-                    .replace(apiKey, "[hidden]")
+                val safeMessage = (if(apiKey.isBlank()) message else message.replace(apiKey, "[hidden]"))
                     .replace(Regex("-?\\d{1,3}\\.\\d+,\\s*-?\\d{1,3}\\.\\d+"), "[location]")
                     .replace(Regex("[\\r\\n\\t]+"), " ")
                     .take(180)
@@ -80,6 +93,25 @@ object NavigationApi {
             }
             return JSONObject(String(bytes, Charsets.UTF_8))
         } finally { connection.disconnect() }
+    }
+
+    fun speedLimits(route: NavigationRoute, start: Int, end: Int): SpeedLimitWindow {
+        require(start >= 0 && end > start && end <= route.points.lastIndex && end-start <= 400)
+        val requested=route.points.subList(start,end+1)
+        val shape=JSONArray().apply { requested.forEach { put(JSONObject().put("lat",it.latitude).put("lon",it.longitude)) } }
+        val payload=JSONObject().put("shape",shape).put("costing","motorcycle").put("shape_match","edge_walk").put("units","kilometers")
+            .put("filters",JSONObject().put("action","include").put("attributes",JSONArray(listOf("shape","edge.begin_shape_index","edge.end_shape_index","edge.speed_limit"))))
+        val response=request(Uri.parse("https://valhalla1.openstreetmap.de/trace_attributes"),"Valhalla",payload)
+        require(response.optString("units") == "kilometers") { "Speed-limit units unavailable." }
+        val matched=decodePolyline(response.getString("shape"))
+        val edges=response.getJSONArray("edges")
+        val limits=RoadSpeedLimits.segments(matched.size,(0 until edges.length()).map { index ->
+            val item=edges.getJSONObject(index)
+            SpeedLimitEdge(item.optInt("begin_shape_index",-1),item.optInt("end_shape_index",-1),(item.opt("speed_limit") as? Number)?.toDouble())
+        })
+        // Repeated boundary points are allowed; changed road geometry is rejected.
+        val aligned=RoadSpeedLimits.align(requested.map { SpeedLimitPoint(it.latitude,it.longitude) },matched.map { SpeedLimitPoint(it.latitude,it.longitude) },limits)
+        return SpeedLimitWindow(start,aligned)
     }
     fun coordinate(text: String): NavigationPlace? {
         val match = Regex("^\\s*(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)\\s*$").matchEntire(text) ?: return null
@@ -124,11 +156,14 @@ object NavigationApi {
             NavigationTurn(
                 item.optString("instruction", "Continue"), valhallaTurnSign(item.optInt("type")),
                 item.optInt("begin_shape_index").coerceIn(points.indices), item.optInt("end_shape_index").coerceIn(points.indices),
-                item.optJSONArray("street_names")?.optString(0).orEmpty()
+                item.optJSONArray("street_names")?.optString(0).orEmpty(),
+                item.optDouble("time",0.0).takeIf { it.isFinite() && it >= 0 }?.let { (it*1000).toLong() } ?: 0
             )
         }
         val summary = trip.getJSONObject("summary")
-        return NavigationRoute(target, points, turns, summary.getDouble("length") * 1000.0, (summary.getDouble("time") * 1000).toLong())
+        val seconds=summary.getDouble("time")
+        require(seconds.isFinite() && seconds >= 0 && seconds <= Long.MAX_VALUE/1000.0) { "Route duration unavailable." }
+        return NavigationRoute(target, points, turns, summary.getDouble("length") * 1000.0, (seconds*1000).toLong())
     }
 
     private fun valhallaTurnSign(type: Int): Int = when (type) {

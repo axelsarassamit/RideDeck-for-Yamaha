@@ -26,6 +26,14 @@ public final class GX12NotificationListener extends NotificationListenerService 
     public static synchronized java.util.List<NotificationPreview> selectedPreviews(android.content.Context context) {
         return previews.selected(RidePreferences.selectedMessages(context));
     }
+    /**
+     * Yamaha's future accessory writer must use this state, not a second inbox
+     * or Android's raw notification count. It exposes no message contents.
+     * UNAVAILABLE is distinct from an empty inbox when the listener is lost.
+     */
+    public static synchronized MessageInbox.Indicator messageIndicator(android.content.Context context) {
+        return previews.indicator(RidePreferences.selectedMessages(context), connected != null);
+    }
     public static synchronized void acknowledge(NotificationPreview item) {
         item.acknowledged = true;
         previews.acknowledge(item.packageName, item.key, item);
@@ -146,6 +154,8 @@ public final class GX12NotificationListener extends NotificationListenerService 
         if (sbn == null) return;
         if (activeCall != null && activeCall.key.equals(sbn.getKey())) { BikeDiagnostics.record(this, "Call notification removed"); activeCall = null; }
         synchronized (GX12NotificationListener.class) {
+            // Retain the pending RideDeck message until Seen / next. The bike
+            // indicator uses this same queue and must not clear independently.
             for (NotificationPreview item : previews.selected(RidePreferences.selectedMessages(this))) {
                 if (sbn.getKey().equals(item.key)) { item.reply = null; item.replyInput = null; item.markRead = null; }
             }

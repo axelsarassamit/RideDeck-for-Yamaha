@@ -1,10 +1,23 @@
 package com.axelsarassamit.gx12
 
 import android.app.Application
+import android.app.Activity
+import android.os.Bundle
+import android.view.WindowManager
 
 class RideDeckApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(object: ActivityLifecycleCallbacks {
+            private fun awake(activity: Activity) { activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+            override fun onActivityCreated(activity: Activity,state: Bundle?) { awake(activity) }
+            override fun onActivityResumed(activity: Activity) { awake(activity) }
+            override fun onActivityStarted(activity: Activity) { }
+            override fun onActivityPaused(activity: Activity) { }
+            override fun onActivityStopped(activity: Activity) { }
+            override fun onActivitySaveInstanceState(activity: Activity,state: Bundle) { }
+            override fun onActivityDestroyed(activity: Activity) { }
+        })
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             // Exception messages can contain addresses or message text. Store types and code frames only.

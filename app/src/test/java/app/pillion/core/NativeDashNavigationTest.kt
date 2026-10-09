@@ -7,6 +7,40 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class NativeDashNavigationTest {
+    @Test fun dayNightMatchesInstalledDayOneNightTwoValuePacker() {
+        val day=NativeDashNavigation.dayNight(false); val night=NativeDashNavigation.dayNight(true)
+        assertEquals(31,NaviLiteCodec.serviceTypeAt(day,0)); assertEquals(6,day[5].toInt()); assertEquals(0,day[11].toInt())
+        assertArrayEquals(hex("0100"),NaviLiteCodec.payloadAt(day,0))
+        assertArrayEquals(hex("0200"),NaviLiteCodec.payloadAt(night,0))
+    }
+    @Test fun speedLimitAndClearMatchInstalledFloatPointerPacker() {
+        val frame=NativeDashNavigation.speedLimit(50)
+        assertEquals(17,NaviLiteCodec.serviceTypeAt(frame,0))
+        assertEquals(6,frame[5].toInt()); assertEquals(1,frame[11].toInt())
+        assertArrayEquals(hex("00004842046b6d2f68"),NaviLiteCodec.payloadAt(frame,0))
+        assertArrayEquals(hex("00000000046b6d2f68"),NaviLiteCodec.payloadAt(NativeDashNavigation.speedLimit(null),0))
+    }
+    @Test fun unknownSentinelsCannotBecomeNativeSpeedNumbers() {
+        for(value in listOf(0,-1,255)) {
+            try { NativeDashNavigation.speedLimit(value); fail("Invalid limit accepted") }
+            catch(_: IllegalArgumentException) { }
+        }
+    }
+    @Test fun arrivalTimeMatchesInstalledUInt32PointerPacker() {
+        val frame=NativeDashNavigation.arrivalTime(23,59)
+        assertEquals(1,NaviLiteCodec.serviceTypeAt(frame,0))
+        assertEquals(6,frame[5].toInt())
+        assertEquals(1,frame[11].toInt())
+        assertArrayEquals(hex("9f050000"),NaviLiteCodec.payloadAt(frame,0))
+        assertArrayEquals(hex("05000000"),NaviLiteCodec.payloadAt(NativeDashNavigation.arrivalTime(0,5),0))
+    }
+    @Test fun invalidArrivalClockCannotProduceAPacket() {
+        for((hour,minute) in listOf(24 to 0,-1 to 0,0 to 60,0 to -1)) {
+            try { NativeDashNavigation.arrivalTime(hour,minute); fail("Invalid time accepted") }
+            catch(_: IllegalArgumentException) { }
+        }
+    }
+
     private fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     @Test fun nextTurnMatchesInstalledPackerLayout() {
         val frame = NativeDashNavigation.nextTurn(-2,250.0,"Oak")
