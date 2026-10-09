@@ -64,7 +64,8 @@ public class MainActivity extends android.app.Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView deviceStatus;
     private TextView updateStatus;
-    private TextView trackStatus;
+    private TextView trackStatus, trackArtist, musicSource;
+    private PlaybackTimelineView playbackTimeline;
     private TextView phoneGuidance;
     private TextView phoneTripSummary;
     private SpeedLimitIcon phoneSpeedLimit;
@@ -284,11 +285,12 @@ public class MainActivity extends android.app.Activity {
         }
         setupVisible = true; cockpitVisible = false;
         albumArt = null; messagePreview = null; messageSource = null; dockMessage = null;
+        trackArtist = null; musicSource = null; playbackTimeline = null;
         phoneGuidance = null; phoneTripSummary = null; phoneSpeedLimit = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xff151715); root.setPadding(dp(16), dp(16), dp(16), dp(16));
+        root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(16), dp(16), dp(16), dp(16));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView heading = text("Setup", 30, 0xfff4f6fa, true);
+        TextView heading = text("Setup", 30, RideStyle.TEXT, true);
         header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
         Button back = rideAction("Done", false); back.setOnClickListener(v -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(88), dp(56))); root.addView(header);
@@ -296,15 +298,15 @@ public class MainActivity extends android.app.Activity {
         sections.addView(text(BuildConfig.YAMAHA ? "RideDeck for Yamaha" : "RideDeck", 16, RideTheme.accent(this), true));
         TextView parked = text("Make changes while parked", 14, 0xffaab4c0, false);
         parked.setPadding(0, dp(4), 0, dp(16)); sections.addView(parked);
-        LinearLayout page = setupGroup(sections, "Navigation", BuildConfig.YAMAHA ? "Maps, destinations and display panels" : "Choose the map app for split screen", true);
+        LinearLayout page = setupGroup(sections, "Navigation", BuildConfig.YAMAHA ? "Maps, destinations and display panels" : "Choose the map app for split screen", false);
         Button personalize = button("CUSTOMIZATION"); personalize.setOnClickListener(v -> showPersonalization());
         // Customization is presented in its own section below.
-        page.addView(text(BuildConfig.YAMAHA ? "MapLibre navigation for compatible Yamaha displays" : "Phone navigation with your chosen map app", 16, 0xfff4f6fa, true));
+        page.addView(text(BuildConfig.YAMAHA ? "MapLibre navigation for compatible Yamaha displays" : "Phone navigation with your chosen map app", 16, RideStyle.TEXT, true));
         Button navigation = button(BuildConfig.YAMAHA ? "MAP + PANEL SETTINGS" : "CHOOSE MAP APP");
         navigation.setOnClickListener(v -> { if (BuildConfig.YAMAHA) NavigationUi.configure(this); else chooseMapApp(); });
         page.addView(navigation, buttonParams());
         if (BuildConfig.YAMAHA) {
-            CheckBox connect = new CheckBox(this); connect.setText("Connect to saved bike automatically"); connect.setTextColor(0xfff4f6fa);
+            CheckBox connect = new CheckBox(this); connect.setText("Connect to saved bike automatically"); connect.setTextColor(RideStyle.TEXT);
             connect.setChecked(RidePreferences.automaticMap(this));
             connect.setOnCheckedChangeListener((b, value) -> RidePreferences.prefs(this).edit().putBoolean("map_auto", value).apply());
             page.addView(connect);
@@ -342,7 +344,7 @@ public class MainActivity extends android.app.Activity {
         page.addView(access, buttonParams());
         LinearLayout permissionPage = page;
         page = setupGroup(sections, "Bluetooth & headset", "Pair devices and check your audio connection", false);
-        deviceStatus = text("Checking headset...", 14, 0xfff4f6fa, false);
+        deviceStatus = text("Checking headset...", 14, RideStyle.TEXT, false);
         addCockpitCard(page, "CONNECTIONS", deviceStatus);
         if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             Button nearby = button("ALLOW NEARBY DEVICES");
@@ -353,7 +355,7 @@ public class MainActivity extends android.app.Activity {
         page.addView(bluetooth, buttonParams());
         if (BuildConfig.YAMAHA) {
             page = setupGroup(sections, "Yamaha bike display", "Connect or disconnect your saved bike", false);
-            castStatus = text(YamahaCastService.status, 14, 0xfff4f6fa, false);
+            castStatus = text(YamahaCastService.status, 14, RideStyle.TEXT, false);
             addCockpitCard(page, "BIKE DISPLAY", castStatus);
             Button cast = button(YamahaCastService.active ? "DISCONNECT BIKE" : "CONNECT BIKE");
             cast.setOnClickListener(v -> { if (YamahaCastService.active) startService(new Intent(this, YamahaCastService.class).setAction(YamahaCastService.STOP)); else chooseDash(); });
@@ -391,7 +393,7 @@ public class MainActivity extends android.app.Activity {
             else android.widget.Toast.makeText(this, "Available when casting starts", android.widget.Toast.LENGTH_SHORT).show();
         }); permissionPage.addView(notifications, buttonParams());
         page = setupGroup(sections, "App & updates", "Installed version, updates and app information", false);
-        updateStatus = text("Installed " + appVersion(), 14, 0xfff4f6fa, false);
+        updateStatus = text("Installed " + appVersion(), 14, RideStyle.TEXT, false);
         addCockpitCard(page, "APP UPDATES", updateStatus);
         Button update = button("CHECK FOR UPDATES"); update.setOnClickListener(v -> checkForUpdate()); page.addView(update, buttonParams());
         page.addView(text("Install updates while parked. Android may show an installation confirmation and a Google Play Protect scan. These screens are controlled by Android.", 14, 0xffaab4c0, false));
@@ -410,16 +412,25 @@ public class MainActivity extends android.app.Activity {
     private LinearLayout setupGroup(LinearLayout parent, String title, String summary, boolean expanded) {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
         android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
-        background.setColor(0xff222824); background.setCornerRadius(dp(18));
+        background.setColor(RideStyle.PANEL); background.setCornerRadius(dp(8)); background.setStroke(dp(1), RideStyle.LINE);
         card.setBackground(background); card.setPadding(dp(16), dp(10), dp(16), dp(12));
         LinearLayout.LayoutParams spacing = new LinearLayout.LayoutParams(-1, -2);
-        spacing.bottomMargin = dp(12); parent.addView(card, spacing);
-        LinearLayout heading = new LinearLayout(this); heading.setGravity(Gravity.CENTER_VERTICAL); heading.setMinimumHeight(dp(68));
+        spacing.bottomMargin = dp(8); parent.addView(card, spacing);
+        LinearLayout heading = new LinearLayout(this); heading.setGravity(Gravity.CENTER_VERTICAL); heading.setMinimumHeight(dp(72));
+        String category = title.equals("Navigation") ? "Map" : title.equals("Cockpit appearance") ? "Palette"
+            : title.equals("Keep running") ? "Battery" : title.startsWith("Permissions") ? "Shield"
+            : title.startsWith("Bluetooth") ? "Bluetooth" : title.startsWith("Yamaha") ? "Yamaha"
+            : title.startsWith("Help") ? "Help" : "Update";
+        ControlIconButton glyph = new ControlIconButton(this, category, false);
+        glyph.setBackground(null); glyph.setClickable(false); glyph.setFocusable(false);
+        glyph.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams glyphParams = new LinearLayout.LayoutParams(dp(40), dp(40)); glyphParams.rightMargin = dp(12);
+        heading.addView(glyph, glyphParams);
         LinearLayout labels = new LinearLayout(this); labels.setOrientation(LinearLayout.VERTICAL);
-        labels.addView(text(title, 20, 0xfff4f6fa, true));
-        TextView detail = text(summary, 14, 0xffb4bfb8, false); detail.setPadding(0, dp(4), dp(8), 0); labels.addView(detail);
+        labels.addView(text(title, 20, RideStyle.TEXT, true));
+        TextView detail = text(summary, 14, RideStyle.MUTED, false); detail.setPadding(0, dp(4), dp(8), 0); labels.addView(detail);
         heading.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView toggle = text(expanded ? "−" : "+", 28, RideTheme.accent(this), true);
+        TextView toggle = text(expanded ? "⌃" : "⌄", 22, RideTheme.accent(this), true);
         toggle.setGravity(Gravity.CENTER); heading.addView(toggle, new LinearLayout.LayoutParams(dp(40), dp(48)));
         card.addView(heading);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
@@ -427,7 +438,7 @@ public class MainActivity extends android.app.Activity {
         heading.setFocusable(true); heading.setContentDescription(title + ". " + summary + (expanded ? ". Expanded" : ". Collapsed"));
         heading.setOnClickListener(v -> {
             boolean open = content.getVisibility() != View.VISIBLE;
-            content.setVisibility(open ? View.VISIBLE : View.GONE); toggle.setText(open ? "−" : "+");
+            content.setVisibility(open ? View.VISIBLE : View.GONE); toggle.setText(open ? "⌃" : "⌄");
             heading.setContentDescription(title + ". " + summary + (open ? ". Expanded" : ". Collapsed"));
         });
         return content;
@@ -436,15 +447,19 @@ public class MainActivity extends android.app.Activity {
     private void styleSetupActions(android.view.ViewGroup group) {
         for (int i = 0; i < group.getChildCount(); i++) {
             View child = group.getChildAt(i);
-            if (child instanceof Button) {
+            if (child instanceof android.widget.CompoundButton) {
+                android.widget.CompoundButton choice = (android.widget.CompoundButton) child;
+                choice.setTextColor(RideStyle.TEXT); choice.setTextSize(16);
+                choice.setButtonTintList(android.content.res.ColorStateList.valueOf(RideTheme.accent(this)));
+            } else if (child instanceof Button) {
                 Button action = (Button) child; action.setAllCaps(false); action.setTextSize(16);
                 String label = action.getText().toString().toLowerCase(Locale.ROOT);
                 if (!label.isEmpty()) action.setText(Character.toUpperCase(label.charAt(0)) + label.substring(1));
                 action.setMinimumHeight(dp(52)); action.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-                action.setPadding(dp(16), dp(8), dp(16), dp(8)); action.setTextColor(0xfff4f6fa);
+                action.setPadding(dp(16), dp(8), dp(16), dp(8)); action.setTextColor(RideStyle.TEXT);
                 android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
-                shape.setColor(0xff343e36); shape.setCornerRadius(dp(12));
-                action.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x336ee7b7), shape, null));
+                shape.setColor(RideStyle.RAISED); shape.setCornerRadius(dp(6));
+                action.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x286c94ff), shape, null));
             } else if (child instanceof android.view.ViewGroup) styleSetupActions((android.view.ViewGroup) child);
         }
     }
@@ -575,6 +590,7 @@ public class MainActivity extends android.app.Activity {
         renderedPanel = RidePreferences.prefs(this).getString("phone_panel", "map");
         if (phoneMapPending) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
         messagePreview = null; messageSource = null; dockMessage = null; albumArt = null;
+        trackArtist = null; musicSource = null; playbackTimeline = null;
         rideClock = null; rideButton = null; phoneGuidance = null; phoneTripSummary = null; phoneSpeedLimit = null;
         deviceStatus = text("", 12, 0xffaab4c0, false);
         updateStatus = text("", 12, 0xffaab4c0, false);
@@ -583,7 +599,7 @@ public class MainActivity extends android.app.Activity {
         boolean stacked = compact || portrait;
         boolean controlsRight = controlsOnRight();
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xff151715); root.setPadding(dp(12), dp(8), dp(12), dp(8));
+        root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(12), dp(8), dp(12), dp(8));
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
             androidx.core.graphics.Insets bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
             view.setPadding(bars.left + dp(12), bars.top + dp(compact ? 4 : 8), bars.right + dp(12), bars.bottom + dp(compact ? 4 : 8));
@@ -607,21 +623,21 @@ public class MainActivity extends android.app.Activity {
         LinearLayout.LayoutParams yamahaLogoParams = new LinearLayout.LayoutParams(dp(28), dp(28));
         logoSlot.addView(yamahaLogo, yamahaLogoParams);
         header.addView(logoSlot, new LinearLayout.LayoutParams(dp(80), dp(64)));
-        castStatus = text(YamahaCastService.status, 11, 0xff92a9be, false);
+        castStatus = text(YamahaCastService.status, 11, RideStyle.MUTED, false);
         castStatus.setMaxLines(1); castStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
         TextView clock = new android.widget.TextClock(this); ((android.widget.TextClock) clock).setFormat24Hour("HH:mm");
         ((android.widget.TextClock) clock).setFormat12Hour("h:mm");
-        clock.setTextColor(0xfff4f6fa); clock.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        clock.setTextColor(RideStyle.TEXT); clock.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         clock.setGravity(Gravity.CENTER); clock.setIncludeFontPadding(false); clock.setSingleLine(true);
-        clock.setAutoSizeTextTypeUniformWithConfiguration(24, 52, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+        clock.setAutoSizeTextTypeUniformWithConfiguration(24, 36, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         header.addView(clock, new LinearLayout.LayoutParams(0, dp(64), 1));
         if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
-            phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, 0xfff4f6fa, true);
+            phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, RideStyle.TEXT, true);
             phoneGuidance.setMaxLines(portrait && !compact ? 3 : 2);
             phoneGuidance.setEllipsize(android.text.TextUtils.TruncateAt.END);
             phoneGuidance.setPadding(dp(12), dp(10), dp(12), dp(10));
-            phoneGuidance.setBackground(rideBackground(0xff14251c, 14));
+            phoneGuidance.setBackground(RideStyle.surface(this, RideStyle.PANEL, 8, true));
             phoneGuidance.setOnClickListener(v -> NavigationUi.mapMenu(this));
             phoneGuidance.setOnLongClickListener(v -> {
                 new android.app.AlertDialog.Builder(this).setTitle("Navigation instruction")
@@ -632,7 +648,7 @@ public class MainActivity extends android.app.Activity {
             guidanceParams.topMargin = dp(8);
             root.addView(phoneGuidance, guidanceParams);
             String trip = NativeNavigation.phoneTripSummary();
-            phoneTripSummary = text(trip, compact ? 16 : 20, 0xffb5ff76, true);
+            phoneTripSummary = text(trip, compact ? 16 : 20, RideTheme.accent(this), true);
             phoneTripSummary.setMaxLines(2); phoneTripSummary.setPadding(dp(12), dp(4), dp(12), dp(4));
             phoneTripSummary.setVisibility(trip.isEmpty() ? View.GONE : View.VISIBLE);
             LinearLayout tripRow = new LinearLayout(this);
@@ -656,17 +672,32 @@ public class MainActivity extends android.app.Activity {
         LinearLayout details = new LinearLayout(this); details.setGravity(Gravity.CENTER_VERTICAL);
         if (!compact) {
             albumArt = new android.widget.ImageView(this); albumArt.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
-            albumArt.setImageResource(android.R.drawable.ic_media_play);
-            LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(dp(58), dp(58)); art.rightMargin = dp(12);
+            albumArt.setImageDrawable(new MusicArtworkDrawable());
+            albumArt.setContentDescription("Album artwork");
+            albumArt.setBackground(RideStyle.surface(this, RideStyle.RAISED, 8, false));
+            albumArt.setClipToOutline(true);
+            LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(dp(portrait ? 88 : 64), dp(portrait ? 88 : 64)); art.rightMargin = dp(16);
             details.addView(albumArt, art);
         }
-        trackStatus = text("Tap to open " + RidePreferences.musicName(this), compact ? 16 : 19, 0xfff4f6fa, true);
-        trackStatus.setMaxLines(compact ? 2 : 3); trackStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout metadataColumn = new LinearLayout(this); metadataColumn.setOrientation(LinearLayout.VERTICAL);
+        musicSource = text(RidePreferences.musicName(this), 12, RideTheme.accent(this), true);
+        musicSource.setSingleLine(true); metadataColumn.addView(musicSource);
+        trackStatus = text("Open " + RidePreferences.musicName(this), compact ? 16 : portrait ? 24 : 20, RideStyle.TEXT, true);
+        trackStatus.setMaxLines(2); trackStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        trackStatus.setPadding(0, dp(4), 0, dp(4)); metadataColumn.addView(trackStatus);
+        trackArtist = text("Start a track to show its details", compact ? 12 : 15, RideStyle.MUTED, false);
+        trackArtist.setMaxLines(2); trackArtist.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        metadataColumn.addView(trackArtist);
         details.setOnClickListener(v -> openPreferredMusic());
-        trackStatus.setOnClickListener(v -> openPreferredMusic());
         music.setOnClickListener(v -> openPreferredMusic());
-        details.addView(trackStatus, new LinearLayout.LayoutParams(0, -1, 1));
+        details.addView(metadataColumn, new LinearLayout.LayoutParams(0, -2, 1));
         music.addView(details, compact ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1));
+        if (!compact) {
+            playbackTimeline = new PlaybackTimelineView(this);
+            LinearLayout.LayoutParams timelineParams = new LinearLayout.LayoutParams(-1, dp(30));
+            timelineParams.bottomMargin = dp(12);
+            music.addView(playbackTimeline, timelineParams);
+        }
         LinearLayout transport = new LinearLayout(this);
         previousButton = rideAction("|◀", false); previousButton.setContentDescription("Previous track");
         previousButton.setOnClickListener(v -> sendMedia(MediaAction.PREVIOUS));
@@ -674,8 +705,12 @@ public class MainActivity extends android.app.Activity {
         playPauseButton.setOnClickListener(v -> sendMedia(MediaAction.TOGGLE));
         nextButton = rideAction("▶|", false); nextButton.setContentDescription("Next track");
         nextButton.setOnClickListener(v -> sendMedia(MediaAction.NEXT));
-        transport.addView(previousButton, rideWeight(compact ? 56 : 72)); transport.addView(playPauseButton, rideWeight(compact ? 56 : 72));
-        transport.addView(nextButton, rideWeight(compact ? 56 : 72)); music.addView(transport, compact ? new LinearLayout.LayoutParams(dp(180), -2) : new LinearLayout.LayoutParams(-1, -2));
+        transport.setGravity(Gravity.CENTER_VERTICAL);
+        transport.addView(previousButton, rideWeight(compact ? 56 : 64));
+        LinearLayout.LayoutParams playParams = rideWeight(compact ? 56 : portrait ? 80 : 64);
+        playParams.weight = compact ? 1 : 1.3f;
+        transport.addView(playPauseButton, playParams);
+        transport.addView(nextButton, rideWeight(compact ? 56 : 64)); music.addView(transport, compact ? new LinearLayout.LayoutParams(dp(180), -2) : new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams musicParams = compact
             ? new LinearLayout.LayoutParams(-1, dp(72))
             : portrait ? new LinearLayout.LayoutParams(-1, 0, 0.9f)
@@ -714,7 +749,7 @@ public class MainActivity extends android.app.Activity {
         messages.setOnClickListener(v -> showFullMessage());
         messages.addView(messagePreview, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout messageActions = new LinearLayout(this);
-        Button listen = rideAction("Read aloud", true); listen.setOnClickListener(v -> readMessageAloud());
+        Button listen = rideAction("Read aloud", false); listen.setOnClickListener(v -> readMessageAloud());
         messageActions.addView(listen, rideWeight(56));
         Button seenNext = rideAction("Seen / next", false);
         seenNext.setOnClickListener(v -> acknowledgeMessage(displayedMessage()));
@@ -770,8 +805,8 @@ public class MainActivity extends android.app.Activity {
 
     private LinearLayout rideCard(String label) {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(14), dp(8), dp(14), dp(8)); card.setBackground(rideBackground(0xff202320, 12));
-        TextView title = text(label, 11, 0xff92a9be, true); title.setLetterSpacing(0.12f);
+        card.setPadding(dp(16), dp(12), dp(16), dp(12)); card.setBackground(RideStyle.surface(this, RideStyle.PANEL, 8, true));
+        TextView title = text(label, 11, RideStyle.MUTED, true); title.setLetterSpacing(0.12f);
         card.addView(title, new LinearLayout.LayoutParams(-1, dp(18))); return card;
     }
 
@@ -786,12 +821,12 @@ public class MainActivity extends android.app.Activity {
         action.setTypeface(Typeface.DEFAULT, Typeface.BOLD); action.setMinWidth(0); action.setMinimumWidth(0);
         action.setMinHeight(dp(56)); action.setMinimumHeight(dp(56));
         action.setPadding(dp(4), dp(4), dp(4), dp(4)); action.setMaxLines(1);
-        action.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}}, new int[]{0xff8191a1, primary ? 0xff151715 : 0xfff4f6fa}));
+        action.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}}, new int[]{0xff8191a1, primary ? RideStyle.BACKGROUND : RideStyle.TEXT}));
         action.setBackgroundTintList(null);
         android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
-        states.addState(new int[]{-android.R.attr.state_enabled}, rideBackground(0xff252a25, 12));
-        states.addState(new int[]{android.R.attr.state_pressed}, rideBackground(0xff4b554b, 12));
-        states.addState(new int[]{}, rideBackground(primary ? RideTheme.accent(this) : 0xff2c322c, 12));
+        states.addState(new int[]{-android.R.attr.state_enabled}, RideStyle.surface(this, RideStyle.PANEL, 8, true));
+        states.addState(new int[]{android.R.attr.state_pressed}, rideBackground(RideStyle.LINE, 8));
+        states.addState(new int[]{}, RideStyle.surface(this, primary ? RideTheme.accent(this) : RideStyle.RAISED, 8, !primary));
         action.setBackground(states);
         if (label.equals("Read aloud") || label.equals("Seen / next")) {
             android.graphics.drawable.Drawable mark = getDrawable(label.equals("Read aloud") ? R.drawable.control_speaker : R.drawable.control_seen);
@@ -831,7 +866,7 @@ public class MainActivity extends android.app.Activity {
             stopService(new Intent(this, YamahaCastService.class));
             android.widget.Toast.makeText(this, "Casting stopped", android.widget.Toast.LENGTH_SHORT).show();
         } else {
-            if (castStatus == null) castStatus = text("", 14, 0xfff4f6fa, false);
+            if (castStatus == null) castStatus = text("", 14, RideStyle.TEXT, false);
             chooseDash();
         }
     }
@@ -870,14 +905,14 @@ public class MainActivity extends android.app.Activity {
         android.app.Dialog reader = new android.app.Dialog(this);
         reader.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(0xff151715);
+        page.setBackgroundColor(RideStyle.BACKGROUND);
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(page, (view, insets) -> {
             androidx.core.graphics.Insets edges = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
             view.setPadding(edges.left + dp(16), edges.top + dp(16), edges.right + dp(16), edges.bottom + dp(16)); return insets;
         });
         TextView source = text(item == null ? "Messages" : item.appName + " - " + item.title, 24, RideTheme.accent(this), true);
         page.addView(source);
-        TextView body = text(item == null ? "No message available yet. Enable music + message access in Setup and check notification previews in the selected messaging apps." : item.text, 26, 0xfff4f6fa, false);
+        TextView body = text(item == null ? "No message available yet. Enable music + message access in Setup and check notification previews in the selected messaging apps." : item.text, 26, RideStyle.TEXT, false);
         body.setPadding(0, dp(16), 0, dp(16));
         ScrollView scroll = new ScrollView(this); scroll.addView(body); page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout actions = new LinearLayout(this);
@@ -890,7 +925,7 @@ public class MainActivity extends android.app.Activity {
         });
         Button reply = rideAction("Reply", true); reply.setEnabled(item != null);
         reply.setOnClickListener(v -> { reader.dismiss(); replyByVoice(item); }); actions.addView(reply, rideWeight(72));
-        Button aloud = rideAction("Read aloud", true); aloud.setEnabled(item != null);
+        Button aloud = rideAction("Read aloud", false); aloud.setEnabled(item != null);
         aloud.setOnClickListener(v -> readMessageAloud(item)); actions.addView(aloud, rideWeight(72)); actions.addView(read, rideWeight(72));
         if (getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
             LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
@@ -904,7 +939,7 @@ public class MainActivity extends android.app.Activity {
         body.setOnClickListener(v -> reader.dismiss());
         reader.setContentView(page); reader.show();
         if (reader.getWindow() != null) {
-            reader.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xff151715));
+            reader.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(RideStyle.BACKGROUND));
             reader.getWindow().setLayout(-1, -1);
             ScreenChrome.apply(reader.getWindow(), true);
             androidx.core.view.ViewCompat.requestApplyInsets(page);
@@ -980,7 +1015,7 @@ public class MainActivity extends android.app.Activity {
                 else if (which == 1) chooseMessageApps(); else if (which == 2) chooseMapApp();
                 else if (which == 4) showLayoutChoice();
                 else if (which == 5) new android.app.AlertDialog.Builder(this).setTitle("Color theme")
-                    .setSingleChoiceItems(RideTheme.NAMES, RidePreferences.prefs(this).getInt("color_theme", 0), (d, selected) -> {
+                    .setSingleChoiceItems(RideTheme.NAMES, RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("color_theme", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
                     });
                 else if (which == 6) chooseMusicPlayer();
@@ -1071,7 +1106,7 @@ public class MainActivity extends android.app.Activity {
         android.app.Dialog menu = new android.app.Dialog(this);
         menu.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16), dp(16), dp(16), dp(16)); page.setBackgroundColor(0xff151715);
+        page.setPadding(dp(16), dp(16), dp(16), dp(16)); page.setBackgroundColor(RideStyle.BACKGROUND);
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(page, (view, insets) -> {
             androidx.core.graphics.Insets edges = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
             view.setPadding(edges.left + dp(16), edges.top + dp(16), edges.right + dp(16), edges.bottom + dp(16)); return insets;
@@ -1086,15 +1121,22 @@ public class MainActivity extends android.app.Activity {
             if (!BuildConfig.YAMAHA && i >= 7) continue;
             if (BuildConfig.YAMAHA && i == 7) continue;
             final int choice = i;
-            LinearLayout row = rideCard(labels[i].toUpperCase(java.util.Locale.ROOT));
-            String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[RidePreferences.prefs(this).getInt("color_theme", 0)]
+            LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(16), dp(12), dp(12), dp(12));
+            row.setBackground(RideStyle.row(this));
+            LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
+            words.addView(text(labels[i], 18, RideStyle.TEXT, true));
+            String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0)]
                 : i == 7 ? RidePreferences.BIKE_MAP_SIZE_NAMES[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("bike_map_size", 0)))]
                 : i == 6 ? RidePreferences.musicName(this) : i == 2 ? RidePreferences.MAP_NAMES[Math.max(0, java.util.Arrays.asList(RidePreferences.MAP_PACKAGES).indexOf(RidePreferences.selectedMap(this)))]
                 : i == 0 ? new String[]{"Left", "Centre", "Right"}[RidePreferences.prefs(this).getInt("mount", 1)]
                 : i == 1 ? "Choose which apps appear in Messages" : i == 3 ? "Voice text or voice message" : "Choose the control position";
-            row.addView(text(detail, 19, 0xfff4f6fa, true));
-            row.setMinimumHeight(dp(88)); row.setOnClickListener(v -> { menu.dismiss(); choose.onClick(menu, choice); });
-            items.addView(row, rideParams(96));
+            TextView detailText = text(detail, 14, RideStyle.MUTED, false); detailText.setPadding(0, dp(4), dp(8), 0);
+            words.addView(detailText); row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView chevron = text("›", 26, RideStyle.MUTED, false);
+            row.addView(chevron, new LinearLayout.LayoutParams(dp(24), -2));
+            row.setMinimumHeight(dp(80)); row.setOnClickListener(v -> { menu.dismiss(); choose.onClick(menu, choice); });
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2); rowParams.topMargin = dp(6); items.addView(row, rowParams);
         }
         scroll.addView(items); page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         menu.setContentView(page); menu.show(); menu.getWindow().setLayout(-1, -1);
@@ -1241,7 +1283,7 @@ public class MainActivity extends android.app.Activity {
 
     private Button dockButton(String title) {
         Button b = button(title); b.setTextSize(15); b.setMinHeight(dp(76)); b.setPadding(dp(6), dp(6), dp(6), dp(6));
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff252e39)); b.setTextColor(0xfff4f6fa); return b;
+        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff252e39)); b.setTextColor(RideStyle.TEXT); return b;
     }
 
     private LinearLayout.LayoutParams dockButtonParams() {
@@ -1251,7 +1293,7 @@ public class MainActivity extends android.app.Activity {
     private Button cockpitButton(String eyebrow, String label) {
         Button b = button(eyebrow + "\n" + label);
         b.setTextSize(17); b.setAllCaps(false); b.setMinHeight(dp(100)); b.setPadding(dp(8), dp(8), dp(8), dp(8));
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff252e39)); b.setTextColor(0xfff4f6fa);
+        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff252e39)); b.setTextColor(RideStyle.TEXT);
         return b;
     }
 
@@ -1270,7 +1312,7 @@ public class MainActivity extends android.app.Activity {
         ComponentName listener = new ComponentName(this, GX12NotificationListener.class);
         if (!hasNotificationAccess(listener)) {
             mediaController = null;
-            trackStatus.setText("Connect music in Setup");
+            showMusicEmpty("Connect music in Setup", "Allow music access to show playback details");
             updateMediaButtons(false, false, false);
             return;
         }
@@ -1285,8 +1327,7 @@ public class MainActivity extends android.app.Activity {
                 }
             }
             if (mediaController == null) {
-                trackStatus.setText("Tap to open " + RidePreferences.musicName(this));
-                if (albumArt != null) albumArt.setImageResource(android.R.drawable.ic_media_play);
+                showMusicEmpty("Open " + RidePreferences.musicName(this), "Start a track to show its details");
                 if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("▶");
                 playPauseButton.setContentDescription("Open " + RidePreferences.musicName(this));
                 updateMediaButtons(false, false, false);
@@ -1298,13 +1339,22 @@ public class MainActivity extends android.app.Activity {
             PlaybackState state = mediaController.getPlaybackState();
             boolean playing = state != null && state.getState() == PlaybackState.STATE_PLAYING;
             String label = title == null || title.isBlank() ? "Active media player" : title;
-            if (artist != null && !artist.isBlank()) label += "\n" + artist;
+            if (trackArtist == null && artist != null && !artist.isBlank()) label += "\n" + artist;
+            if (trackArtist != null) trackArtist.setText(artist == null || artist.isBlank() ? (playing ? "Playing" : "Paused") : artist);
+            if (musicSource != null) musicSource.setText(RidePreferences.musicName(this) + (playing ? " · Playing" : ""));
+            if (playbackTimeline != null) {
+                long duration = metadata == null ? 0 : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
+                long position = state == null ? -1 : state.getPosition();
+                if (playing && position >= 0 && state.getLastPositionUpdateTime() > 0)
+                    position += (long) ((android.os.SystemClock.elapsedRealtime() - state.getLastPositionUpdateTime()) * state.getPlaybackSpeed());
+                playbackTimeline.update(position, position < 0 ? 0 : duration);
+            }
             trackStatus.setText(label + (cockpitVisible ? "" : (playing ? "\nPlaying" : "\nNot playing")));
             if (albumArt != null) {
                 android.graphics.Bitmap image = metadata == null ? null : metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
                 if (image == null && metadata != null) image = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
                 if (image != null) albumArt.setImageBitmap(image);
-                else albumArt.setImageResource(android.R.drawable.ic_media_play);
+                else albumArt.setImageDrawable(new MusicArtworkDrawable());
             }
             long actions = state == null ? 0 : state.getActions();
             updateMediaButtons(true, (actions & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0,
@@ -1314,9 +1364,19 @@ public class MainActivity extends android.app.Activity {
             playPauseButton.setContentDescription(playing ? "Pause music" : "Play music");
         } catch (SecurityException | IllegalStateException error) {
             mediaController = null;
-            trackStatus.setText("Android has not granted access yet. Enable RideDeck under Notification access.");
+            showMusicEmpty("Connect music in Setup", "Enable RideDeck under Notification access");
             updateMediaButtons(false, false, false);
         }
+    }
+
+    private void showMusicEmpty(String title, String hint) {
+        trackStatus.setText(title);
+        if (trackArtist != null) trackArtist.setText(hint);
+        if (musicSource != null) musicSource.setText(RidePreferences.musicName(this));
+        if (albumArt != null) albumArt.setImageDrawable(new MusicArtworkDrawable());
+        if (playbackTimeline != null) playbackTimeline.update(0, 0);
+        if (playPauseButton instanceof ControlIconButton) ((ControlIconButton) playPauseButton).setControl("▶");
+        if (playPauseButton != null) playPauseButton.setContentDescription("Open " + RidePreferences.musicName(this));
     }
 
     private void updateMediaButtons(boolean active, boolean previous, boolean next) {
@@ -1707,8 +1767,8 @@ public class MainActivity extends android.app.Activity {
     private void showUpdateMessage(String message) { runOnUiThread(() -> { if (updateStatus != null) updateStatus.setText(message); }); }
     private String safeMessage(Exception error) { String m = error.getMessage(); return m == null || m.isBlank() ? error.getClass().getSimpleName() : m; }
     private String appVersion() { try { PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0); return info.versionName + " (" + info.versionCode + ")"; } catch (Exception ignored) { return "unknown"; } }
-    private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v; }
-    private Button button(String label) { Button b = new Button(this); b.setText(label); b.setTextColor(0xfff4f6fa); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff2c322c)); return b; }
+    private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); v.setTypeface(Typeface.create(bold ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL)); return v; }
+    private Button button(String label) { Button b = new Button(this); b.setText(label); b.setTextColor(RideStyle.TEXT); b.setAllCaps(false); b.setBackground(RideStyle.row(this)); return b; }
     private LinearLayout.LayoutParams params() { return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT); }
     private LinearLayout.LayoutParams buttonParams() { LinearLayout.LayoutParams p = params(); p.topMargin = dp(8); return p; }
     private LinearLayout.LayoutParams weightedButtonParams() { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1); p.setMargins(dp(2), dp(4), dp(2), dp(4)); return p; }
