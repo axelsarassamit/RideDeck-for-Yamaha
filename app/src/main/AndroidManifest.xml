@@ -17,6 +17,7 @@
         <package android:name="in.krosbits.musicolet" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.APP_MUSIC" /></intent>
         <intent><action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" /></intent>
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
         <package android:name="com.waze" />
         <package android:name="com.grabtaxi.driver2" />
         <package android:name="com.linecorp.lineman.driver" />

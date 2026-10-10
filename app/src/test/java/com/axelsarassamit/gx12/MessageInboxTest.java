@@ -4,6 +4,38 @@ import java.util.*;
 import static org.junit.Assert.*;
 
 public class MessageInboxTest {
+    private static final class Metadata { String reply; Metadata(String reply) { this.reply = reply; } }
+    @Test public void delayedReplyActionRefreshKeepsReaderIdentityAndMessageOrder() {
+        MessageInbox<Metadata> inbox = new MessageInbox<>();
+        Metadata original = new Metadata(null), newer = new Metadata("newer-action");
+        inbox.put("line", "a", "same text", original);
+        inbox.put("line", "b", "newer text", newer);
+        inbox.put("line", "a", "same text", new Metadata("reply-action"), (old, updated) -> old.reply = updated.reply);
+        assertEquals("reply-action", original.reply);
+        assertEquals(Arrays.asList(newer, original), inbox.selected(Collections.singleton("line")));
+        inbox.acknowledge("line", "a", original);
+        assertEquals(Collections.singletonList(newer), inbox.selected(Collections.singleton("line")));
+    }
+    @Test public void metadataRefreshCannotResurrectSeenMessageOrRefreshAnotherConversation() {
+        MessageInbox<Metadata> inbox = new MessageInbox<>();
+        Metadata first = new Metadata(null), other = new Metadata("other-action");
+        inbox.put("line", "a", "same text", first);
+        inbox.put("line", "b", "same text", other);
+        inbox.acknowledge("line", "a", first);
+        inbox.put("line", "a", "same text", new Metadata("late-action"), (old, updated) -> old.reply = updated.reply);
+        assertNull(first.reply);
+        assertEquals("other-action", other.reply);
+        assertEquals(Collections.singletonList(other), inbox.selected(Collections.singleton("line")));
+    }
+    @Test public void newMessageDoesNotCopyActionsIntoStaleReader() {
+        MessageInbox<Metadata> inbox = new MessageInbox<>();
+        Metadata original = new Metadata("old-action"), latest = new Metadata("latest-action");
+        inbox.put("line", "a", "old text", original);
+        inbox.put("line", "a", "new text", latest, (old, updated) -> old.reply = updated.reply);
+        assertEquals("old-action", original.reply);
+        inbox.acknowledge("line", "a", original);
+        assertEquals(Collections.singletonList(latest), inbox.selected(Collections.singleton("line")));
+    }
     @Test public void indicatorFollowsAllSelectedPendingMessagesUntilLastAcknowledgement() {
         MessageInbox<Object> inbox = new MessageInbox<>();
         Set<String> selected = new HashSet<>(Arrays.asList("line", "whatsapp"));

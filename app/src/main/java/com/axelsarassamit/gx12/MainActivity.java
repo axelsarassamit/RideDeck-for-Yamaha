@@ -82,6 +82,7 @@ public class MainActivity extends android.app.Activity {
     private boolean speechReady;
     private String messageApp;
     private GX12NotificationListener.NotificationPreview voiceReplyTarget;
+    private android.app.AlertDialog voiceReplyReview;
     private GX12NotificationListener.NotificationPreview newestSeen;
     private boolean setupVisible;
     private boolean cockpitVisible;
@@ -130,6 +131,8 @@ public class MainActivity extends android.app.Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         headsetMic = new HeadsetMicRoute(this);
+        Object retained = getLastNonConfigurationInstance();
+        if (retained instanceof GX12NotificationListener.NotificationPreview) voiceReplyTarget = (GX12NotificationListener.NotificationPreview) retained;
         if (state != null) castDeviceAddress = state.getString("cast_device");
         if (state != null) autoMapSession = state.getString("auto_map_session");
         if (state != null) phoneMapPending = state.getBoolean("phone_map_pending", false);
@@ -494,6 +497,12 @@ public class MainActivity extends android.app.Activity {
                 castDeviceAddress = null;
                 displayError("Bike-only maps must be prepared first. Open Setup > Set up bike-only map. Phone mirroring is disabled.");
             }).setNegativeButton("Cancel", null).show();
+    }
+
+    @Override public Object onRetainNonConfigurationInstance() {
+        // Keep the recipient and its exact reply handle through rotation during dictation.
+        // Message contents and reply drafts are never written to saved state or storage.
+        return voiceReplyTarget;
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -939,47 +948,109 @@ public class MainActivity extends android.app.Activity {
         }
     }
 
-    private void replyByVoice(GX12NotificationListener.NotificationPreview target) {
-        if (RidePreferences.prefs(this).getInt("reply_mode", 0) == 1 || target.reply == null || target.replyInput == null) {
-            new android.app.AlertDialog.Builder(this).setTitle("Reply in " + target.appName)
-                .setMessage("Voice messages are recorded in the original app. If this notification has no text reply action, reply there too.")
-                .setNegativeButton("Cancel", null).setPositiveButton("Open conversation", (d, w) -> {
-                    withHeadsetMicrophone(() -> {
-                        try {
-                            if (target.open != null) target.open.send();
-                            else {
-                                Intent launch = getPackageManager().getLaunchIntentForPackage(target.packageName);
-                                if (launch == null) { headsetMic.release(); showRideMessage("Messaging app is not available."); return; }
-                                startActivity(launch);
-                            }
-                        } catch (android.app.PendingIntent.CanceledException | android.content.ActivityNotFoundException e) {
-                            headsetMic.release(); showRideMessage("Conversation is no longer available. Try a newer message.");
-                        }
-                    });
-                }).show(); return;
+    private boolean openReplyConversation(GX12NotificationListener.NotificationPreview target) {
+        try {
+            if (target.open != null) target.open.send();
+            else {
+                Intent launch = getPackageManager().getLaunchIntentForPackage(target.packageName);
+                if (launch == null) { showRideMessage("Messaging app is not available."); return false; }
+                startActivity(launch);
+            }
+            return true;
+        } catch (android.app.PendingIntent.CanceledException | RuntimeException error) {
+            showRideMessage("Conversation is no longer available. Try a newer message."); return false;
         }
+    }
+
+    private void replyByVoice(GX12NotificationListener.NotificationPreview target) {
+        if (target == null) return;
+        GX12NotificationListener.reloadSelected();
+        if (RidePreferences.prefs(this).getInt("reply_mode", 0) == 1) {
+            new android.app.AlertDialog.Builder(this).setTitle("Voice message in " + target.appName)
+                .setMessage("Record a voice message in the conversation. To dictate a text reply here, choose Voice to text in Reply method.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Open conversation", (d, w) -> openReplyConversation(target))
+                .show(); return;
+        }
+        // Text dictation never changes to voice-message mode because an action is missing.
         Intent speechIntent = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Reply to " + target.title + " in " + target.appName);
         speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         voiceReplyTarget = target;
+        BikeDiagnostics.record(this, "Text reply dictation requested app=" + target.packageName + " inline=" + (target.reply != null));
         withHeadsetMicrophone(() -> {
             try { startActivityForResult(speechIntent, 82); }
-            catch (android.content.ActivityNotFoundException e) { headsetMic.release(); voiceReplyTarget = null; showRideMessage("No speech recognition app is available."); }
+            catch (RuntimeException e) {
+                headsetMic.release(); voiceReplyTarget = null;
+                confirmVoiceReply(target, "");
+                android.widget.Toast.makeText(this, "Speech recognition is unavailable. You can type your reply.", android.widget.Toast.LENGTH_LONG).show();
+            }
         });
     }
 
     private void confirmVoiceReply(GX12NotificationListener.NotificationPreview target, String words) {
-        new android.app.AlertDialog.Builder(this).setTitle("Send to " + target.title + " - " + target.appName)
-            .setMessage(words).setNegativeButton("Cancel", null).setNeutralButton("Speak again", (d, w) -> replyByVoice(target))
-            .setPositiveButton("Send", (d, w) -> {
-                if (!RidePreferences.selectedMessages(this).contains(target.packageName) || target.reply == null || target.replyInput == null) return;
-                android.os.Bundle results = new android.os.Bundle(); results.putCharSequence(target.replyInput.getResultKey(), words);
-                Intent response = new Intent();
-                android.app.RemoteInput.addResultsToIntent(new android.app.RemoteInput[]{target.replyInput}, response, results);
-                try { target.reply.send(this, 0, response); android.widget.Toast.makeText(this, "Reply handed to " + target.appName, android.widget.Toast.LENGTH_SHORT).show(); }
-                catch (android.app.PendingIntent.CanceledException e) { android.widget.Toast.makeText(this, "Reply expired. Open the conversation to reply.", android.widget.Toast.LENGTH_LONG).show(); }
-            }).show();
+        GX12NotificationListener.reloadSelected();
+        if (voiceReplyReview != null) voiceReplyReview.dismiss();
+        LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(20), dp(8), dp(20), dp(8));
+        TextView status = text("Review your reply before sending.", 16, RideStyle.TEXT, false);
+        page.addView(status);
+        EditText draft = new EditText(this); draft.setHint("Your reply"); draft.setText(words);
+        draft.setTextSize(22); draft.setMinLines(2); draft.setMaxLines(5);
+        draft.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        page.addView(draft, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout fallback = new LinearLayout(this);
+        Button copy = rideAction("Copy text", false); Button open = rideAction("Open conversation", false);
+        fallback.addView(copy, rideWeight(64)); fallback.addView(open, rideWeight(64)); page.addView(fallback);
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+            .setTitle("Reply to " + target.title + " - " + target.appName).setView(page)
+            .setNegativeButton("Cancel", null).setNeutralButton("Speak again", null).setPositiveButton("Send", null).create();
+        Runnable updateAvailability = () -> {
+            boolean selected = RidePreferences.selectedMessages(this).contains(target.packageName);
+            boolean available = selected && target.reply != null;
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setEnabled(available);
+            fallback.setVisibility(available ? View.GONE : View.VISIBLE);
+            status.setText(available ? "Review your reply before sending." : !selected
+                ? "This app is no longer selected in Messaging apps. Your draft is still here."
+                : "This message has no direct reply control from " + target.appName + ". Your draft is still here. Copy it, then open the conversation to paste and send.");
+        };
+        copy.setOnClickListener(v -> {
+            android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Reply draft", draft.getText().toString()));
+            android.widget.Toast.makeText(this, "Reply text copied", android.widget.Toast.LENGTH_SHORT).show();
+        });
+        open.setOnClickListener(v -> openReplyConversation(target));
+        dialog.setOnShowListener(d -> {
+            updateAvailability.run();
+            // Keep the review open behind dictation, so cancellation preserves edits.
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> replyByVoice(target));
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String replyText = draft.getText().toString().trim();
+                if (replyText.isEmpty()) { draft.setError("Enter or dictate a reply first"); return; }
+                GX12NotificationListener.reloadSelected();
+                GX12NotificationListener.ReplyAction action = target.reply;
+                if (!RidePreferences.selectedMessages(this).contains(target.packageName) || action == null) {
+                    updateAvailability.run(); return;
+                }
+                android.os.Bundle results = new android.os.Bundle(); results.putCharSequence(action.input.getResultKey(), replyText);
+                Intent response = new Intent().addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+                android.app.RemoteInput.addResultsToIntent(action.inputs, response, results);
+                if (Build.VERSION.SDK_INT >= 28) android.app.RemoteInput.setResultsSource(response, android.app.RemoteInput.SOURCE_FREE_FORM_INPUT);
+                try {
+                    action.intent.send(this, 0, response);
+                    BikeDiagnostics.record(this, "Text reply handed to app=" + target.packageName);
+                    dialog.dismiss(); android.widget.Toast.makeText(this, "Reply handed to " + target.appName, android.widget.Toast.LENGTH_SHORT).show();
+                } catch (android.app.PendingIntent.CanceledException | RuntimeException error) {
+                    if (target.reply == action) target.reply = null;
+                    BikeDiagnostics.record(this, "Text reply rejected app=" + target.packageName + " reason=" + error.getClass().getSimpleName());
+                    updateAvailability.run();
+                    status.setText("The reply control expired or was rejected. Your draft is still here. Copy it, then open the conversation to paste and send.");
+                }
+            });
+        });
+        voiceReplyReview = dialog;
+        dialog.setOnDismissListener(d -> { if (voiceReplyReview == dialog) voiceReplyReview = null; });
+        dialog.show();
     }
 
     private void showQuickCamera() {
