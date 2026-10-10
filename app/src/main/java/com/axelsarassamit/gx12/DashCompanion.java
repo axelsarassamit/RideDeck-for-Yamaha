@@ -3,7 +3,10 @@ package com.axelsarassamit.gx12;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.widget.Toast;
 import java.util.concurrent.ExecutorService;
@@ -12,11 +15,24 @@ import java.util.concurrent.Executors;
 /** Provider calls are serialized off the UI thread. No camera or recording calls. */
 public final class DashCompanion {
     public static final String PACKAGE = "com.axelsarassamit.ridedeck.dash";
+    private static final String SIGNER = "cef073342e133ad4c6650da1a276ae4ad03e3396cecac67143154aeb6e6c731b";
     private static final Uri BRIDGE = Uri.parse("content://" + PACKAGE + ".bridge");
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private DashCompanion() { }
-    public static boolean installed(Context context) { return context.getPackageManager().getLaunchIntentForPackage(PACKAGE) != null; }
+    public static boolean installed(Context context) {
+        try {
+            PackageManager manager = context.getPackageManager();
+            if (manager.getLaunchIntentForPackage(PACKAGE) == null) return false;
+            byte[] expected = new byte[SIGNER.length() / 2];
+            for (int i = 0; i < expected.length; i++) expected[i] = (byte) Integer.parseInt(SIGNER.substring(i * 2, i * 2 + 2), 16);
+            if (Build.VERSION.SDK_INT >= 28) return manager.hasSigningCertificate(PACKAGE, expected, PackageManager.CERT_INPUT_SHA256);
+            PackageInfo info = manager.getPackageInfo(PACKAGE, PackageManager.GET_SIGNATURES);
+            return info.signatures != null && info.signatures.length == 1 && java.security.MessageDigest.isEqual(expected,
+                java.security.MessageDigest.getInstance("SHA-256").digest(info.signatures[0].toByteArray()));
+        } catch (PackageManager.NameNotFoundException | java.security.NoSuchAlgorithmException | RuntimeException error) { return false; }
+    }
     public static void open(Activity activity) {
+        if (!installed(activity)) return;
         Intent launch = activity.getPackageManager().getLaunchIntentForPackage(PACKAGE);
         if (launch == null) { Toast.makeText(activity, "RideDeck Dash is not installed", Toast.LENGTH_LONG).show(); return; }
         try { activity.startActivity(launch); }

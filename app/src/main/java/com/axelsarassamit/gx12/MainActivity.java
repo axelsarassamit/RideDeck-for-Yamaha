@@ -74,6 +74,7 @@ public class MainActivity extends android.app.Activity {
     private Button playPauseButton;
     private Button previousButton;
     private Button nextButton;
+    private Button dashRideButton;
     private android.widget.ImageView albumArt;
     private boolean externalVoiceDeparted;
     private HeadsetMicRoute headsetMic;
@@ -233,6 +234,7 @@ public class MainActivity extends android.app.Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
+        refreshDashRideControl();
         if (refreshAfterSetup && !(this instanceof SetupActivity)) { refreshAfterSetup = false; buildScreen(); }
         RideQuietMode.refresh(this);
         if (phoneMapPending && !setupVisible) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
@@ -775,11 +777,11 @@ public class MainActivity extends android.app.Activity {
         Button settings = rideAction("Setup", false);
         settings.setOnClickListener(v -> buildSetupScreen());
         if (!compact) header.addView(settings, new LinearLayout.LayoutParams(dp(80), dp(56)));
-        String[] labels = new String[]{"Yamaha", "Camera", "Voice", "Dash"};
+        String[] labels = new String[]{"Yamaha", "Camera", "Voice", "Ride"};
         if (controlsRight) java.util.Collections.reverse(java.util.Arrays.asList(labels));
         for (String label : labels) {
             Button action = rideAction(label, false);
-            if (label.equals("Dash")) { action.setTextSize(20); action.setContentDescription("RideDeck Dash and ride session"); }
+            if (label.equals("Ride")) { dashRideButton = action; action.setTextSize(20); refreshDashRideControl(); }
             if (label.equals("Yamaha")) {
                 action.setContentDescription("Yamaha bike connection and screen options");
                 action.setOnLongClickListener(v -> { finishAndRemoveTask(); return true; });
@@ -789,7 +791,7 @@ public class MainActivity extends android.app.Activity {
                     case "Yamaha": showBikeScreenMenu(); break;
                     case "Camera": showQuickCamera(); break;
                     case "Voice": startGoogleVoice(); break;
-                    case "Dash": DashRideUi.show(this); break;
+                    case "Ride": DashRideUi.show(this); break;
                 }
             }); dock.addView(action, rideWeight(compact ? 56 : 64));
         }
@@ -805,6 +807,13 @@ public class MainActivity extends android.app.Activity {
         ScreenChrome.apply(getWindow(), true);
         androidx.core.view.ViewCompat.requestApplyInsets(root);
         refreshMediaSession(); refreshWhatsAppPreview();
+    }
+
+    private void refreshDashRideControl() {
+        if (dashRideButton == null) return;
+        boolean available = DashCompanion.installed(this);
+        dashRideButton.setText(available ? "Dash" : "Ride");
+        dashRideButton.setContentDescription(available ? "RideDeck Dash and ride session" : "Ride session");
     }
 
     private LinearLayout rideCard(String label) {

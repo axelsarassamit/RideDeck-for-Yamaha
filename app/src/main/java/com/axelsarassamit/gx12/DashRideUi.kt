@@ -21,10 +21,10 @@ object DashRideUi {
             view.setPadding(bars.left+dp(16),bars.top+dp(16),bars.right+dp(16),bars.bottom+dp(16));insets
         }
         fun text(size: Float)=TextView(activity).apply { textSize=size;setTextColor(Color.WHITE);setPadding(0,0,0,dp(12)) }
-        page.addView(text(28f).apply { text="RideDeck Dash" })
+        val title=text(28f);page.addView(title)
         val state=text(24f);page.addView(state)
         val detail=text(18f);page.addView(detail)
-        page.addView(text(18f).apply { text="Start a ride here. Open Dash and start recording there. Pause or End stops background recording eligibility." })
+        val explanation=text(18f).apply { text="Start a ride here, then open Dash to record. Pause or End disables recording in the background." };page.addView(explanation)
         fun button(label: String,primary: Boolean=false)=Button(activity).apply {
             text=label;isAllCaps=false;textSize=22f;minHeight=dp(80);setTextColor(Color.WHITE)
             background=GradientDrawable().apply { setColor(if(primary)0xff087eff.toInt() else 0xff242f40.toInt());cornerRadius=dp(12).toFloat() }
@@ -43,11 +43,14 @@ object DashRideUi {
             override fun run() {
                 if(!dialog.isShowing) return
                 val active=DashRideService.active();val elapsed=DashRideService.elapsed();val seconds=elapsed/1000
+                val dashAvailable=DashCompanion.installed(activity)
+                title.text=if(dashAvailable)"RideDeck Dash" else "Ride session"
+                for(view in listOf(detail,explanation,open))view.visibility=if(dashAvailable)android.view.View.VISIBLE else android.view.View.GONE
                 val time=String.format(Locale.US,"%02d:%02d:%02d",seconds/3600,(seconds/60)%60,seconds%60)
                 state.text=if(active)"Ride active · $time" else if(elapsed>0)"Ride paused · $time" else "Ready to ride"
                 toggle.text=if(active)"Pause ride" else if(elapsed>0)"Resume ride" else "Start ride"
                 end.isEnabled=active || elapsed>0
-                detail.text=if(!DashCompanion.installed(activity))"RideDeck Dash is not installed. Your ride timer can still run." else DashRideService.bridgeStatus
+                detail.text=if(dashAvailable)DashRideService.bridgeStatus else ""
                 main.postDelayed(this,500)
             }
         }
@@ -55,6 +58,9 @@ object DashRideUi {
         end.setOnClickListener { DashRideService.end(activity);main.removeCallbacks(update);main.postDelayed(update,250) }
         dialog.setContentView(ScrollView(activity).apply { isFillViewport=true;setBackgroundColor(0xff101722.toInt());addView(page) })
         dialog.setOnDismissListener { main.removeCallbacksAndMessages(null) }
+        title.text=if(DashCompanion.installed(activity))"RideDeck Dash" else "Ride session"
+        val visible=DashCompanion.installed(activity)
+        for(view in listOf(detail,explanation,open))view.visibility=if(visible)android.view.View.VISIBLE else android.view.View.GONE
         dialog.show();dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xff101722.toInt()))
             setLayout(-1,-1);addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
