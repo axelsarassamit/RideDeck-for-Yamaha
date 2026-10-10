@@ -71,7 +71,8 @@
         android:name=".RideDeckApplication"
         android:allowBackup="false"
         android:label="${appLabel}"
-        android:icon="@drawable/ridedeck_icon"
+        android:icon="@mipmap/yamaha_launcher"
+        android:roundIcon="@mipmap/yamaha_launcher"
         android:theme="@style/RideDeckTheme"
         android:usesCleartextTraffic="false">
         <activity android:name=".RoutePreviewActivity" android:exported="false" android:screenOrientation="user" />
