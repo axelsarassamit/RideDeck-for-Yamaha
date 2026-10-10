@@ -775,10 +775,11 @@ public class MainActivity extends android.app.Activity {
         Button settings = rideAction("Setup", false);
         settings.setOnClickListener(v -> buildSetupScreen());
         if (!compact) header.addView(settings, new LinearLayout.LayoutParams(dp(80), dp(56)));
-        String[] labels = new String[]{"Yamaha", "Camera", "Voice"};
+        String[] labels = new String[]{"Yamaha", "Camera", "Voice", "Dash"};
         if (controlsRight) java.util.Collections.reverse(java.util.Arrays.asList(labels));
         for (String label : labels) {
             Button action = rideAction(label, false);
+            if (label.equals("Dash")) { action.setTextSize(20); action.setContentDescription("RideDeck Dash and ride session"); }
             if (label.equals("Yamaha")) {
                 action.setContentDescription("Yamaha bike connection and screen options");
                 action.setOnLongClickListener(v -> { finishAndRemoveTask(); return true; });
@@ -788,6 +789,7 @@ public class MainActivity extends android.app.Activity {
                     case "Yamaha": showBikeScreenMenu(); break;
                     case "Camera": showQuickCamera(); break;
                     case "Voice": startGoogleVoice(); break;
+                    case "Dash": DashRideUi.show(this); break;
                 }
             }); dock.addView(action, rideWeight(compact ? 56 : 64));
         }
