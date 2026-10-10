@@ -47,7 +47,7 @@ object NativeNavigation {
     @Volatile var acquisitionStatus = "Waiting for a GPS fix. Move outdoors if needed"
     @Volatile private var guidance = "Waiting for GPS"
     @Volatile private var maneuver = 0
-    private var zoomLevel = 16.0
+    private val mapZoom = app.pillion.core.MapZoom()
     private var height = 234
     private var snapshotter: MapSnapshotter? = null
     private var phoneSnapshotter: MapSnapshotter? = null
@@ -95,7 +95,10 @@ object NativeNavigation {
         context = c.applicationContext; running = true
         acquisitionStatus = "Waiting for a GPS fix. Move outdoors if needed"
         MapLibre.getInstance(c)
-        speaker = TextToSpeech(c) { result -> speechReady = result == TextToSpeech.SUCCESS }
+        speaker = TextToSpeech(c) { result ->
+            speechReady = result == TextToSpeech.SUCCESS && (speaker?.setLanguage(VoiceLanguage.locale(c)) ?: TextToSpeech.LANG_NOT_SUPPORTED) >= 0
+            if (!speechReady) BikeDiagnostics.record(c, "Navigation voice unavailable; install English speech data in Android speech settings")
+        }
         speaker?.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
         main.removeCallbacks(tick); main.post(tick)
         BikeDiagnostics.record(c, "Native navigation started renderer=MapLibre locationService=true")
@@ -202,8 +205,7 @@ object NativeNavigation {
                 if (generation != routeGeneration) return@post
                 routeBusy = false
                 result.onSuccess {
-                    route = it; dashRouteRevision++; dashRoute = null; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
-                    status = "Navigating"; location?.let(::updateGuidance)
+                    applyRoute(c, it)
                     BikeDiagnostics.record(c, "Native route ready points=${it.points.size} instructions=${it.turns.size}")
                 }.onFailure { error ->
                     val detail = when (error) {
@@ -218,7 +220,29 @@ object NativeNavigation {
             }
         }
     }
-    @JvmStatic fun zoom(inside: Boolean) { main.post { zoomLevel = (zoomLevel + if (inside) 0.5 else -0.5).coerceIn(12.0, 19.0) } }
+    fun startSelected(c: Context, selected: NavigationRoute) {
+        context = c.applicationContext
+        routeGeneration++; routeBusy = false; pendingDestination = null
+        RideBackgroundSession.saveDestination(c, selected.destination)
+        applyRoute(c, selected)
+    }
+    private fun applyRoute(c: Context, selected: NavigationRoute) {
+        route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
+        speedLimit = null; speedWindow = null; lastSpeedRequest = -30000L
+        mapZoom.navigationStarted()
+        status = "Navigating"; location?.let(::updateGuidance)
+        invalidateFrames()
+    }
+    private fun invalidateFrames() {
+        snapshotter?.cancel(); snapshotter = null; inFlight = false; frameAt = 0
+        phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneFrameAt = 0
+    }
+    @JvmStatic fun zoom(inside: Boolean) { main.post {
+        val level = mapZoom.change(inside)
+        invalidateFrames()
+        context?.let { BikeDiagnostics.record(it, "Map zoom level=$level") }
+        main.removeCallbacks(tick); main.post(tick)
+    } }
 
     private fun updateGuidance(fix: Location) {
         val r = route ?: run { guidance = "Choose a destination"; maneuver = 0; return }
@@ -367,7 +391,7 @@ object NativeNavigation {
             val heading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else if (activeRoute != null) routeBearing(activeRoute, progressIndex) else 0.0
             val cameraBuilder = CameraPosition.Builder()
                 .target(LatLng(fix.latitude, fix.longitude))
-                .zoom(if (activeRoute != null) maxOf(zoomLevel, 17.0) else zoomLevel)
+                .zoom(mapZoom.level)
                 .bearing(heading)
             if (activeRoute != null) cameraBuilder.tilt(55.0)
             val camera = cameraBuilder.build()

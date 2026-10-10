@@ -60,7 +60,7 @@ object NavigationUi {
         val map=EditText(activity).apply { hint="MapTiler key (blank keeps existing key)"; inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         fields.addView(map)
         AlertDialog.Builder(activity).setTitle("Map and routing accounts")
-            .setMessage("MapTiler provides map data and address search. Valhalla calculates motorcycle routes using the public FOSSGIS demo server. Route start and destination are sent to that server. It needs no API key and follows fair-use limits, with no availability guarantee.")
+            .setMessage("MapTiler provides map data and searches for shops, places and addresses. Valhalla calculates motorcycle routes using the public FOSSGIS demo server. Route start and destination are sent to that server. It needs no API key and follows fair-use limits, with no availability guarantee.")
             .setView(fields).setNegativeButton("Close",null).setNeutralButton("MapTiler website") { _,_ ->
                 activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://cloud.maptiler.com/")))
             }.setPositiveButton("Save",null).create().also { dialog ->
@@ -76,7 +76,7 @@ object NavigationUi {
         if(!permission(activity)) return
         NativeNavigation.start(activity)
         val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setPadding(20,8,20,8) }
-        val field=EditText(activity).apply { hint="Search an address or place"; setSingleLine(true) }
+        val field=EditText(activity).apply { hint="Shops, cafés, places or addresses"; textSize=22f; setSingleLine(true) }
         val status=TextView(activity)
         val results=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
         page.addView(field); page.addView(status); page.addView(ScrollView(activity).apply { addView(results) },LinearLayout.LayoutParams(-1,420))
@@ -96,12 +96,12 @@ object NavigationUi {
                         main.post {
                             if(request!=generation || !dialog.isShowing || activity.isDestroyed) return@post
                             result.onSuccess { places ->
-                                status.text=if(places.isEmpty())"No matches. Try a full address." else "Choose the destination"
+                                status.text=if(places.isEmpty())"No matches. Try a place name and city, or a full address." else "Choose the destination"
                                 places.forEach { place ->
                                     results.addView(Button(activity).apply {
-                                        text=place.label; isAllCaps=false
+                                        text=place.label; isAllCaps=false; textSize=20f; minHeight=(80*activity.resources.displayMetrics.density).toInt()
                                         setOnClickListener {
-                                            AlertDialog.Builder(activity).setTitle(place.label).setMessage("Start navigation to this destination?")
+                                            AlertDialog.Builder(activity).setTitle(place.label).setMessage("Compare routes on the map before starting navigation.")
                                                 .setNegativeButton("Cancel",null).setNeutralButton("Save place") { _,_ ->
                                                     AlertDialog.Builder(activity).setTitle("Save place").setItems(arrayOf("Favorite","Home","Work")) { _,slot ->
                                                         runCatching {
@@ -111,8 +111,8 @@ object NavigationUi {
                                                         }.onSuccess { Toast.makeText(activity,"${arrayOf("Favorite","Home","Work")[slot]} saved",Toast.LENGTH_SHORT).show() }
                                                             .onFailure { status.text="Place could not be saved" }
                                                     }.setNegativeButton("Cancel",null).show()
-                                                }.setPositiveButton("Navigate") { _,_ ->
-                                                    NativeNavigation.navigate(activity,place); dialog.dismiss()
+                                                }.setPositiveButton("Choose route") { _,_ ->
+                                                    dialog.dismiss(); RoutePreviewActivity.open(activity,place)
                                                 }.show()
                                         }
                                     })
@@ -169,10 +169,10 @@ object NavigationUi {
         fun dp(value: Int) = (value * density).toInt()
         listOf("+", "−").forEachIndexed { index, label ->
             zoom.addView(Button(activity).apply {
-                text = label; textSize = 24f; isAllCaps = false
+                text = label; textSize = 30f; isAllCaps = false
                 contentDescription = if (index == 0) "Zoom in" else "Zoom out"
                 setOnClickListener { NativeNavigation.zoom(index == 0) }
-            }, LinearLayout.LayoutParams(dp(52), dp(52)))
+            }, LinearLayout.LayoutParams(dp(72), dp(72)).apply { bottomMargin=dp(8) })
         }
         mapArea.addView(zoom, FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL).apply {
             leftMargin = dp(8)

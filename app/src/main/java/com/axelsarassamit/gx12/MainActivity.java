@@ -976,6 +976,7 @@ public class MainActivity extends android.app.Activity {
         speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Reply to " + target.title + " in " + target.appName);
         speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        speechIntent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, VoiceLanguage.tag(this));
         voiceReplyTarget = target;
         BikeDiagnostics.record(this, "Text reply dictation requested app=" + target.packageName + " inline=" + (target.reply != null));
         withHeadsetMicrophone(() -> {
@@ -1404,7 +1405,7 @@ public class MainActivity extends android.app.Activity {
         if (preview == null) { android.widget.Toast.makeText(this, "No new message to read", android.widget.Toast.LENGTH_SHORT).show(); return; }
         if (speech == null) {
             speech = new android.speech.tts.TextToSpeech(this, result -> {
-                speechReady = result == android.speech.tts.TextToSpeech.SUCCESS;
+                speechReady = result == android.speech.tts.TextToSpeech.SUCCESS && speech.setLanguage(VoiceLanguage.locale(this)) >= 0;
                 if (speechReady) readMessageAloud(preview);
                 else android.widget.Toast.makeText(this, "Speech is unavailable on this phone", android.widget.Toast.LENGTH_SHORT).show();
             });

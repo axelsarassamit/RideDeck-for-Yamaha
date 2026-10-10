@@ -124,7 +124,7 @@ object NavigationApi {
         val key = NavigationSecrets.read(context, "maptiler")
         check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
         val url = Uri.Builder().scheme("https").authority("api.maptiler.com").appendPath("geocoding").appendPath(query.take(300) + ".json")
-            .appendQueryParameter("key", key).appendQueryParameter("language", "en").appendQueryParameter("autocomplete", "true").appendQueryParameter("limit", "6")
+            .appendQueryParameter("key", key).appendQueryParameter("language", "en").appendQueryParameter("autocomplete", "true").appendQueryParameter("limit", "10").appendQueryParameter("types", "poi,address,road,place,locality,municipality,region,country")
         location?.let { url.appendQueryParameter("proximity", "${it.longitude},${it.latitude}") }
         val features = request(url.build()).getJSONArray("features")
         return (0 until features.length()).mapNotNull { i ->
@@ -134,15 +134,29 @@ object NavigationApi {
             NavigationPlace(item.optString("place_name", item.optString("text", "Destination")), lat, lon)
         }
     }
-    fun route(context: Context, origin: Location, target: NavigationPlace): NavigationRoute {
+    fun route(context: Context, origin: Location, target: NavigationPlace): NavigationRoute = routes(origin, target, false).first()
+
+    fun routes(origin: Location, target: NavigationPlace, alternatives: Boolean = true): List<NavigationRoute> {
         val locations = JSONArray()
             .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude))
             .put(JSONObject().put("lat", target.latitude).put("lon", target.longitude))
         val payload = JSONObject().put("locations", locations).put("costing", "motorcycle")
-            .put("units", "kilometers").put("language", "en-US")
-        val uri = Uri.parse("https://valhalla1.openstreetmap.de/route").buildUpon()
-            .appendQueryParameter("json", payload.toString()).build()
-        val trip = request(uri, "Valhalla").getJSONObject("trip")
+            .put("units", "kilometers").put("language", "en-US").put("alternates", if(alternatives) 2 else 0)
+        val response = request(Uri.parse("https://valhalla1.openstreetmap.de/route"), "Valhalla", payload)
+        return parseRoutes(response, target)
+    }
+
+    internal fun parseRoutes(response: JSONObject, target: NavigationPlace): List<NavigationRoute> {
+        val routes = mutableListOf(parseTrip(response.getJSONObject("trip"), target))
+        val alternatives = response.optJSONArray("alternates")
+        for (i in 0 until minOf(alternatives?.length() ?: 0, 2)) {
+            val alternate = runCatching { parseTrip(alternatives!!.getJSONObject(i).getJSONObject("trip"), target) }.getOrNull() ?: continue
+            if(routes.none { it.points == alternate.points }) routes.add(alternate)
+        }
+        return routes
+    }
+
+    private fun parseTrip(trip: JSONObject, target: NavigationPlace): NavigationRoute {
         check(trip.optInt("status", 0) == 0) { trip.optString("status_message", "No motorcycle route was found.") }
         val legs = trip.getJSONArray("legs")
         require(legs.length() == 1) { "Unexpected route response." }
@@ -163,7 +177,9 @@ object NavigationApi {
         val summary = trip.getJSONObject("summary")
         val seconds=summary.getDouble("time")
         require(seconds.isFinite() && seconds >= 0 && seconds <= Long.MAX_VALUE/1000.0) { "Route duration unavailable." }
-        return NavigationRoute(target, points, turns, summary.getDouble("length") * 1000.0, (seconds*1000).toLong())
+        val meters = summary.getDouble("length") * 1000.0
+        require(meters.isFinite() && meters >= 0) { "Route distance unavailable." }
+        return NavigationRoute(target, points, turns, meters, (seconds*1000).toLong())
     }
 
     private fun valhallaTurnSign(type: Int): Int = when (type) {
