@@ -82,7 +82,7 @@ public class MainActivity extends android.app.Activity {
     private boolean speechReady;
     private String messageApp;
     private GX12NotificationListener.NotificationPreview voiceReplyTarget;
-    private android.app.AlertDialog voiceReplyReview;
+    private android.app.Dialog voiceReplyReview;
     private GX12NotificationListener.NotificationPreview newestSeen;
     private boolean setupVisible;
     private boolean cockpitVisible;
@@ -988,31 +988,74 @@ public class MainActivity extends android.app.Activity {
         });
     }
 
+    private Button replyControl(String label, boolean primary) {
+        Button action = rideAction(label, primary);
+        action.setTextSize(primary ? 26 : 22);
+        action.setMinHeight(dp(88)); action.setMinimumHeight(dp(88));
+        action.setPadding(dp(16), dp(12), dp(16), dp(12)); action.setMaxLines(2);
+        return action;
+    }
+
     private void confirmVoiceReply(GX12NotificationListener.NotificationPreview target, String words) {
         GX12NotificationListener.reloadSelected();
         if (voiceReplyReview != null) voiceReplyReview.dismiss();
+        android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        boolean wide = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            && getResources().getConfiguration().screenWidthDp >= 600;
+        LinearLayout root = new LinearLayout(this); root.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        root.setBackgroundColor(RideStyle.BACKGROUND); root.setFocusableInTouchMode(true);
         LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(20), dp(8), dp(20), dp(8));
-        TextView status = text("Review your reply before sending.", 16, RideStyle.TEXT, false);
-        page.addView(status);
+        TextView heading = text("Reply · " + target.appName, 20, RideTheme.accent(this), true); page.addView(heading);
+        TextView recipient = text("To: " + target.title, 26, RideStyle.TEXT, true);
+        recipient.setMaxLines(2); recipient.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        recipient.setPadding(0, dp(8), 0, dp(12)); page.addView(recipient);
+        TextView status = text("Check your words, then send.", 18, RideStyle.MUTED, false);
+        status.setPadding(0, 0, 0, dp(16)); page.addView(status);
+        TextView caption = text("YOUR REPLY", 16, RideTheme.accent(this), true);
+        caption.setPadding(0, 0, 0, dp(8)); page.addView(caption);
         EditText draft = new EditText(this); draft.setHint("Your reply"); draft.setText(words);
-        draft.setTextSize(22); draft.setMinLines(2); draft.setMaxLines(5);
+        draft.setTextSize(28); draft.setTextColor(RideStyle.TEXT); draft.setHintTextColor(RideStyle.MUTED);
+        draft.setMinLines(3); draft.setMaxLines(10); draft.setGravity(Gravity.TOP);
+        draft.setPadding(dp(20), dp(16), dp(20), dp(16)); draft.setBackground(RideStyle.surface(this, RideStyle.PANEL, 12, true));
         draft.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        draft.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        draft.setOnEditorActionListener((view, action, event) -> {
+            if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE) return false;
+            getSystemService(android.view.inputmethod.InputMethodManager.class).hideSoftInputFromWindow(draft.getWindowToken(), 0);
+            root.requestFocus(); return true;
+        });
         page.addView(draft, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout fallback = new LinearLayout(this);
-        Button copy = rideAction("Copy text", false); Button open = rideAction("Open conversation", false);
-        fallback.addView(copy, rideWeight(64)); fallback.addView(open, rideWeight(64)); page.addView(fallback);
-        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
-            .setTitle("Reply to " + target.title + " - " + target.appName).setView(page)
-            .setNegativeButton("Cancel", null).setNeutralButton("Speak again", null).setPositiveButton("Send", null).create();
+        Button copy = replyControl("Copy text", false); Button open = replyControl("Open conversation", false);
+        LinearLayout.LayoutParams copySize = new LinearLayout.LayoutParams(0, dp(88), 1); copySize.setMargins(0, dp(16), dp(6), 0);
+        LinearLayout.LayoutParams openSize = new LinearLayout.LayoutParams(0, dp(88), 1); openSize.setMargins(dp(6), dp(16), 0, 0);
+        fallback.addView(copy, copySize); fallback.addView(open, openSize); page.addView(fallback);
+        ScrollView content = new ScrollView(this); content.setFillViewport(false); content.addView(page);
+        root.addView(content, wide ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout controls = new LinearLayout(this); controls.setOrientation(LinearLayout.VERTICAL);
+        Button send = replyControl("Send reply", true); Button again = replyControl("Speak again", false); Button cancel = replyControl("Cancel", false);
+        if (wide) {
+            LinearLayout.LayoutParams controlSize = new LinearLayout.LayoutParams(dp(232), -1); controlSize.leftMargin = dp(24); root.addView(controls, controlSize);
+            for (Button action : new Button[]{send, again, cancel}) {
+                LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, dp(88)); size.bottomMargin = dp(12); controls.addView(action, size);
+            }
+        } else {
+            LinearLayout.LayoutParams controlSize = new LinearLayout.LayoutParams(-1, -2); controlSize.topMargin = dp(20); root.addView(controls, controlSize);
+            controls.addView(send, new LinearLayout.LayoutParams(-1, dp(88)));
+            LinearLayout secondary = new LinearLayout(this);
+            LinearLayout.LayoutParams againSize = new LinearLayout.LayoutParams(0, dp(88), 1); againSize.setMargins(0, dp(12), dp(6), 0);
+            LinearLayout.LayoutParams cancelSize = new LinearLayout.LayoutParams(0, dp(88), 1); cancelSize.setMargins(dp(6), dp(12), 0, 0);
+            secondary.addView(again, againSize); secondary.addView(cancel, cancelSize); controls.addView(secondary);
+        }
         Runnable updateAvailability = () -> {
             boolean selected = RidePreferences.selectedMessages(this).contains(target.packageName);
             boolean available = selected && target.reply != null;
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setEnabled(available);
+            send.setEnabled(available);
             fallback.setVisibility(available ? View.GONE : View.VISIBLE);
-            status.setText(available ? "Review your reply before sending." : !selected
+            status.setText(available ? "Check your words, then send." : !selected
                 ? "This app is no longer selected in Messaging apps. Your draft is still here."
-                : "This message has no direct reply control from " + target.appName + ". Your draft is still here. Copy it, then open the conversation to paste and send.");
+                : "Direct reply is unavailable for this message. Copy your words, then open " + target.appName + " to paste and send.");
         };
         copy.setOnClickListener(v -> {
             android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
@@ -1020,37 +1063,47 @@ public class MainActivity extends android.app.Activity {
             android.widget.Toast.makeText(this, "Reply text copied", android.widget.Toast.LENGTH_SHORT).show();
         });
         open.setOnClickListener(v -> openReplyConversation(target));
-        dialog.setOnShowListener(d -> {
-            updateAvailability.run();
-            // Keep the review open behind dictation, so cancellation preserves edits.
-            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> replyByVoice(target));
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                String replyText = draft.getText().toString().trim();
-                if (replyText.isEmpty()) { draft.setError("Enter or dictate a reply first"); return; }
-                GX12NotificationListener.reloadSelected();
-                GX12NotificationListener.ReplyAction action = target.reply;
-                if (!RidePreferences.selectedMessages(this).contains(target.packageName) || action == null) {
-                    updateAvailability.run(); return;
-                }
-                android.os.Bundle results = new android.os.Bundle(); results.putCharSequence(action.input.getResultKey(), replyText);
-                Intent response = new Intent().addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
-                android.app.RemoteInput.addResultsToIntent(action.inputs, response, results);
-                if (Build.VERSION.SDK_INT >= 28) android.app.RemoteInput.setResultsSource(response, android.app.RemoteInput.SOURCE_FREE_FORM_INPUT);
-                try {
-                    action.intent.send(this, 0, response);
-                    BikeDiagnostics.record(this, "Text reply handed to app=" + target.packageName);
-                    dialog.dismiss(); android.widget.Toast.makeText(this, "Reply handed to " + target.appName, android.widget.Toast.LENGTH_SHORT).show();
-                } catch (android.app.PendingIntent.CanceledException | RuntimeException error) {
-                    if (target.reply == action) target.reply = null;
-                    BikeDiagnostics.record(this, "Text reply rejected app=" + target.packageName + " reason=" + error.getClass().getSimpleName());
-                    updateAvailability.run();
-                    status.setText("The reply control expired or was rejected. Your draft is still here. Copy it, then open the conversation to paste and send.");
-                }
-            });
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        // Keep the review open behind dictation, so cancellation preserves edits.
+        again.setOnClickListener(v -> replyByVoice(target));
+        send.setOnClickListener(v -> {
+            String replyText = draft.getText().toString().trim();
+            if (replyText.isEmpty()) { draft.setError("Enter or dictate a reply first"); return; }
+            GX12NotificationListener.reloadSelected();
+            GX12NotificationListener.ReplyAction action = target.reply;
+            if (!RidePreferences.selectedMessages(this).contains(target.packageName) || action == null) {
+                updateAvailability.run(); return;
+            }
+            android.os.Bundle results = new android.os.Bundle(); results.putCharSequence(action.input.getResultKey(), replyText);
+            Intent response = new Intent().addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+            android.app.RemoteInput.addResultsToIntent(action.inputs, response, results);
+            if (Build.VERSION.SDK_INT >= 28) android.app.RemoteInput.setResultsSource(response, android.app.RemoteInput.SOURCE_FREE_FORM_INPUT);
+            try {
+                action.intent.send(this, 0, response);
+                BikeDiagnostics.record(this, "Text reply handed to app=" + target.packageName);
+                dialog.dismiss(); android.widget.Toast.makeText(this, "Reply handed to " + target.appName, android.widget.Toast.LENGTH_SHORT).show();
+            } catch (android.app.PendingIntent.CanceledException | RuntimeException error) {
+                if (target.reply == action) target.reply = null;
+                BikeDiagnostics.record(this, "Text reply rejected app=" + target.packageName + " reason=" + error.getClass().getSimpleName());
+                updateAvailability.run();
+                status.setText("The reply control expired or was rejected. Your draft is still here. Copy your words, then open the conversation to paste and send.");
+            }
         });
-        voiceReplyReview = dialog;
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
+            androidx.core.graphics.Insets edges = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            int keyboard = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom;
+            view.setPadding(edges.left + dp(20), edges.top + dp(20), edges.right + dp(20), Math.max(edges.bottom, keyboard) + dp(20)); return insets;
+        });
+        dialog.setContentView(root); voiceReplyReview = dialog;
         dialog.setOnDismissListener(d -> { if (voiceReplyReview == dialog) voiceReplyReview = null; });
         dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(RideStyle.BACKGROUND));
+            dialog.getWindow().setLayout(-1, -1);
+            dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE | android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+            ScreenChrome.apply(dialog.getWindow(), true);
+        }
+        root.requestFocus(); androidx.core.view.ViewCompat.requestApplyInsets(root); updateAvailability.run();
     }
 
     private void showQuickCamera() {
