@@ -53,8 +53,12 @@ object DashRideUi {
         }
         toggle.setOnClickListener { if(DashRideService.active()) DashRideService.pause(activity) else DashRideService.start(activity);main.removeCallbacks(update);main.postDelayed(update,250) }
         end.setOnClickListener { DashRideService.end(activity);main.removeCallbacks(update);main.postDelayed(update,250) }
-        dialog.setContentView(ScrollView(activity).apply { addView(page) })
+        dialog.setContentView(ScrollView(activity).apply { isFillViewport=true;setBackgroundColor(0xff101722.toInt());addView(page) })
         dialog.setOnDismissListener { main.removeCallbacksAndMessages(null) }
-        dialog.show();dialog.window?.setLayout(-1,-1);dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);androidx.core.view.ViewCompat.requestApplyInsets(page);main.post(update)
+        dialog.show();dialog.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xff101722.toInt()))
+            setLayout(-1,-1);addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            ScreenChrome.apply(this,true)
+        };androidx.core.view.ViewCompat.requestApplyInsets(page);main.post(update)
     }
 }
