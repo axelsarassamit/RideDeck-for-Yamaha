@@ -12,6 +12,7 @@ class DashRideService : Service() {
         private val session=DashRideSessionState()
         @JvmField @Volatile var bridgeStatus="Start a ride to enable Dash in the background"
         @JvmStatic fun active()=session.active()
+        @JvmStatic fun generation()=session.generation()
         @JvmStatic fun elapsed()=session.elapsed(SystemClock.elapsedRealtime())
         @JvmStatic fun start(c: Context) {
             try { c.startForegroundService(Intent(c,DashRideService::class.java).setAction("START")) }
