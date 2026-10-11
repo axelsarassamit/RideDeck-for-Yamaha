@@ -1,6 +1,7 @@
 package com.axelsarassamit.gx12;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.Manifest;
 import android.content.ComponentName;
 import android.content.Context;
@@ -17,17 +18,19 @@ public final class DashRecordingConnection implements ServiceConnection {
     public static final DashRecordingStatus STATUS = new DashRecordingStatus();
     private final Context app;
     private final long generation;
+    private final DashStartTokenGate tokenGate;
     private final Handler main = new Handler(Looper.getMainLooper());
     private BooleanSupplier visible;
     private Messenger remote;
     private final Messenger replies;
     private Consumer<Bundle> preview;
-    private boolean bound, sent, accepted, closed, previewPending, statusPending;
+    private boolean bound, sent, started, accepted, closed, previewPending, statusPending;
     private long statusSentAt;
     private int expectedUid;
 
     private DashRecordingConnection(Activity activity, long generation, BooleanSupplier visible) {
         app = activity.getApplicationContext(); this.generation = generation; this.visible = visible;
+        tokenGate = new DashStartTokenGate(SystemClock.elapsedRealtime());
         replies = new Messenger(new Handler(Looper.getMainLooper(), this::reply));
     }
     public static boolean permissionsGranted(Context context) {
@@ -53,7 +56,7 @@ public final class DashRecordingConnection implements ServiceConnection {
         } catch (Exception error) { connection.fail("Dash recording connection unavailable. Check Dash settings."); }
     }
     public static void close() { if (current != null) current.release();STATUS.clear(); }
-    public static void cancelPending() { if (current != null && !current.sent) current.fail("Recording request cancelled before connection."); }
+    public static void cancelPending() { if (current != null && !current.started) current.fail("Recording request cancelled before camera start."); }
     public static boolean preview(long generation, Consumer<Bundle> completion) {
         DashRecordingConnection c = current;
         if (c == null || c.closed || !c.accepted || c.remote == null || c.previewPending || !c.active() || c.generation != generation) return false;
@@ -80,7 +83,7 @@ public final class DashRecordingConnection implements ServiceConnection {
             fail("Recording request cancelled. Start again from RideDeck."); return;
         }
         remote = new Messenger(binder);
-        try { send(1);sent = true;visible = null; }
+        try { send(1);sent = true; }
         catch (RemoteException error) { fail("Recording request could not reach Dash."); }
     }
     private void send(int what) throws RemoteException {
@@ -92,10 +95,25 @@ public final class DashRecordingConnection implements ServiceConnection {
         Bundle data = reply.getData();
         Boolean allowed = data.containsKey("accepted") ? data.getBoolean("accepted") : null;
         if (reply.what == 1 && sent && !accepted) {
-            main.removeCallbacks(startTimeout);
-            DashRideService.recordingStatus = DashRecordingReply.status(data.getInt("protocolVersion"), allowed, data.getString("message"));
-            accepted = DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) && Boolean.TRUE.equals(allowed);
-            if (!accepted) { STATUS.unavailable();release(); }
+            if (!DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) || !Boolean.TRUE.equals(allowed)) {
+                fail(DashRecordingReply.status(data.getInt("protocolVersion"), allowed, data.getString("message")));return true;
+            }
+            try {
+                PendingIntent token = Build.VERSION.SDK_INT >= 33 ? data.getParcelable("startIntent",PendingIntent.class) : data.getParcelable("startIntent");
+                boolean trustedCreator = token != null && DashCompanion.PACKAGE.equals(token.getCreatorPackage()) && token.getCreatorUid() == expectedUid && DashCompanion.installed(app);
+                boolean safeToken = token != null && (Build.VERSION.SDK_INT < 31 || (token.isImmutable() && token.isForegroundService()));
+                if (!tokenGate.consume(SystemClock.elapsedRealtime(),trustedCreator,safeToken,
+                    visible != null && visible.getAsBoolean(),active(),permissionsGranted(app))) {
+                    fail("Recording token unavailable or cancelled. Start again from RideDeck.");return true;
+                }
+                // The different, visible host sends Dash's immutable one-use foreground-service token.
+                // Never supply a fill-in Intent or replay this from a heartbeat/background callback.
+                token.send();started = true;accepted = true;visible = null;
+                main.removeCallbacks(startTimeout);
+                DashRideService.recordingStatus = "Recording requested. Waiting for cameras.";
+            } catch (PendingIntent.CanceledException | RuntimeException error) {
+                fail("Dash recording authorization expired or failed. Start again from RideDeck.");
+            }
         } else if (reply.what == 2 && previewPending) {
             main.removeCallbacks(previewTimeout);Consumer<Bundle> completion = preview;preview = null;previewPending = false;
             if (completion != null) completion.accept(DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) && Boolean.TRUE.equals(allowed) ? data : null);
@@ -119,6 +137,7 @@ public final class DashRecordingConnection implements ServiceConnection {
     private void fail(String message) { if (closed) return;DashRideService.recordingStatus = message;STATUS.unavailable();release(); }
     private void release() {
         if (closed) return;
+        tokenGate.cancel();
         closed = true;visible = null;remote = null;preview = null;previewPending = false;main.removeCallbacksAndMessages(null);
         if (bound) { bound = false;try { app.unbindService(this); } catch (IllegalArgumentException ignored) { } }
         if (current == this) current = null;
