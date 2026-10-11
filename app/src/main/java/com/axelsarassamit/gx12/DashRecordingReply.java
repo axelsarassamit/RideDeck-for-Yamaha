@@ -11,4 +11,7 @@ public final class DashRecordingReply {
         return accepted ? "Recording requested. Check the live camera view." : "Recording was not accepted. Check Dash settings.";
     }
     public static boolean frameAllowed(byte[] jpeg) { return jpeg != null && jpeg.length > 0 && jpeg.length <= MAX_JPEG_BYTES; }
+    public static boolean cameraStateValid(Boolean recording, Boolean starting) {
+        return recording != null && starting != null && !(recording && starting);
+    }
 }

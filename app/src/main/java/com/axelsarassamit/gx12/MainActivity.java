@@ -75,6 +75,13 @@ public class MainActivity extends android.app.Activity {
     private Button previousButton;
     private Button nextButton;
     private Button dashRideButton;
+    private final Runnable dashStatusRefresh = new Runnable() {
+        @Override public void run() {
+            if (!activityResumed) return;
+            if (!setupVisible) { DashRecordingConnection.refreshStatus();refreshDashRideControl(); }
+            handler.postDelayed(this,1000);
+        }
+    };
     private android.widget.ImageView albumArt;
     private boolean externalVoiceDeparted;
     private HeadsetMicRoute headsetMic;
@@ -235,6 +242,7 @@ public class MainActivity extends android.app.Activity {
         super.onResume();
         activityResumed = true;
         refreshDashRideControl();
+        handler.removeCallbacks(dashStatusRefresh);handler.post(dashStatusRefresh);
         if (refreshAfterSetup && !(this instanceof SetupActivity)) { refreshAfterSetup = false; buildScreen(); }
         RideQuietMode.refresh(this);
         if (phoneMapPending && !setupVisible) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
@@ -248,6 +256,7 @@ public class MainActivity extends android.app.Activity {
 
     @Override protected void onPause() {
         activityResumed = false;
+        handler.removeCallbacks(dashStatusRefresh);DashRecordingConnection.stopStatusPolling();
         if (headsetMic != null) { externalVoiceDeparted = headsetMic.listening(); headsetMic.cancelPending(); }
         handler.removeCallbacks(trackRefresh);
         SharedPreferences prefs = getPreferences(0);
@@ -812,8 +821,14 @@ public class MainActivity extends android.app.Activity {
     private void refreshDashRideControl() {
         if (dashRideButton == null) return;
         boolean available = DashCompanion.installed(this);
-        dashRideButton.setText(available ? "Dash" : "Ride");
-        dashRideButton.setContentDescription(available ? "RideDeck Dash and ride session" : "Ride session");
+        DashRecordingStatus.State recording = DashRecordingConnection.STATUS.state(android.os.SystemClock.elapsedRealtime());
+        String label = !available ? "Ride" : recording == DashRecordingStatus.State.RECORDING ? "● REC"
+            : recording == DashRecordingStatus.State.STARTING ? "Dash\nStarting"
+            : recording == DashRecordingStatus.State.STOPPED ? "Dash\nStopped"
+            : recording == DashRecordingStatus.State.UNAVAILABLE ? "Dash\nUnknown" : "Dash";
+        dashRideButton.setText(label);
+        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : RideStyle.TEXT);
+        dashRideButton.setContentDescription(available ? "RideDeck Dash. " + DashRecordingConnection.STATUS.label(android.os.SystemClock.elapsedRealtime()) + ". Open ride controls." : "Ride session");
     }
 
     private LinearLayout rideCard(String label) {

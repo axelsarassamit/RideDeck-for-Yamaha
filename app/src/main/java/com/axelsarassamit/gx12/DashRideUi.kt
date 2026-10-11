@@ -142,7 +142,10 @@ object DashRideUi {
                 state.text=if(active)"Ride active · $time" else if(elapsed>0)"Ride paused · $time" else "Ready to ride"
                 toggle.text=if(active)"Pause ride" else if(elapsed>0)"Resume ride" else "Start ride"
                 end.isEnabled=active || elapsed>0
-                detail.text=if(dashAvailable)listOf(DashRideService.bridgeStatus,DashRideService.recordingStatus).filter { it.isNotBlank() }.joinToString("\n") else ""
+                val cameraState=DashRecordingConnection.STATUS.state(android.os.SystemClock.elapsedRealtime())
+                title.text=if(dashAvailable && cameraState==DashRecordingStatus.State.RECORDING)"● REC · RideDeck Dash" else if(dashAvailable)"RideDeck Dash" else "Ride session"
+                title.setTextColor(if(dashAvailable && cameraState==DashRecordingStatus.State.RECORDING)0xffff4c4c.toInt() else Color.WHITE)
+                detail.text=if(dashAvailable)listOf(DashRecordingConnection.STATUS.label(android.os.SystemClock.elapsedRealtime()),DashRideService.bridgeStatus,DashRideService.recordingStatus).filter { it.isNotBlank() }.joinToString("\n") else ""
                 if(!dashAvailable || !active || previewGeneration!=DashRideService.generation()) { previewArea.visibility=android.view.View.GONE;clearPreview() }
                 if(previewArea.visibility==android.view.View.VISIBLE)for(view in listOf(detail,explanation,autoStart))view.visibility=android.view.View.GONE
                 main.postDelayed(this,500)

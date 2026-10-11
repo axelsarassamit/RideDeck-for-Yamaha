@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 public final class DashRecordingConnection implements ServiceConnection {
     private static final String SERVICE = DashCompanion.PACKAGE + ".CompanionRecordingService";
     private static DashRecordingConnection current;
+    public static final DashRecordingStatus STATUS = new DashRecordingStatus();
     private final Context app;
     private final long generation;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -21,7 +22,8 @@ public final class DashRecordingConnection implements ServiceConnection {
     private Messenger remote;
     private final Messenger replies;
     private Consumer<Bundle> preview;
-    private boolean bound, sent, accepted, closed, previewPending;
+    private boolean bound, sent, accepted, closed, previewPending, statusPending;
+    private long statusSentAt;
     private int expectedUid;
 
     private DashRecordingConnection(Activity activity, long generation, BooleanSupplier visible) {
@@ -38,6 +40,7 @@ public final class DashRecordingConnection implements ServiceConnection {
         if (!permissionsGranted(activity)) { DashRideService.recordingStatus = "Allow camera and microphone in Yamaha's Android permissions, then start again.";return; }
         DashRecordingConnection connection = new DashRecordingConnection(activity, generation, visible);
         current = connection;
+        STATUS.requested(SystemClock.elapsedRealtime());
         DashRideService.recordingStatus = "Connecting recording. Keep this screen open.";
         try {
             connection.expectedUid = connection.app.getPackageManager().getApplicationInfo(DashCompanion.PACKAGE, 0).uid;
@@ -49,7 +52,7 @@ public final class DashRecordingConnection implements ServiceConnection {
             connection.main.postDelayed(connection.startTimeout, 10000);
         } catch (Exception error) { connection.fail("Dash recording connection unavailable. Check Dash settings."); }
     }
-    public static void close() { if (current != null) current.release(); }
+    public static void close() { if (current != null) current.release();STATUS.clear(); }
     public static void cancelPending() { if (current != null && !current.sent) current.fail("Recording request cancelled before connection."); }
     public static boolean preview(long generation, Consumer<Bundle> completion) {
         DashRecordingConnection c = current;
@@ -62,6 +65,15 @@ public final class DashRecordingConnection implements ServiceConnection {
         } catch (RemoteException error) { c.fail("Dash connection lost. Check recording in Dash."); return false; }
     }
     public static void stopPreview() { if (current != null) { current.main.removeCallbacks(current.previewTimeout);current.preview = null; } }
+    public static void refreshStatus() {
+        DashRecordingConnection c = current;
+        if (c == null || c.closed || !c.accepted || c.remote == null || !c.active()) return;
+        if (c.statusPending) return;
+        c.statusPending = true;c.statusSentAt = SystemClock.elapsedRealtime();
+        try { c.send(3);c.main.postDelayed(c.statusTimeout,2000); }
+        catch (RemoteException error) { c.fail("Dash connection lost. Recording status unavailable."); }
+    }
+    public static void stopStatusPolling() { if (current != null) current.main.removeCallbacks(current.statusTimeout); }
     private boolean active() { return current == this && !closed && DashRideService.active() && DashRideService.generation() == generation; }
     @Override public void onServiceConnected(ComponentName name, IBinder binder) {
         if (!active() || visible == null || !visible.getAsBoolean() || !SERVICE.equals(name.getClassName()) || !DashCompanion.installed(app) || !permissionsGranted(app)) {
@@ -83,16 +95,28 @@ public final class DashRecordingConnection implements ServiceConnection {
             main.removeCallbacks(startTimeout);
             DashRideService.recordingStatus = DashRecordingReply.status(data.getInt("protocolVersion"), allowed, data.getString("message"));
             accepted = DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) && Boolean.TRUE.equals(allowed);
-            if (!accepted) release();
+            if (!accepted) { STATUS.unavailable();release(); }
         } else if (reply.what == 2 && previewPending) {
             main.removeCallbacks(previewTimeout);Consumer<Bundle> completion = preview;preview = null;previewPending = false;
             if (completion != null) completion.accept(DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) && Boolean.TRUE.equals(allowed) ? data : null);
+        } else if (reply.what == 3 && statusPending) {
+            main.removeCallbacks(statusTimeout);statusPending = false;
+            long now = SystemClock.elapsedRealtime();
+            if (now-statusSentAt < 2500 && DashRecordingReply.valid(data.getInt("protocolVersion"),allowed)
+                && Boolean.TRUE.equals(allowed) && DashRecordingReply.cameraStateValid(
+                    data.containsKey("recording") ? data.getBoolean("recording") : null,
+                    data.containsKey("starting") ? data.getBoolean("starting") : null)) {
+                STATUS.confirmed(data.getBoolean("recording"),data.getBoolean("starting",false),now);
+                String message = data.getString("message");
+                if (message != null && !message.isEmpty()) DashRideService.recordingStatus = message.substring(0,Math.min(240,message.length()));
+            } else STATUS.unavailable();
         }
         return true;
     }
     private final Runnable startTimeout = () -> fail("Recording request not confirmed. Check Dash settings.");
     private final Runnable previewTimeout = () -> { Consumer<Bundle> completion = preview;preview = null;if (completion != null) completion.accept(null); };
-    private void fail(String message) { if (closed) return;DashRideService.recordingStatus = message;release(); }
+    private final Runnable statusTimeout = () -> STATUS.unavailable();
+    private void fail(String message) { if (closed) return;DashRideService.recordingStatus = message;STATUS.unavailable();release(); }
     private void release() {
         if (closed) return;
         closed = true;visible = null;remote = null;preview = null;previewPending = false;main.removeCallbacksAndMessages(null);

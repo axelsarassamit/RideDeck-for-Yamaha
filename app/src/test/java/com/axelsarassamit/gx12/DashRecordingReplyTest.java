@@ -22,4 +22,12 @@ public class DashRecordingReplyTest {
     @Test public void messageLengthIsBoundedForGloveReadableStatus() {
         assertEquals(240,DashRecordingReply.status(1,true,new String(new char[500]).replace('\0','x')).length());
     }
+    @Test public void missingOrContradictoryCameraStateCannotConfirmRec() {
+        assertFalse(DashRecordingReply.cameraStateValid(null,false));
+        assertFalse(DashRecordingReply.cameraStateValid(true,null));
+        assertFalse(DashRecordingReply.cameraStateValid(true,true));
+        assertTrue(DashRecordingReply.cameraStateValid(true,false));
+        assertTrue(DashRecordingReply.cameraStateValid(false,false));
+        assertTrue(DashRecordingReply.cameraStateValid(false,true));
+    }
 }
