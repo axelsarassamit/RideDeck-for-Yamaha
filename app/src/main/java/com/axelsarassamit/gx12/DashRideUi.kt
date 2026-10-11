@@ -23,6 +23,7 @@ object DashRideUi {
         private val autoRequest = DashAutoOpenRequest()
         private val controls = DashRideControls(activity,this)
         private var resumed = true
+        private var dockStart: Runnable? = null
         private var previewGeneration = if(DashRecordingConnection.connected() && DashRideService.active()) DashRideService.generation() else -1L
         private var rear: Bitmap? = null
         private var front: Bitmap? = null
@@ -33,8 +34,20 @@ object DashRideUi {
             activity.application.registerActivityLifecycleCallbacks(this)
             controls.show()
             main.post(tick)
-            if(startFromGesture) main.postDelayed({ if(visible()) onRideToggle() },100)
+            if(startFromGesture) {
+                val gestureDeadline = SystemClock.elapsedRealtime() + 1000
+                dockStart = object: Runnable {
+                    override fun run() {
+                        if(!resumed || !controls.isShowing || activity.isFinishing || activity.isDestroyed) { cancelDockStart();return }
+                        if(visible()) onRideToggle()
+                        else if(SystemClock.elapsedRealtime() < gestureDeadline) main.postDelayed(this,50)
+                        else cancelDockStart()
+                    }
+                }
+                main.post(dockStart!!)
+            }
         }
+        private fun cancelDockStart() { dockStart?.let { main.removeCallbacks(it) };dockStart = null }
         private fun visible() = resumed && controls.isFocused && !activity.isFinishing && !activity.isDestroyed
         private fun enabled() = preferences.getBoolean("auto_open",true)
         override fun state(): DashRideControls.State {
@@ -56,6 +69,7 @@ object DashRideUi {
             }
         }
         override fun onRideToggle() {
+            cancelDockStart()
             autoRequest.cancel();main.removeCallbacks(autoAttempt)
             if(DashRideService.active()) {
                 DashRideService.pause(activity);previewGeneration = -1;clearFrames()
@@ -78,6 +92,7 @@ object DashRideUi {
             controls.refresh()
         }
         override fun onRideEnd() {
+            cancelDockStart()
             autoRequest.cancel();main.removeCallbacks(autoAttempt);DashRideService.end(activity)
             previewGeneration = -1;clearFrames();controls.refresh()
         }
@@ -87,6 +102,7 @@ object DashRideUi {
         }
         override fun onDashSettings() { DashCompanion.open(activity) }
         override fun onDismiss() {
+            cancelDockStart()
             autoRequest.cancel();main.removeCallbacksAndMessages(null);DashRecordingConnection.cancelPending()
             DashRecordingConnection.stopPreview();clearFrames()
             activity.application.unregisterActivityLifecycleCallbacks(this)
@@ -139,6 +155,7 @@ object DashRideUi {
             }
         }
         override fun onActivityPaused(a: Activity) { if(a === activity) {
+            cancelDockStart()
             resumed = false;autoRequest.cancel();main.removeCallbacks(autoAttempt);main.removeCallbacks(tick)
             DashRecordingConnection.cancelPending();DashRecordingConnection.stopPreview();DashRecordingConnection.stopStatusPolling()
             clearFrames();controls.pause()
