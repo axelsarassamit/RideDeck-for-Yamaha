@@ -843,7 +843,7 @@ public class MainActivity extends android.app.Activity {
         if (dashSessionToggle != null) { dashSessionToggle.setText(active ? "Pause" : elapsed > 0 ? "Resume" : "Start");dashSessionToggle.setContentDescription(active ? "Pause ride and Dash recording" : "Start or resume ride"); }
         DashRecordingStatus.State recording = DashRecordingConnection.STATUS.state(android.os.SystemClock.elapsedRealtime());
         String label = DashDockPresentation.label(available,recording == DashRecordingStatus.State.RECORDING,
-            recording == DashRecordingStatus.State.STARTING,active,DashRecordingConnection.connected(),
+            recording == DashRecordingStatus.State.STARTING,active && recording != DashRecordingStatus.State.IDLE,DashRecordingConnection.connected(),
             DashRecordingConnection.STATUS.fresh(android.os.SystemClock.elapsedRealtime()));
         dashRideButton.setText(label);
         dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : 0xfff4f6fa);
