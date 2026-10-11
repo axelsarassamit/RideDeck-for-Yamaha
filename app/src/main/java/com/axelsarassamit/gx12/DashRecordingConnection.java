@@ -23,16 +23,16 @@ public final class DashRecordingConnection implements ServiceConnection {
     private final Handler main = new Handler(Looper.getMainLooper());
     private BooleanSupplier visible;
     private Messenger remote;
-    private final Messenger replies;
+    private final DashReplyWindow previewWindow = new DashReplyWindow(1000);
+    private final DashReplyWindow statusWindow = new DashReplyWindow(2000);
     private Consumer<Bundle> preview;
-    private boolean bound, sent, started, accepted, closed, previewPending, statusPending;
-    private long statusSentAt;
+    private boolean bound, sent, started, accepted, closed;
+    private long nextRequest, startRequest;
     private int expectedUid;
 
     private DashRecordingConnection(Activity activity, long generation, BooleanSupplier visible) {
         app = activity.getApplicationContext(); this.generation = generation; this.visible = visible;
         tokenGate = new DashStartTokenGate(SystemClock.elapsedRealtime());
-        replies = new Messenger(new Handler(Looper.getMainLooper(), this::reply));
     }
     public static boolean permissionsGranted(Context context) {
         return context.checkSelfPermission(Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -60,42 +60,45 @@ public final class DashRecordingConnection implements ServiceConnection {
     public static void cancelPending() { if (current != null && !current.started) current.fail("Recording request cancelled before camera start."); }
     public static boolean preview(long generation, Consumer<Bundle> completion) {
         DashRecordingConnection c = current;
-        if (c == null || c.closed || !c.accepted || c.remote == null || c.previewPending || !c.active() || c.generation != generation) return false;
-        c.preview = completion;c.previewPending = true;
+        if (c == null || c.closed || !c.accepted || c.remote == null || c.previewWindow.pending() || !c.active() || c.generation != generation) return false;
+        c.preview = completion;long id = ++c.nextRequest;c.previewWindow.begin(id,SystemClock.elapsedRealtime());
         try {
-            c.send(2);
+            c.send(2,id);
             c.main.postDelayed(c.previewTimeout, 1000);
             return true;
         } catch (RemoteException error) { c.fail("Dash connection lost. Check recording in Dash."); return false; }
     }
-    public static void stopPreview() { if (current != null) { current.main.removeCallbacks(current.previewTimeout);current.preview = null; } }
+    public static void stopPreview() { if (current != null) { current.main.removeCallbacks(current.previewTimeout);current.previewWindow.cancel();current.preview = null; } }
     public static void refreshStatus() {
         DashRecordingConnection c = current;
         if (c == null || c.closed || !c.accepted || c.remote == null || !c.active()) return;
-        if (c.statusPending) return;
-        c.statusPending = true;c.statusSentAt = SystemClock.elapsedRealtime();
-        try { c.send(3);c.main.postDelayed(c.statusTimeout,2000); }
+        if (c.statusWindow.pending()) return;
+        long id = ++c.nextRequest;c.statusWindow.begin(id,SystemClock.elapsedRealtime());
+        try { c.send(3,id);c.main.postDelayed(c.statusTimeout,2000); }
         catch (RemoteException error) { c.fail("Dash connection lost. Recording status unavailable."); }
     }
-    public static void stopStatusPolling() { if (current != null) current.main.removeCallbacks(current.statusTimeout); }
+    public static void stopStatusPolling() { if (current != null) { current.main.removeCallbacks(current.statusTimeout);current.statusWindow.cancel(); } }
+    public static boolean connected() { return current != null && current.accepted && current.active(); }
     private boolean active() { return current == this && !closed && DashRideService.active() && DashRideService.generation() == generation; }
     @Override public void onServiceConnected(ComponentName name, IBinder binder) {
         if (!active() || visible == null || !visible.getAsBoolean() || !SERVICE.equals(name.getClassName()) || !DashCompanion.installed(app) || !permissionsGranted(app)) {
             fail("Recording request cancelled. Start again from RideDeck."); return;
         }
         remote = new Messenger(binder);
-        try { send(1);sent = true; }
+        try { startRequest = ++nextRequest;send(1,startRequest);sent = true; }
         catch (RemoteException error) { fail("Recording request could not reach Dash."); }
     }
-    private void send(int what) throws RemoteException {
+    private void send(int what, long requestId) throws RemoteException {
         Message request = Message.obtain(null, what);Bundle data = new Bundle();data.putInt("protocolVersion", 1);
-        request.setData(data);request.replyTo = replies;remote.send(request);
+        request.setData(data);
+        request.replyTo = new Messenger(new Handler(Looper.getMainLooper(), reply -> reply(reply,what,requestId)));
+        remote.send(request);
     }
-    private boolean reply(Message reply) {
-        if (!active() || reply.sendingUid != expectedUid) return true;
+    private boolean reply(Message reply, int requestedWhat, long requestId) {
+        if (!active() || reply.what != requestedWhat || reply.sendingUid != expectedUid) return true;
         Bundle data = reply.getData();
         Boolean allowed = data.containsKey("accepted") ? data.getBoolean("accepted") : null;
-        if (reply.what == 1 && sent && !accepted) {
+        if (reply.what == 1 && requestId == startRequest && sent && !accepted) {
             if (!DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) || !Boolean.TRUE.equals(allowed)) {
                 fail(DashRecordingReply.status(data.getInt("protocolVersion"), allowed, data.getString("message")));return true;
             }
@@ -122,31 +125,43 @@ public final class DashRecordingConnection implements ServiceConnection {
             } catch (PendingIntent.CanceledException | RuntimeException error) {
                 fail("Dash recording authorization expired or failed. Start again from RideDeck.");
             }
-        } else if (reply.what == 2 && previewPending) {
-            main.removeCallbacks(previewTimeout);Consumer<Bundle> completion = preview;preview = null;previewPending = false;
-            if (completion != null) completion.accept(DashRecordingReply.valid(data.getInt("protocolVersion"), allowed) && Boolean.TRUE.equals(allowed) ? data : null);
-        } else if (reply.what == 3 && statusPending) {
-            main.removeCallbacks(statusTimeout);statusPending = false;
+        } else if (reply.what == 2 && previewWindow.id() == requestId) {
+            main.removeCallbacks(previewTimeout);Consumer<Bundle> completion = preview;preview = null;
             long now = SystemClock.elapsedRealtime();
-            if (now-statusSentAt < 2500 && DashRecordingReply.valid(data.getInt("protocolVersion"),allowed)
-                && Boolean.TRUE.equals(allowed) && DashRecordingReply.cameraStateValid(
-                    data.containsKey("recording") ? data.getBoolean("recording") : null,
-                    data.containsKey("starting") ? data.getBoolean("starting") : null)) {
-                STATUS.confirmed(data.getBoolean("recording"),data.getBoolean("starting",false),now);
-                String message = data.getString("message");
-                if (message != null && !message.isEmpty()) DashRideService.recordingStatus = DashRecordingReply.displayMessage(message);
-            } else STATUS.unavailable();
+            boolean valid = previewWindow.accept(requestId,now) && cameraReplyValid(data,allowed);
+            if (valid) confirmCamera(data,requestId,now);else STATUS.unavailableSample(requestId);
+            if (completion != null) completion.accept(valid ? data : null);
+        } else if (reply.what == 3 && statusWindow.id() == requestId) {
+            main.removeCallbacks(statusTimeout);long now = SystemClock.elapsedRealtime();
+            if (statusWindow.accept(requestId,now) && cameraReplyValid(data,allowed)) confirmCamera(data,requestId,now);
+            else STATUS.unavailableSample(requestId);
         }
         return true;
     }
+    private boolean cameraReplyValid(Bundle data, Boolean allowed) {
+        return DashCompanion.installed(app) && DashRecordingReply.valid(data.getInt("protocolVersion"),allowed)
+            && Boolean.TRUE.equals(allowed) && DashRecordingReply.cameraStateValid(
+                data.containsKey("recording") ? data.getBoolean("recording") : null,
+                data.containsKey("starting") ? data.getBoolean("starting") : null);
+    }
+    private void confirmCamera(Bundle data, long requestId, long now) {
+        if (STATUS.confirmedSample(requestId,data.getBoolean("recording"),data.getBoolean("starting"),now)) {
+            String message = data.getString("message");
+            if (message != null && !message.isEmpty()) DashRideService.recordingStatus = DashRecordingReply.displayMessage(message);
+        }
+    }
     private final Runnable startTimeout = () -> fail("Recording request not confirmed. Check Dash settings.");
-    private final Runnable previewTimeout = () -> { Consumer<Bundle> completion = preview;preview = null;if (completion != null) completion.accept(null); };
-    private final Runnable statusTimeout = () -> STATUS.unavailable();
+    private final Runnable previewTimeout = () -> {
+        long id = previewWindow.cancel();Consumer<Bundle> completion = preview;preview = null;
+        if (id != 0) STATUS.unavailableSample(id);
+        if (completion != null) completion.accept(null);
+    };
+    private final Runnable statusTimeout = () -> { long id = statusWindow.cancel();if (id != 0) STATUS.unavailableSample(id); };
     private void fail(String message) { if (closed) return;DashRideService.recordingStatus = message;STATUS.unavailable();release(); }
     private void release() {
         if (closed) return;
         tokenGate.cancel();
-        closed = true;visible = null;remote = null;preview = null;previewPending = false;main.removeCallbacksAndMessages(null);
+        closed = true;visible = null;remote = null;preview = null;previewWindow.cancel();statusWindow.cancel();main.removeCallbacksAndMessages(null);
         if (bound) { bound = false;try { app.unbindService(this); } catch (IllegalArgumentException ignored) { } }
         if (current == this) current = null;
     }

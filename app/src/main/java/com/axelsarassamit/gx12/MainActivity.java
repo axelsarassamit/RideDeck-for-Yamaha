@@ -75,6 +75,8 @@ public class MainActivity extends android.app.Activity {
     private Button previousButton;
     private Button nextButton;
     private Button dashRideButton;
+    private TextView dashSessionClock;
+    private TextView dashSessionToggle;
     private final Runnable dashStatusRefresh = new Runnable() {
         @Override public void run() {
             if (!activityResumed) return;
@@ -789,8 +791,8 @@ public class MainActivity extends android.app.Activity {
         String[] labels = new String[]{"Yamaha", "Camera", "Voice", "Ride"};
         if (controlsRight) java.util.Collections.reverse(java.util.Arrays.asList(labels));
         for (String label : labels) {
+            if (label.equals("Ride")) { addDashRideDock(dock,compact,controlsRight);continue; }
             Button action = rideAction(label, false);
-            if (label.equals("Ride")) { dashRideButton = action; action.setTextSize(20); refreshDashRideControl(); }
             if (label.equals("Yamaha")) {
                 action.setContentDescription("Yamaha bike connection and screen options");
                 action.setOnLongClickListener(v -> { finishAndRemoveTask(); return true; });
@@ -800,7 +802,6 @@ public class MainActivity extends android.app.Activity {
                     case "Yamaha": showBikeScreenMenu(); break;
                     case "Camera": showQuickCamera(); break;
                     case "Voice": startGoogleVoice(); break;
-                    case "Ride": DashRideUi.show(this); break;
                 }
             }); dock.addView(action, rideWeight(compact ? 56 : 64));
         }
@@ -818,16 +819,34 @@ public class MainActivity extends android.app.Activity {
         refreshMediaSession(); refreshWhatsAppPreview();
     }
 
+    private void addDashRideDock(LinearLayout dock, boolean compact, boolean reversed) {
+        dashSessionClock = new TextView(this);dashSessionToggle = new TextView(this);
+        LinearLayout rideTile = DashDockControls.rideTile(this,dashSessionClock,dashSessionToggle,compact);
+        dashSessionToggle.setOnClickListener(v -> { DashRideUi.toggle(this);refreshDashRideControl(); });
+        dashSessionToggle.setOnLongClickListener(v -> {
+            new android.app.AlertDialog.Builder(this).setTitle("End ride?")
+                .setMessage("Stop the ride timer and Dash recording session?")
+                .setNegativeButton("Cancel",null).setPositiveButton("End ride",(d,w) -> { DashRideService.end(this);refreshDashRideControl(); }).show();return true;
+        });
+        dashRideButton = DashDockControls.dashButton(this);dashRideButton.setOnClickListener(v -> DashRideUi.show(this));
+        if (reversed) { dock.addView(dashRideButton,DashDockControls.tileParams(this,compact));dock.addView(rideTile,DashDockControls.tileParams(this,compact)); }
+        else { dock.addView(rideTile,DashDockControls.tileParams(this,compact));dock.addView(dashRideButton,DashDockControls.tileParams(this,compact)); }
+        refreshDashRideControl();
+    }
+
     private void refreshDashRideControl() {
         if (dashRideButton == null) return;
         boolean available = DashCompanion.installed(this);
+        dashRideButton.setVisibility(available ? View.VISIBLE : View.GONE);
+        long elapsed = DashRideService.elapsed();boolean active = DashRideService.active();
+        if (dashSessionClock != null) dashSessionClock.setText(DashDockControls.elapsedLabel(elapsed));
+        if (dashSessionToggle != null) { dashSessionToggle.setText(active ? "Pause" : elapsed > 0 ? "Resume" : "Start");dashSessionToggle.setContentDescription(active ? "Pause ride and Dash recording" : "Start or resume ride"); }
         DashRecordingStatus.State recording = DashRecordingConnection.STATUS.state(android.os.SystemClock.elapsedRealtime());
-        String label = !available ? "Ride" : recording == DashRecordingStatus.State.RECORDING ? "● REC"
-            : recording == DashRecordingStatus.State.STARTING ? "Dash\nStarting"
-            : recording == DashRecordingStatus.State.STOPPED ? "Dash\nStopped"
-            : recording == DashRecordingStatus.State.UNAVAILABLE ? "Dash\nUnknown" : "Dash";
+        String label = DashDockPresentation.label(available,recording == DashRecordingStatus.State.RECORDING,
+            recording == DashRecordingStatus.State.STARTING,active,DashRecordingConnection.connected(),
+            DashRecordingConnection.STATUS.fresh(android.os.SystemClock.elapsedRealtime()));
         dashRideButton.setText(label);
-        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : RideStyle.TEXT);
+        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : 0xfff4f6fa);
         dashRideButton.setContentDescription(available ? "RideDeck Dash. " + DashRecordingConnection.STATUS.label(android.os.SystemClock.elapsedRealtime()) + ". Open ride controls." : "Ride session");
     }
 
