@@ -96,7 +96,8 @@ object NativeNavigation {
         acquisitionStatus = "Waiting for a GPS fix. Move outdoors if needed"
         MapLibre.getInstance(c)
         speaker = TextToSpeech(c) { result ->
-            speechReady = result == TextToSpeech.SUCCESS && (speaker?.setLanguage(VoiceLanguage.locale(c)) ?: TextToSpeech.LANG_NOT_SUPPORTED) >= 0
+            speechReady = result == TextToSpeech.SUCCESS && speaker?.let(NavigationVoice::configure) == true
+            BikeDiagnostics.record(c, "Navigation voice ready=$speechReady locale=${speaker?.voice?.locale?.toLanguageTag().orEmpty()}")
             if (!speechReady) BikeDiagnostics.record(c, "Navigation voice unavailable; install English speech data in Android speech settings")
         }
         speaker?.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -293,7 +294,9 @@ object NativeNavigation {
         guidance = if (remaining < 25 && bestIndex >= r.points.size - 4) "Arriving at destination" else "${distance(meters)}  ${next?.text ?: "Continue"}"
         val speechId = "${routeGeneration}:${next?.start}"
         if (meters < 200 && lastSpoken != speechId && speechReady && context?.let { RidePreferences.prefs(it).getBoolean("navigation_voice", true) } == true) {
-            lastSpoken = speechId; speaker?.speak(guidance, TextToSpeech.QUEUE_FLUSH, null, speechId)
+            val speech = NavigationSpeech.prompt(maneuver,meters,next?.road.orEmpty(),remaining < 25 && bestIndex >= r.points.size - 4)
+            if (speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) == true &&
+                speaker?.speak(speech, TextToSpeech.QUEUE_FLUSH, null, speechId) == TextToSpeech.SUCCESS) lastSpoken = speechId
         }
     }
     private fun refreshSpeedLimits(r: NavigationRoute) {
@@ -384,6 +387,9 @@ object NativeNavigation {
         val style=englishStyle ?: return
         val frameNight=styleDark == true
         val renderHeight = if (phone) phoneHeight else height
+        val bikeLayout=BikeNavigationLayout(height)
+        val mapWidth=if(phone) 480 else bikeLayout.mapWidth
+        val mapHeight=if(phone) renderHeight else bikeLayout.mapHeight
         if (phone) { phoneInFlight = true; phoneRenderStarted = SystemClock.elapsedRealtime() }
         else { inFlight = true; renderStarted = SystemClock.elapsedRealtime() }
         try {
@@ -395,7 +401,7 @@ object NativeNavigation {
                 .bearing(heading)
             if (activeRoute != null) cameraBuilder.tilt(55.0)
             val camera = cameraBuilder.build()
-            val renderer = (if (phone) phoneSnapshotter else snapshotter) ?: MapSnapshotter(c, MapSnapshotter.Options(480, renderHeight).withPixelRatio(1f)
+            val renderer = (if (phone) phoneSnapshotter else snapshotter) ?: MapSnapshotter(c, MapSnapshotter.Options(mapWidth, mapHeight).withPixelRatio(1f)
                 // RideDeck supplies visible MapTiler/OSM credits on the phone and each bike frame.
                 .withLogo(false).withAttribution(false)
                 .withStyleBuilder(Style.Builder().fromJson(style))
@@ -407,7 +413,7 @@ object NativeNavigation {
                 val bitmap = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(bitmap)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-                canvas.save(); canvas.clipRect(0, 34, 480, if(phone) renderHeight else renderHeight - 20)
+                canvas.save(); canvas.clipRect(0, if(phone) 34 else 0, mapWidth, mapHeight)
                 activeRoute?.let { r ->
                     val path = Path()
                     r.points.drop((progressIndex-1).coerceAtLeast(0)).forEachIndexed { i, point ->
@@ -415,30 +421,36 @@ object NativeNavigation {
                         if (i==0) path.moveTo(pixel.x,pixel.y) else path.lineTo(pixel.x,pixel.y)
                     }
                     paint.color = Color.WHITE; paint.style=Paint.Style.STROKE; paint.strokeWidth=8f; canvas.drawPath(path,paint)
-                    paint.color=if(frameNight) 0xff48a4ff.toInt() else 0xff087eff.toInt(); paint.strokeWidth=5f; canvas.drawPath(path,paint)
+                    paint.color=if(phone) { if(frameNight) 0xff48a4ff.toInt() else 0xff087eff.toInt() } else 0xffdb35e7.toInt()
+                    paint.strokeWidth=5f; canvas.drawPath(path,paint)
                 }
                 val pixel = snapshot.pixelForLatLng(LatLng(fix.latitude,fix.longitude))
                 val riderHeading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else heading
                 YamahaPositionMarker.draw(c,canvas,pixel.x,pixel.y,(riderHeading-camera.bearing).toFloat())
                 canvas.restore()
-                banner(canvas, paint, guidance, 0, 34, 19f,frameNight)
-                val trip=phoneTripSummary()
-                if(!phone && trip.isNotBlank()) banner(canvas,paint,trip,renderHeight-44,renderHeight-20,18f,frameNight)
-                if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
-                // The phone has a single tappable attribution row. Bike frames carry their own credits.
-                if(!phone) {
-                paint.color=if(frameNight) 0xff14251c.toInt() else Color.WHITE; canvas.drawRect(0f,(renderHeight-20).toFloat(),480f,renderHeight.toFloat(),paint)
-                val logo=c.getDrawable(R.drawable.maptiler_logo)!!
-                logo.setBounds(3,renderHeight-20,70,renderHeight); logo.draw(canvas)
-                paint.color=if(frameNight) Color.WHITE else Color.BLACK; paint.textSize=11f; paint.typeface=Typeface.DEFAULT
-                canvas.drawText("© MapTiler  © OpenStreetMap contributors",83f,renderHeight-6f,paint)
+                if (phone) {
+                    banner(canvas, paint, guidance, 0, 34, 19f,frameNight)
+                    if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
+                    phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false
+                } else {
+                    val output=Bitmap.createBitmap(480,renderHeight,Bitmap.Config.ARGB_8888)
+                    BikeNavigationRenderer.draw(Canvas(output),bitmap,bikeLayout,bikeState(),frameNight)
+                    mapBitmap=output; mapJpeg=jpeg(output); frameAt=SystemClock.elapsedRealtime(); inFlight=false
                 }
-                if (phone) { phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false }
-                else { mapBitmap=bitmap; mapJpeg=jpeg(bitmap); frameAt=SystemClock.elapsedRealtime(); inFlight=false }
             }) { _ ->
                 if ((if (phone) phoneSnapshotter else snapshotter) === renderer) { if (phone) { phoneInFlight=false; phoneSnapshotter=null } else { inFlight=false; snapshotter=null }; status="Map unavailable. Check provider key and internet connection"; BikeDiagnostics.record(c,"Native map render failed") }
             }
         } catch (e: Exception) { if (phone) { phoneInFlight=false; phoneSnapshotter=null } else { inFlight=false; snapshotter=null }; status="Map rendering unavailable"; BikeDiagnostics.record(c,"Native map render exception=${e.javaClass.simpleName}") }
+    }
+    private fun bikeState(): BikeNavigationState {
+        val nav=dashRoute
+        val fix=location
+        val fresh=fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L
+        val next=nav?.turns?.getOrNull(nav.activeIndex)
+        val currentRoad=route?.turns?.lastOrNull { it.start <= progressIndex && it.road.isNotBlank() }?.road.orEmpty()
+        val arrival=cockpitTrip()?.arrivalMillis?.let { java.text.SimpleDateFormat("HH:mm",java.util.Locale.US).format(java.util.Date(it)) }
+        val notice=when { !fresh -> "Waiting for GPS"; routeBusy || offRouteSamples > 0 -> "Recalculating"; route == null -> "Choose destination"; else -> "" }
+        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice)
     }
     private fun banner(canvas: Canvas, paint: Paint, text: String, top: Int, bottom: Int, size: Float, dark: Boolean = isNightMap()) {
         paint.style=Paint.Style.FILL; paint.color=if(dark) 0xff14251c.toInt() else 0xfff4f6fa.toInt(); canvas.drawRect(0f,top.toFloat(),480f,bottom.toFloat(),paint)

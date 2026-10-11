@@ -37,15 +37,25 @@ object NavigationUi {
                 }
                 2 -> AlertDialog.Builder(activity).setTitle("Bike display")
                     .setMessage("Select Default view, Turn-by-turn or Turn list from Navigation > Change view on the bike. RideDeck sends map images and native turn guidance. Music controls are available in the Phone panel; the bike's built-in player uses its Yamaha connection.")
+                    .setNeutralButton("Preview bike map") { _,_ -> bikePreview(activity) }
                     .setPositiveButton("Close",null).show()
                 3 -> permission(activity,true)
-                4 -> {
-                    val prefs=RidePreferences.prefs(activity)
-                    AlertDialog.Builder(activity).setTitle("Voice guidance").setSingleChoiceItems(arrayOf("On","Off"),if(prefs.getBoolean("navigation_voice",true))0 else 1) { d,i -> prefs.edit().putBoolean("navigation_voice",i==0).apply(); d.dismiss() }.setNegativeButton("Close",null).show()
-                }
+                4 -> voiceGuidance(activity)
                 5 -> activity.startService(Intent(activity,NativeNavigationService::class.java).setAction("STOP"))
             }
         }.setNegativeButton("Close",null).show()
+    }
+    private fun bikePreview(activity: Activity) {
+        val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Bike map preview" }
+        val dialog=AlertDialog.Builder(activity).setTitle("Bike map preview").setView(image).setPositiveButton("Close",null).create()
+        val refresh=object: Runnable { override fun run() {
+            if(!dialog.isShowing) return
+            NativeNavigation.frame("map")?.let { image.setImageBitmap(BitmapFactory.decodeByteArray(it,0,it.size)) }
+            main.postDelayed(this,750)
+        } }
+        dialog.setOnDismissListener { main.removeCallbacks(refresh) }
+        dialog.setOnShowListener { main.post(refresh) }
+        dialog.show()
     }
     private fun permission(activity: Activity, notifyGranted: Boolean = false): Boolean {
         if(activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED) {
@@ -133,16 +143,18 @@ object NavigationUi {
                 when (choice) {
                     0 -> search(activity, null)
                     1 -> NativeNavigation.stopRoute()
-                    2 -> {
-                        val prefs = RidePreferences.prefs(activity)
-                        AlertDialog.Builder(activity).setTitle("Voice guidance")
-                            .setSingleChoiceItems(arrayOf("On", "Off"), if (prefs.getBoolean("navigation_voice", true)) 0 else 1) { dialog, selected ->
-                                prefs.edit().putBoolean("navigation_voice", selected == 0).apply()
-                                dialog.dismiss()
-                            }.setNegativeButton("Close", null).show()
-                    }
+                    2 -> voiceGuidance(activity)
                 }
             }.setNegativeButton("Close", null).show()
+    }
+    private fun voiceGuidance(activity: Activity) {
+        val prefs=RidePreferences.prefs(activity)
+        val dialog=AlertDialog.Builder(activity).setTitle("Navigation voice: English")
+            .setSingleChoiceItems(arrayOf("On","Off"),if(prefs.getBoolean("navigation_voice",true)) 0 else 1) { _,index ->
+                prefs.edit().putBoolean("navigation_voice",index == 0).apply()
+            }.setNeutralButton("Test English voice",null).setNegativeButton("Close",null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { NavigationVoice.sample(activity) } }
+        dialog.show()
     }
     @JvmStatic fun panel(activity: Activity): View {
         val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff151c17.toInt()) }

@@ -167,6 +167,7 @@ class YamahaCastService : Service() {
             status = "Bike connected. Starting selected map on the bike display..."
             deadline = SystemClock.elapsedRealtime() + 30000
             NativeNavigation.resize(size.width, size.height)
+            link.write(NativeDashNavigation.speedLimit(null)) // Clear the CCU's previous app/view sign before images.
             var activeList: List<BikePlace> = emptyList()
             receiver = Thread({
                 try {
@@ -246,6 +247,7 @@ class YamahaCastService : Service() {
                         when (action) {
                             DashContentCommand.Action.START -> {
                                 imageRequested = true
+                                link.write(NativeDashNavigation.speedLimit(null))
                                 deadline = SystemClock.elapsedRealtime() + 30000
                                 link.write(NaviLiteCodec.build(6, 2, 0, byteArrayOf(if (NativeNavigation.dashRoute != null) 1 else 0, 0)))
                                 link.write(NaviLiteCodec.build(6, 12, 0, byteArrayOf(1, 0)))
@@ -282,7 +284,7 @@ class YamahaCastService : Service() {
                     diagnostic("Navigation sun mode=${if(night) "night" else "day"}")
                 }
                 if (size.height == 234 && (refreshTurnList.get() || currentTime-lastNativeUpdate >= 1000)) {
-                    link.write(NativeDashNavigation.speedLimit(NativeNavigation.currentSpeedLimitKph()))
+                    link.write(NativeDashNavigation.speedLimit(BikeNavigationLayout.nativeSpeedLimit(imageRequested,NativeNavigation.currentSpeedLimitKph())))
                     val nav = NativeNavigation.dashRoute
                     val revisionChanged = !nativeStateSent || lastRouteRevision != nav?.revision
                     val forceList = refreshTurnList.getAndSet(false)

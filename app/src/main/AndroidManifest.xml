@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <queries>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <package android:name="com.axelsarassamit.ridedeck.dash" />
         <provider android:authorities="com.axelsarassamit.ridedeck.dash.bridge" />
         <package android:name="com.google.android.apps.youtube.music" />
