@@ -20,7 +20,16 @@ public class DashRecordingReplyTest {
         assertTrue(DashRecordingReply.frameAllowed(new byte[100000]));assertFalse(DashRecordingReply.frameAllowed(new byte[100001]));
     }
     @Test public void messageLengthIsBoundedForGloveReadableStatus() {
-        assertEquals(240,DashRecordingReply.status(1,true,new String(new char[500]).replace('\0','x')).length());
+        assertEquals("Recording unavailable. Check Dash settings and try Start again.",
+            DashRecordingReply.status(1,true,new String(new char[500]).replace('\0','x')));
+    }
+    @Test public void androidFailureDetailsDoNotCoverThePreview() {
+        assertEquals("Android blocked recording. Keep RideDeck visible and tap Start again.",
+            DashRecordingReply.displayMessage("java.lang.SecurityException: Starting FGS with type microphone uid=10345 targetSDK=35 requires permissions"));
+    }
+    @Test public void shortRiderMessagesStayReadableAndMissingStatusIsClear() {
+        assertEquals("Starting cameras",DashRecordingReply.displayMessage("  Starting\n cameras  "));
+        assertEquals("No live image. Check Dash settings.",DashRecordingReply.displayMessage(null));
     }
     @Test public void missingOrContradictoryCameraStateCannotConfirmRec() {
         assertFalse(DashRecordingReply.cameraStateValid(null,false));

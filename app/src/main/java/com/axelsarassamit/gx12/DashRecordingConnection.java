@@ -1,6 +1,7 @@
 package com.axelsarassamit.gx12;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.app.PendingIntent;
 import android.Manifest;
 import android.content.ComponentName;
@@ -108,7 +109,14 @@ public final class DashRecordingConnection implements ServiceConnection {
                 }
                 // The different, visible host sends Dash's immutable one-use foreground-service token.
                 // Never supply a fill-in Intent or replay this from a heartbeat/background callback.
-                token.send();started = true;accepted = true;visible = null;
+                if (Build.VERSION.SDK_INT >= 34) {
+                    ActivityOptions options = ActivityOptions.makeBasic();
+                    options.setPendingIntentBackgroundActivityStartMode(Build.VERSION.SDK_INT >= 36
+                        ? ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
+                        : ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+                    token.send(app,0,null,null,null,null,options.toBundle());
+                } else token.send();
+                started = true;accepted = true;visible = null;
                 main.removeCallbacks(startTimeout);
                 DashRideService.recordingStatus = "Recording requested. Waiting for cameras.";
             } catch (PendingIntent.CanceledException | RuntimeException error) {
@@ -126,7 +134,7 @@ public final class DashRecordingConnection implements ServiceConnection {
                     data.containsKey("starting") ? data.getBoolean("starting") : null)) {
                 STATUS.confirmed(data.getBoolean("recording"),data.getBoolean("starting",false),now);
                 String message = data.getString("message");
-                if (message != null && !message.isEmpty()) DashRideService.recordingStatus = message.substring(0,Math.min(240,message.length()));
+                if (message != null && !message.isEmpty()) DashRideService.recordingStatus = DashRecordingReply.displayMessage(message);
             } else STATUS.unavailable();
         }
         return true;

@@ -94,7 +94,7 @@ object DashRideUi {
                     frontAt=if(data!=null && frame(front,data.getByteArray("frontJpeg")))received else { front.setImageDrawable(null);0 }
                     previewState.text=if(data?.getBoolean("recording")==true) {
                         if(rearAt>0 || frontAt>0)"Recording · check the camera angles" else "Recording · waiting for live images"
-                    } else data?.getString("message") ?: "No live image. Check Dash settings."
+                    } else DashRecordingReply.displayMessage(data?.getString("message"))
                 }
                 main.postDelayed(this,500)
             }
