@@ -11,6 +11,7 @@ class DashRideService : Service() {
     companion object {
         private val session=DashRideSessionState()
         @JvmField @Volatile var bridgeStatus="Start a ride to enable Dash in the background"
+        @JvmField @Volatile var recordingStatus=""
         @JvmStatic fun active()=session.active()
         @JvmStatic fun generation()=session.generation()
         @JvmStatic fun elapsed()=session.elapsed(SystemClock.elapsedRealtime())
@@ -18,8 +19,8 @@ class DashRideService : Service() {
             try { c.startForegroundService(Intent(c,DashRideService::class.java).setAction("START")) }
             catch(_: RuntimeException) { bridgeStatus="Open RideDeck and try Start ride again" }
         }
-        @JvmStatic fun pause(c: Context) { session.pause(SystemClock.elapsedRealtime());c.stopService(Intent(c,DashRideService::class.java)) }
-        @JvmStatic fun end(c: Context) { session.end();c.stopService(Intent(c,DashRideService::class.java)) }
+        @JvmStatic fun pause(c: Context) { session.pause(SystemClock.elapsedRealtime());DashRecordingConnection.close();recordingStatus="";c.stopService(Intent(c,DashRideService::class.java)) }
+        @JvmStatic fun end(c: Context) { session.end();DashRecordingConnection.close();recordingStatus="";c.stopService(Intent(c,DashRideService::class.java)) }
     }
     private val main=Handler(Looper.getMainLooper())
     @Volatile private var live=false
@@ -50,6 +51,7 @@ class DashRideService : Service() {
             stopSelf();return START_NOT_STICKY
         }
         session.start(SystemClock.elapsedRealtime());live=true
+        recordingStatus=""
         bridgeStatus="Connecting to RideDeck Dash"
         BikeDiagnostics.record(this,"Dash ride started explicit=true")
         main.post(heartbeat)
@@ -74,6 +76,7 @@ class DashRideService : Service() {
     override fun onDestroy() {
         live=false;main.removeCallbacksAndMessages(null)
         session.pause(SystemClock.elapsedRealtime())
+        DashRecordingConnection.close();recordingStatus=""
         DashCompanion.stop(this)
         wake?.close();wake=null
         bridgeStatus=if(elapsed()>0) "Ride paused. Dash background session stopped" else "Ride ended. Dash background session stopped"
