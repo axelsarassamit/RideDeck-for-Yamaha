@@ -72,7 +72,7 @@ class YamahaCastService : Service() {
             val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             val notice = Notification.Builder(this, "yamaha_cast")
                 .setSmallIcon(android.R.drawable.ic_menu_compass).setContentTitle("RideDeck bike-only navigation")
-                .setContentText("Yamaha dash â€¢ tap Stop to end sharing")
+                .setContentText("Yamaha dash \u2022 tap Stop to end sharing")
                 .setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
             if (Build.VERSION.SDK_INT >= 29) startForeground(22, notice,
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
@@ -84,7 +84,7 @@ class YamahaCastService : Service() {
             RidePreferences.prefs(this).edit().putString("dash_panel","map").apply()
             diagnostic("Session started automatic=$automatic map=${RidePreferences.selectedMap(this)} density=${RidePreferences.bikeMapDensity(this)} Android=${Build.VERSION.SDK_INT}")
             BikeDiagnostics.snapshot(this)
-            status = "Connecting to the selected Yamaha dashâ€¦"
+            status = "Connecting to the selected Yamaha dash\u2026"
             deadline = SystemClock.elapsedRealtime() + 20000
             watchdog.scheduleWithFixedDelay({
                 val timedOutSocket=socket
@@ -344,7 +344,7 @@ class YamahaCastService : Service() {
                 }
                 val now = SystemClock.elapsedRealtime()
                 if (now - started >= 1000) {
-                    status = "Casting â€¢ ${size.width} Ã— ${size.height} â€¢ $count frames/s"
+                    status = "Casting \u2022 ${size.width} \u00D7 ${size.height} \u2022 $count frames/s"
                     count = 0; started = now
                 }
                 Thread.sleep(100) // At most 10 frames/s, with dash acknowledgement for every frame.

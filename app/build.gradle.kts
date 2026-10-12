@@ -21,7 +21,7 @@ android {
         buildConfigField("String", "GRAPHHOPPER_KEY", providerKey("RIDEDECK_GRAPHHOPPER_KEY"))
         minSdk = 26
         targetSdk = 35
-        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.33").removePrefix("v")
+        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.34").removePrefix("v")
         val parts = releaseVersion.split(".")
         require(parts.size >= 2 && parts.take(3).all { it.all(Char::isDigit) }) {
             "GX12_VERSION_NAME must use numeric semver such as 0.1.0"
@@ -75,3 +75,16 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk:13.4.1")
     testImplementation("junit:junit:4.13.2")
 }
+
+tasks.withType<JavaCompile>().configureEach { options.encoding = "UTF-8" }
+val checkTextEncoding by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    val python = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+    commandLine(python, "scripts/check_text_encoding.py")
+}
+val testTextEncoding by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    val python = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+    commandLine(python, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_text_encoding.py")
+}
+tasks.named("preBuild") { dependsOn(checkTextEncoding, testTextEncoding) }

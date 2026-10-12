@@ -15,6 +15,8 @@ jobs:
           distribution: temurin
           java-version: "17"
       - run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+      - name: Check compiled app text encoding
+        run: python3 scripts/check_text_encoding.py --apk app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: debug-build

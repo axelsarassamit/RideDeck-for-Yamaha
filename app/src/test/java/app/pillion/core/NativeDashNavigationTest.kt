@@ -70,7 +70,7 @@ class NativeDashNavigationTest {
         assertTrue(textLength <= 112)
         val text = payload.copyOfRange(9+unitLength,payload.size)
         assertEquals(textLength,text.size)
-        assertFalse(String(text,Charsets.UTF_8).contains('\uFFFD'))
+        assertFalse(String(text,Charsets.UTF_8).contains(0xfffd.toChar()))
         assertEquals(1.2f,ByteBuffer.wrap(payload,5,4).order(ByteOrder.LITTLE_ENDIAN).float,0.001f)
     }
     @Test fun contentSelectorDistinguishesNativeListFromImages() {
