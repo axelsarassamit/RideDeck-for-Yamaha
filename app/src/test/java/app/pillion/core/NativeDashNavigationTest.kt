@@ -7,6 +7,15 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class NativeDashNavigationTest {
+    @Test fun zoomFeedbackUsesRelativeBoundsAndUtf8Label() {
+        val frame=NativeDashNavigation.zoomLevel(17)
+        assertEquals(14,NaviLiteCodec.serviceTypeAt(frame,0))
+        assertEquals(6,frame[5].toInt());assertEquals(1,frame[11].toInt())
+        assertArrayEquals(hex("0e1107015a6f6f6d203137"),NaviLiteCodec.payloadAt(frame,0))
+        assertEquals(0,NaviLiteCodec.payloadAt(NativeDashNavigation.zoomLevel(3),0)[0].toInt())
+        assertEquals(17,NaviLiteCodec.payloadAt(NativeDashNavigation.zoomLevel(20),0)[0].toInt())
+        assertEquals(16,NaviLiteCodec.payloadAt(NativeDashNavigation.zoomLevel(19),0)[0].toInt())
+    }
     @Test fun dayNightMatchesInstalledDayOneNightTwoValuePacker() {
         val day=NativeDashNavigation.dayNight(false); val night=NativeDashNavigation.dayNight(true)
         assertEquals(31,NaviLiteCodec.serviceTypeAt(day,0)); assertEquals(6,day[5].toInt()); assertEquals(0,day[11].toInt())

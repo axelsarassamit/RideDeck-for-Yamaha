@@ -60,6 +60,13 @@ object NativeDashNavigation {
         return NaviLiteCodec.build(6,1,1,payload)
     }
     fun imageStopped(): ByteArray = NaviLiteCodec.build(6,20,0,byteArrayOf())
+    fun zoomLevel(level:Int,minimum:Int=MapZoom.MIN_LEVEL,maximum:Int=MapZoom.MAX_LEVEL):ByteArray {
+        require(minimum>=0 && maximum<=127 && level in minimum..maximum)
+        val label=utf8("Zoom $level",144)
+        // Reference packer: current-min, max-min, label length, Boolean, UTF-8 label.
+        return NaviLiteCodec.build(6,14,1,byteArrayOf((level-minimum).toByte(),
+            (maximum-minimum).toByte(),label.size.toByte(),1)+label)
+    }
     fun dayNight(dark: Boolean): ByteArray = NaviLiteCodec.build(6,31,0,byteArrayOf(if(dark) 2 else 1,0))
     fun speedLimit(kph: Int?): ByteArray {
         require(kph == null || kph in 1..254)

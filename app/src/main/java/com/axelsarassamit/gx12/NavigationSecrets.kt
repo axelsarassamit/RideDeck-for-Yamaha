@@ -19,8 +19,8 @@ object NavigationSecrets {
         if (!file.exists()) return
         try {
             require(file.length() < 4096)
-            val setup = org.json.JSONObject(file.readText())
-            for (name in listOf("maptiler", "graphhopper")) {
+            val setup = org.json.JSONObject(file.readText(Charsets.UTF_8))
+            for (name in listOf("maptiler", "graphhopper", "tomtom")) {
                 val value = setup.optString(name)
                 if (value.isNotBlank()) save(context, name, value)
             }

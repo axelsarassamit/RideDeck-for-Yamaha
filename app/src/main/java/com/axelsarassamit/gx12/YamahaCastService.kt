@@ -274,10 +274,17 @@ class YamahaCastService : Service() {
             var lastRouteRevision: Int? = null
             var nativeStateSent = false
             var lastNightMode: Boolean? = null
+            var lastZoomRevision:Long?=null
             while (running) {
                 receiverFailure?.let { error(it) }
                 deadline = SystemClock.elapsedRealtime() + 15000
                 val currentTime = SystemClock.elapsedRealtime()
+                val zoomState=NativeNavigation.zoomState()
+                if(lastZoomRevision!=zoomState.revision) {
+                    link.write(NativeDashNavigation.zoomLevel(zoomState.level))
+                    lastZoomRevision=zoomState.revision
+                    diagnostic("Bike zoom feedback level=${zoomState.level}")
+                }
                 val night=NativeNavigation.isNightMap()
                 if(lastNightMode != night) {
                     link.write(NativeDashNavigation.dayNight(night)); lastNightMode=night

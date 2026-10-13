@@ -23,7 +23,7 @@ object NavigationUi {
     private val names=arrayOf("Map", "Turn arrows", "Music")
     private val modes=arrayOf("map","arrows","music")
     @JvmStatic fun configure(activity: Activity) {
-        AlertDialog.Builder(activity).setTitle("Navigation and panels").setItems(arrayOf("Map and routing accounts", "Phone panel", "Bike display", "Precise location", "Voice guidance", "Stop navigation")) { _, choice ->
+        AlertDialog.Builder(activity).setTitle("Navigation and panels").setItems(arrayOf("Map and routing accounts", "Phone panel", "Bike display", "Precise location", "Voice guidance", "Stop navigation", "Nearby fuel stations", "Traffic nearby", "Ride book", "Bike data and fuel range")) { _, choice ->
             when(choice) {
                 0 -> credentials(activity)
                 1 -> {
@@ -42,6 +42,10 @@ object NavigationUi {
                 3 -> permission(activity,true)
                 4 -> voiceGuidance(activity)
                 5 -> activity.startService(Intent(activity,NativeNavigationService::class.java).setAction("STOP"))
+                6 -> FuelStationsActivity.open(activity)
+                7 -> TrafficActivity.open(activity)
+                8 -> RideBookActivity.open(activity)
+                9 -> BikeDataActivity.open(activity)
             }
         }.setNegativeButton("Close",null).show()
     }
@@ -69,73 +73,29 @@ object NavigationUi {
         val fields=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setPadding(24,12,24,0) }
         val map=EditText(activity).apply { hint="MapTiler key (blank keeps existing key)"; inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         fields.addView(map)
+        val tomtom=EditText(activity).apply { hint="TomTom key (blank keeps existing key)";inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        fields.addView(tomtom)
+        val prefs=RidePreferences.prefs(activity)
+        val routing=CheckBox(activity).apply { text="TomTom motorcycle routes with traffic";isChecked=prefs.getBoolean("tomtom_routing",true) };fields.addView(routing)
+        val refresh=CheckBox(activity).apply { text="Refresh traffic route every 5 minutes";isChecked=prefs.getBoolean("tomtom_refresh",true) };fields.addView(refresh)
+        val fuel=CheckBox(activity).apply { text="My account has separate Fuel Prices API access";isChecked=prefs.getBoolean("tomtom_fuel_entitled",false) };fields.addView(fuel)
         AlertDialog.Builder(activity).setTitle("Map and routing accounts")
-            .setMessage("MapTiler provides map data and searches for shops, places and addresses. Valhalla calculates motorcycle routes using the public FOSSGIS demo server. Route start and destination are sent to that server. It needs no API key and follows fair-use limits, with no availability guarantee.")
+            .setMessage("MapTiler draws the map. Optional TomTom improves place search, nearby stations and traffic-aware motorcycle routes. Without TomTom, Valhalla uses a public fair-use server without live traffic. Requests send your search or location to the selected provider. TomTom has usage allowances; automatic refresh uses routing requests. Fuel Prices requires separate access and is excluded from the free plan. Keys are encrypted on this phone.")
             .setView(fields).setNegativeButton("Close",null).setNeutralButton("MapTiler website") { _,_ ->
                 activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://cloud.maptiler.com/")))
             }.setPositiveButton("Save",null).create().also { dialog ->
                 dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                     try {
                         if(map.text.isNotBlank()) NavigationSecrets.save(activity,"maptiler",map.text.toString().trim())
+                        if(tomtom.text.isNotBlank()) NavigationSecrets.save(activity,"tomtom",tomtom.text.toString().trim())
+                        prefs.edit().putBoolean("tomtom_routing",routing.isChecked).putBoolean("tomtom_refresh",refresh.isChecked).putBoolean("tomtom_fuel_entitled",fuel.isChecked).apply()
                         dialog.dismiss(); Toast.makeText(activity,"Saved on this phone",Toast.LENGTH_SHORT).show()
                     } catch(_: Exception) { map.error="Could not store keys on this phone" }
                 } }; dialog.show()
             }
     }
     @JvmStatic fun search(activity: Activity, initial: String?) {
-        if(!permission(activity)) return
-        NativeNavigation.start(activity)
-        val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setPadding(20,8,20,8) }
-        val field=EditText(activity).apply { hint="Shops, cafés, places or addresses"; textSize=22f; setSingleLine(true) }
-        val status=TextView(activity)
-        val results=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
-        page.addView(field); page.addView(status); page.addView(ScrollView(activity).apply { addView(results) },LinearLayout.LayoutParams(-1,420))
-        val dialog=AlertDialog.Builder(activity).setTitle("Destination").setView(page).setNegativeButton("Close",null).setNeutralButton("Stop route") { _,_ -> NativeNavigation.stopRoute() }.create()
-        var generation=0
-        var pending: Runnable?=null
-        field.addTextChangedListener(object: TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?,start: Int,count: Int,after: Int) {}
-            override fun onTextChanged(s: CharSequence?,start: Int,before: Int,count: Int) {
-                val query=s?.toString()?.trim().orEmpty(); val request=++generation
-                pending?.let(main::removeCallbacks); results.removeAllViews()
-                if(query.length<3) { status.text="Enter at least three characters"; return }
-                status.text="Searching..."
-                pending=Runnable {
-                    worker.execute {
-                        val result=runCatching { NavigationApi.search(activity.applicationContext,query,NativeNavigation.location) }
-                        main.post {
-                            if(request!=generation || !dialog.isShowing || activity.isDestroyed) return@post
-                            result.onSuccess { places ->
-                                status.text=if(places.isEmpty())"No matches. Try a place name and city, or a full address." else "Choose the destination"
-                                places.forEach { place ->
-                                    results.addView(Button(activity).apply {
-                                        text=place.label; isAllCaps=false; textSize=20f; minHeight=(80*activity.resources.displayMetrics.density).toInt()
-                                        setOnClickListener {
-                                            AlertDialog.Builder(activity).setTitle(place.label).setMessage("Compare routes on the map before starting navigation.")
-                                                .setNegativeButton("Cancel",null).setNeutralButton("Save place") { _,_ ->
-                                                    AlertDialog.Builder(activity).setTitle("Save place").setItems(arrayOf("Favorite","Home","Work")) { _,slot ->
-                                                        runCatching {
-                                                            val coordinate="${place.latitude},${place.longitude}"
-                                                            if(slot==0) BikePlaces.add(activity,place.label.take(80),coordinate)
-                                                            else RidePreferences.prefs(activity).edit().putString(if(slot==1) "bike_home" else "bike_work",coordinate).apply()
-                                                        }.onSuccess { Toast.makeText(activity,"${arrayOf("Favorite","Home","Work")[slot]} saved",Toast.LENGTH_SHORT).show() }
-                                                            .onFailure { status.text="Place could not be saved" }
-                                                    }.setNegativeButton("Cancel",null).show()
-                                                }.setPositiveButton("Choose route") { _,_ ->
-                                                    dialog.dismiss(); RoutePreviewActivity.open(activity,place)
-                                                }.show()
-                                        }
-                                    })
-                                }
-                            }.onFailure { status.text="Search unavailable. Check MapTiler key, internet and account quota in Setup."; BikeDiagnostics.record(activity,"Native search failed exception=${it.javaClass.simpleName}") }
-                        }
-                    }
-                }.also { main.postDelayed(it,600) }
-            }
-            override fun afterTextChanged(s: Editable?) {}
-        })
-        dialog.setOnDismissListener { generation++; pending?.let(main::removeCallbacks) }
-        dialog.show(); initial?.let { field.setText(it) }
+        activity.startActivity(Intent(activity,DestinationSearchActivity::class.java).putExtra("query",initial))
     }
     @JvmStatic fun mapMenu(activity: Activity) {
         AlertDialog.Builder(activity).setTitle("Map")
@@ -167,7 +127,7 @@ object NavigationUi {
             setCompoundDrawables(logo, null, null, null); compoundDrawablePadding=(6*density).toInt(); contentDescription="Map credits"
             setOnClickListener {
                 val credit=TextView(activity).apply {
-                    text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a><br>Routing: Valhalla (FOSSGIS)<br>Search results: MapTiler",android.text.Html.FROM_HTML_MODE_LEGACY)
+                    text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap contributors</a><br>Routing: TomTom when configured, otherwise Valhalla (FOSSGIS)<br>Search: TomTom, MapTiler or Android geocoder",android.text.Html.FROM_HTML_MODE_LEGACY)
                     movementMethod=android.text.method.LinkMovementMethod.getInstance(); setPadding(24,20,24,20)
                 }
                 AlertDialog.Builder(activity).setTitle("Map credits").setView(credit).setPositiveButton("Close",null).show()

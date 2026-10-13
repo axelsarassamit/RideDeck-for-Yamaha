@@ -10,7 +10,7 @@ import java.net.URLEncoder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-data class BikePlace(val name: String, val destination: String, val metres: Float = 0f)
+data class BikePlace(val name: String, val destination: String, val metres: Float = 0f, val source: String = "OpenStreetMap", val fuelPriceId: String = "")
 object BikePlaces {
     @Volatile private var stationTime = 0L
     @Volatile private var lastSearch = 0L
@@ -48,6 +48,14 @@ object BikePlaces {
         val now = android.os.SystemClock.elapsedRealtime()
         check(lastSearch == 0L || now - lastSearch >= 60000) { "Wait one minute before searching again" }
         lastSearch = now
+        if(TomTomApi.configured(context)) {
+            val found=runCatching { TomTomApi.stations(context,latitude,longitude) }.getOrNull()
+            if(found!=null && found.isNotEmpty()) {
+                stations=found;stationTime=android.os.SystemClock.elapsedRealtime()
+                BikeDiagnostics.record(context,"Fuel search provider=TomTom results=${found.size}")
+                return found.size
+            }
+        }
         stations = emptyList()
         val query = "[out:json][timeout:15];nwr[amenity=fuel](around:10000,$latitude,$longitude);out center tags;"
         val connection = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
@@ -57,7 +65,7 @@ object BikePlaces {
             connection.doOutput = true
             connection.outputStream.use { it.write(("data=" + URLEncoder.encode(query, "UTF-8")).toByteArray()) }
             check(connection.responseCode == 200) { "Fuel search unavailable. Try again later." }
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val response = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             check(response.length < 2000000) { "Fuel search response too large" }
             val elements = JSONObject(response).getJSONArray("elements")
             val found = mutableListOf<BikePlace>()

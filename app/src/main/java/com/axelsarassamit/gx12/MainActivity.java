@@ -539,7 +539,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showAbout() {
-        String notice = BuildConfig.YAMAHA ? "MapLibre renders the map. MapTiler supplies map data and search, and Valhalla supplies routes through the public FOSSGIS server. Provider terms and attribution apply.\n\nYamaha protocol adapted from Pillion, revision 29497f4. Required Notice: Copyright 2026 the Pillion authors. PolyForm Noncommercial 1.0.0. Personal and hobby use. Independent of Yamaha, Garmin and Pillion." : "Phone controls and split screen with your chosen navigation app. Independent of navigation and music providers.";
+        String notice = BuildConfig.YAMAHA ? "MapLibre renders the map. MapTiler supplies map data and search. Optional TomTom supplies search, motorcycle routes and traffic; otherwise Valhalla supplies routes through the public FOSSGIS server. Provider terms, quotas and attribution apply.\n\nYamaha navigation protocol adapted from Pillion, revision 29497f4. Required Notice: Copyright 2026 the Pillion authors. PolyForm Noncommercial 1.0.0. Personal and hobby use. Independent of Yamaha, Garmin and Pillion." : "Phone controls and split screen with your chosen navigation app. Independent of navigation and music providers.";
         new android.app.AlertDialog.Builder(this).setTitle(BuildConfig.YAMAHA ? "RideDeck for Yamaha" : "RideDeck").setMessage(notice).setPositiveButton("Close", null).show();
     }
 
@@ -1257,34 +1257,7 @@ public class MainActivity extends android.app.Activity {
         try { return NavigationApi.INSTANCE.coordinate(coordinate) != null; }
         catch (IllegalArgumentException invalid) { return false; }
     }
-    private void prepareFuelStations() {
-        new android.app.AlertDialog.Builder(this).setTitle("Nearby fuel stations")
-            .setMessage("Find up to 20 stations within 10 km. This sends your current location to the OpenStreetMap Overpass service. Station data can be incomplete; distances are straight-line distances. Results are prepared for the bike's stations menu. Data: OpenStreetMap contributors, ODbL.")
-            .setNegativeButton("Cancel", null).setPositiveButton("Find stations", (d, w) -> {
-                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 73);
-                    android.widget.Toast.makeText(this, "After allowing location, tap Find stations again.", android.widget.Toast.LENGTH_LONG).show(); return;
-                }
-                android.location.LocationManager locations = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
-                android.location.Location best = null;
-                try { for (String provider : locations.getProviders(true)) {
-                    android.location.Location candidate;
-                    try { candidate = locations.getLastKnownLocation(provider); } catch (SecurityException denied) { continue; }
-                    if (candidate != null && (best == null || candidate.getElapsedRealtimeNanos() > best.getElapsedRealtimeNanos())) best = candidate;
-                } } catch (SecurityException ignored) { }
-                if (best == null || android.os.SystemClock.elapsedRealtimeNanos() - best.getElapsedRealtimeNanos() > 300000000000L) {
-                    displayError("A recent location is needed. Enable phone location and open Navigation in Setup to get a GPS fix, then try again."); return;
-                }
-                final android.location.Location origin = best;
-                android.widget.Toast.makeText(this, "Finding nearby stations...", android.widget.Toast.LENGTH_SHORT).show();
-                worker.execute(() -> {
-                    try {
-                        int count = BikePlaces.findStations(this, origin.getLatitude(), origin.getLongitude());
-                        runOnUiThread(() -> new android.app.AlertDialog.Builder(this).setMessage(count + " stations prepared. Open Nearby Gas Stations on the bike.").setPositiveButton("Close", null).show());
-                    } catch (Exception error) { runOnUiThread(() -> displayError("Fuel search failed. " + safeMessage(error))); }
-                });
-            }).show();
-    }
+    private void prepareFuelStations() { FuelStationsActivity.open(this); }
 
     private void showCustomizationMenu(String[] labels, android.content.DialogInterface.OnClickListener choose) {
         android.app.Dialog menu = new android.app.Dialog(this);

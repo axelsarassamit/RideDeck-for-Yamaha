@@ -224,7 +224,7 @@ class RoutePreviewActivity : Activity() {
         busy=true; retry.isEnabled=false; start.isEnabled=false; status.text="Comparing motorcycle routes..."
         if(map!=null && styleJson==null) loadStyle()
         worker.execute {
-            val result=runCatching { NavigationApi.routes(plannedOrigin,destination) }
+            val result=runCatching { NavigationApi.routes(applicationContext,plannedOrigin,destination) }
             main.post {
                 if(isFinishing || isDestroyed || generation!=routeRequest) return@post
                 busy=false; retry.isEnabled=true
@@ -239,7 +239,7 @@ class RoutePreviewActivity : Activity() {
     private fun showChoices() {
         choices.removeAllViews()
         val wide=resources.configuration.screenWidthDp>=600
-        status.text=if(routes.size==1) "One route available" else "${routes.size} routes · Route ${selected+1} selected"
+        status.text=(routes.firstOrNull()?.let { if(it.provider=="TomTom") "TomTom · Live traffic · " else "Valhalla · No live traffic · " } ?: "")+if(routes.size==1) "One route available" else "${routes.size} routes · Route ${selected+1} selected"
         retry.visibility=View.GONE
         routes.forEachIndexed { index,r ->
             choices.addView(button((if(index==selected) "✓ " else "")+"Route ${index+1}"+"\n"+

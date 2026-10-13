@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MapZoomTest {
+    @Test fun repeatedRequestsAndLimitsAlwaysProduceFeedbackRevision() {
+        val zoom=MapZoom()
+        var previous=zoom.state().revision
+        repeat(30) {
+            zoom.change(true)
+            assertTrue(zoom.state().revision>previous)
+            previous=zoom.state().revision
+        }
+        assertEquals(MapZoom.MAX_LEVEL,zoom.state().level)
+        zoom.change(false)
+        assertEquals(MapZoom.MAX_LEVEL-1,zoom.state().level)
+        assertTrue(zoom.state().revision>previous)
+    }
     @Test fun activeNavigationDoesNotOverrideZoomOut() {
         val zoom=MapZoom(); zoom.navigationStarted()
         assertEquals(16.0,zoom.change(false),0.0)

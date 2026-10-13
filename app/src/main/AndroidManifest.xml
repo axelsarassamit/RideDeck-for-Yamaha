@@ -79,6 +79,11 @@
         android:roundIcon="@mipmap/yamaha_launcher"
         android:theme="@style/RideDeckTheme"
         android:usesCleartextTraffic="false">
+        <activity android:name=".FuelStationsActivity" android:exported="false" android:screenOrientation="user" />
+        <activity android:name=".TrafficActivity" android:exported="false" android:screenOrientation="user" />
+        <activity android:name=".BikeDataActivity" android:exported="false" android:screenOrientation="user" />
+        <activity android:name=".RideBookActivity" android:exported="false" android:screenOrientation="user" />
+        <activity android:name=".DestinationSearchActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".RoutePreviewActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".SharedLocationActivity" android:exported="true" android:screenOrientation="portrait" android:label="${appLabel}">
             <intent-filter>
@@ -133,7 +138,7 @@
         </provider>
         <service android:name=".YamahaCastService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice" />
         <service android:name=".NativeNavigationService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="location" />
-        <service android:name=".DashRideService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">
+        <service android:name=".DashRideService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse|location">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started motorcycle ride timer and authenticated RideDeck Dash recording-continuity lease, explicitly stopped by Pause or End ride" />
         </service>
     </application>

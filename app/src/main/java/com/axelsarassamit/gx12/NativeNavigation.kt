@@ -78,6 +78,8 @@ object NativeNavigation {
     private var lastSpoken = ""
     private var speaker: TextToSpeech? = null
     private var speechReady = false
+    private var trafficRefreshBusy = false
+    private var lastTrafficRefresh = 0L
     private var lastSummary = 0L
 
     @JvmStatic fun start(c: Context) {
@@ -229,7 +231,8 @@ object NativeNavigation {
     }
     private fun applyRoute(c: Context, selected: NavigationRoute) {
         route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
-        speedLimit = null; speedWindow = null; lastSpeedRequest = -30000L
+        speedLimit = null; speedWindow = selected.speedLimits?.let { SpeedLimitWindow(0,it) }; lastSpeedRequest = -30000L
+        lastTrafficRefresh=SystemClock.elapsedRealtime()
         mapZoom.navigationStarted()
         status = "Navigating"; location?.let(::updateGuidance)
         invalidateFrames()
@@ -242,8 +245,15 @@ object NativeNavigation {
         val level = mapZoom.change(inside)
         invalidateFrames()
         context?.let { BikeDiagnostics.record(it, "Map zoom level=$level") }
+        // Camera interaction can redraw the last position while GPS is stale.
+        // Guidance and the bike's fresh-GPS flag continue to report the stale fix.
+        if(running) location?.let { fix -> context?.let { c ->
+            render(c,fix)
+            if(phoneVisible) render(c,fix,true)
+        } }
         main.removeCallbacks(tick); main.post(tick)
     } }
+    @JvmStatic fun zoomState()=mapZoom.state()
 
     private fun updateGuidance(fix: Location) {
         val r = route ?: run { guidance = "Choose a destination"; maneuver = 0; return }
@@ -299,7 +309,22 @@ object NativeNavigation {
                 speaker?.speak(speech, TextToSpeech.QUEUE_FLUSH, null, speechId) == TextToSpeech.SUCCESS) lastSpoken = speechId
         }
     }
+    private fun refreshTrafficRoute(c:Context,current:NavigationRoute) {
+        if(trafficRefreshBusy) return
+        val origin=location?.let(::Location) ?: return
+        val generation=routeGeneration;trafficRefreshBusy=true
+        worker.execute {
+            val result=runCatching { NavigationApi.route(c,origin,current.destination) }
+            main.post {
+                trafficRefreshBusy=false
+                if(!running || routeGeneration!=generation || route!==current) return@post
+                result.onSuccess { routeGeneration++;applyRoute(c,it);BikeDiagnostics.record(c,"Traffic route refreshed provider=${it.provider}") }
+                    .onFailure { BikeDiagnostics.record(c,"Traffic route refresh unavailable; retained current route exception=${it.javaClass.simpleName}") }
+            }
+        }
+    }
     private fun refreshSpeedLimits(r: NavigationRoute) {
+        if(r.provider=="TomTom") return
         val window=speedWindow
         if(window != null && progressIndex >= window.start &&
             (progressIndex < window.end-20 || window.end == r.points.lastIndex)) return
@@ -331,6 +356,11 @@ object NativeNavigation {
             val c = context ?: return
             val fix = location
             val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos < 30_000_000_000L
+            val activeRoute=route
+            if(fresh && !routeBusy && activeRoute?.provider=="TomTom" &&
+                RidePreferences.prefs(c).getBoolean("tomtom_refresh",true) && SystemClock.elapsedRealtime()-lastTrafficRefresh >= 300000) {
+                lastTrafficRefresh=SystemClock.elapsedRealtime();refreshTrafficRoute(c,activeRoute)
+            }
             if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS" }
             if (inFlight && SystemClock.elapsedRealtime() - renderStarted > 15000) {
                 snapshotter?.cancel(); snapshotter = null; inFlight = false

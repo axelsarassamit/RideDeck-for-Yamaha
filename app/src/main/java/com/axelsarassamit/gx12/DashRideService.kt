@@ -19,17 +19,18 @@ class DashRideService : Service() {
             try { c.startForegroundService(Intent(c,DashRideService::class.java).setAction("START")) }
             catch(_: RuntimeException) { bridgeStatus="Open RideDeck and try Start ride again" }
         }
-        @JvmStatic fun pause(c: Context) { session.pause(SystemClock.elapsedRealtime());DashRecordingConnection.close();recordingStatus="";c.stopService(Intent(c,DashRideService::class.java)) }
-        @JvmStatic fun end(c: Context) { session.end();DashRecordingConnection.close();recordingStatus="";c.stopService(Intent(c,DashRideService::class.java)) }
+        @JvmStatic fun pause(c: Context) { RideBookStore.pause(c);session.pause(SystemClock.elapsedRealtime());DashRecordingConnection.close();recordingStatus="";c.stopService(Intent(c,DashRideService::class.java)) }
+        @JvmStatic fun end(c: Context) { RideBookStore.pause(c,true);session.end();DashRecordingConnection.close();recordingStatus="";c.stopService(Intent(c,DashRideService::class.java)) }
     }
     private val main=Handler(Looper.getMainLooper())
     @Volatile private var live=false
+    private var telemetry:RideTelemetry?=null
     private var bridgeBusy=false
     private var wake: RideSessionWakeLock?=null
     override fun onBind(intent: Intent?)=null
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
-        if(intent?.action=="PAUSE") { session.pause(SystemClock.elapsedRealtime());stopSelf();return START_NOT_STICKY }
-        if(intent?.action=="END") { session.end();stopSelf();return START_NOT_STICKY }
+        if(intent?.action=="PAUSE") { RideBookStore.pause(this);session.pause(SystemClock.elapsedRealtime());stopSelf();return START_NOT_STICKY }
+        if(intent?.action=="END") { RideBookStore.pause(this,true);session.end();stopSelf();return START_NOT_STICKY }
         if(intent?.action!="START") { stopSelf();return START_NOT_STICKY }
         if(live) return START_NOT_STICKY
         val manager=getSystemService(NotificationManager::class.java)
@@ -42,7 +43,8 @@ class DashRideService : Service() {
             .addAction(Notification.Action.Builder(null,"Pause ride",action("PAUSE",27)).build())
             .addAction(Notification.Action.Builder(null,"End ride",action("END",28)).build()).build()
         try {
-            if(Build.VERSION.SDK_INT>=34) startForeground(26,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            if(Build.VERSION.SDK_INT>=34) startForeground(26,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                (if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)==android.content.pm.PackageManager.PERMISSION_GRANTED) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0))
             else startForeground(26,notification)
             wake=RideSessionWakeLock(this,"dash-ride").also { it.start() }
         } catch(error: RuntimeException) {
@@ -51,6 +53,9 @@ class DashRideService : Service() {
             stopSelf();return START_NOT_STICKY
         }
         session.start(SystemClock.elapsedRealtime());live=true
+        RideBookStore.start(this)
+        if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)==android.content.pm.PackageManager.PERMISSION_GRANTED)
+            telemetry=RideTelemetry(this).also { it.start() }
         recordingStatus=""
         bridgeStatus="Connecting to RideDeck Dash"
         BikeDiagnostics.record(this,"Dash ride started explicit=true")
@@ -75,6 +80,7 @@ class DashRideService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) { BikeDiagnostics.record(this,"Explicit Dash ride continues after Recent apps removal");super.onTaskRemoved(rootIntent) }
     override fun onDestroy() {
         live=false;main.removeCallbacksAndMessages(null)
+        telemetry?.stop();telemetry=null;RideBookStore.pause(this)
         session.pause(SystemClock.elapsedRealtime())
         DashRecordingConnection.close();recordingStatus=""
         DashCompanion.stop(this)

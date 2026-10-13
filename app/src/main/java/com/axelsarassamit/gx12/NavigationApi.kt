@@ -15,9 +15,9 @@ import org.maplibre.android.geometry.LatLng
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class NavigationPlace(val label: String, val latitude: Double, val longitude: Double)
+data class NavigationPlace(val label: String, val latitude: Double, val longitude: Double, val kind: String = "", val relevance: Double = 1.0, val provider: String = "")
 data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int, val road: String = "", val millis: Long = 0)
-data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long) {
+data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long, val provider: String = "Valhalla", val speedLimits: IntArray? = null, val trafficDelayMillis: Long = 0) {
     val cumulative = DoubleArray(points.size).also { distances ->
         val result = FloatArray(1)
         for (i in 1 until points.size) {
@@ -44,7 +44,7 @@ object NavigationApi {
         }
         return style.toString()
     }
-    private fun request(uri: Uri, provider: String = "MapTiler", body: JSONObject? = null): JSONObject {
+    internal fun request(uri: Uri, provider: String = "MapTiler", body: JSONObject? = null): JSONObject {
         val connection = URL(uri.toString()).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects = false
@@ -114,29 +114,50 @@ object NavigationApi {
         return SpeedLimitWindow(start,aligned)
     }
     fun coordinate(text: String): NavigationPlace? {
-        val match = Regex("^\\s*(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)\\s*$").matchEntire(text) ?: return null
-        val lat = match.groupValues[1].toDouble(); val lon = match.groupValues[2].toDouble()
-        require(lat in -90.0..90.0 && lon in -180.0..180.0) { "Coordinates are outside valid ranges." }
-        return NavigationPlace("Shared destination", lat, lon)
+        val (lat,lon)=app.pillion.core.DestinationInput.coordinates(text) ?: return null
+        return NavigationPlace("Pinned coordinates",lat,lon,"pin")
     }
     fun search(context: Context, query: String, location: Location?): List<NavigationPlace> {
         coordinate(query)?.let { return listOf(it) }
+        if(query.startsWith("https://")) {
+            val destination=app.pillion.core.SharedMapLink.destination(query)
+            if(destination!=null) { coordinate(destination)?.let { return listOf(it) }; return search(context,destination,location) }
+        }
+        if(TomTomApi.configured(context)) {
+            val found=runCatching { TomTomApi.search(context,query,location) }.getOrDefault(emptyList())
+            if(found.isNotEmpty()) return found
+        }
         val key = NavigationSecrets.read(context, "maptiler")
-        check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
-        val url = Uri.Builder().scheme("https").authority("api.maptiler.com").appendPath("geocoding").appendPath(query.take(300) + ".json")
-            .appendQueryParameter("key", key).appendQueryParameter("language", "en").appendQueryParameter("autocomplete", "true").appendQueryParameter("limit", "10").appendQueryParameter("types", "poi,address,road,place,locality,municipality,region,country")
-        location?.let { url.appendQueryParameter("proximity", "${it.longitude},${it.latitude}") }
+        if(key.isBlank()) return SystemAddressSearch.search(context,query)
+        val results=mutableListOf<NavigationPlace>()
+        for(candidate in app.pillion.core.DestinationInput.queries(query)) {
+        val url = Uri.Builder().scheme("https").authority("api.maptiler.com").appendPath("geocoding").appendPath(candidate.take(300) + ".json")
+            .appendQueryParameter("key", key).appendQueryParameter("language", "en,th").appendQueryParameter("autocomplete", "false")
+            .appendQueryParameter("fuzzyMatch","true").appendQueryParameter("limit", "10").appendQueryParameter("types", "poi,address,road,place,locality,municipality,region,country")
+        val fix=location?.takeIf { android.os.SystemClock.elapsedRealtimeNanos()-it.elapsedRealtimeNanos < 60_000_000_000L }
+        if(fix!=null) url.appendQueryParameter("proximity", "${fix.longitude},${fix.latitude}")
+        else url.appendQueryParameter("proximity","ip")
         val features = request(url.build()).getJSONArray("features")
-        return (0 until features.length()).mapNotNull { i ->
+        results.addAll((0 until features.length()).mapNotNull { i ->
             val item = features.getJSONObject(i); val center = item.optJSONArray("center") ?: return@mapNotNull null
             val lon = center.getDouble(0); val lat = center.getDouble(1)
             if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return@mapNotNull null
-            NavigationPlace(item.optString("place_name", item.optString("text", "Destination")), lat, lon)
+            NavigationPlace(item.optString("place_name", item.optString("text", "Destination")),lat,lon,
+                item.optJSONArray("place_type")?.optString(0).orEmpty(),item.optDouble("relevance",0.0))
+        })
+        if(results.any { it.kind in listOf("poi","address") && it.relevance>=0.6 }) break
         }
+        if(results.none { it.kind in listOf("poi","address") && it.relevance>=0.6 })
+            results.addAll(runCatching { SystemAddressSearch.search(context,app.pillion.core.DestinationInput.normalize(query)) }.getOrDefault(emptyList()))
+        return results.filter { it.kind=="system_address" || it.relevance>=0.45 }.distinctBy { "${it.latitude},${it.longitude}" }.sortedWith(compareBy<NavigationPlace> {
+            when(it.kind) { "system_address","poi","address" -> 0;"road" -> 1;else -> 2 }
+        }.thenByDescending { it.relevance }).take(10)
     }
-    fun route(context: Context, origin: Location, target: NavigationPlace): NavigationRoute = routes(origin, target, false).first()
+    fun route(context: Context, origin: Location, target: NavigationPlace): NavigationRoute = routes(context, origin, target, false).first()
 
-    fun routes(origin: Location, target: NavigationPlace, alternatives: Boolean = true): List<NavigationRoute> {
+    fun routes(context: Context, origin: Location, target: NavigationPlace, alternatives: Boolean = true): List<NavigationRoute> {
+        if(TomTomApi.configured(context) && RidePreferences.prefs(context).getBoolean("tomtom_routing",true))
+            return TomTomApi.routes(context,origin,target,alternatives)
         val locations = JSONArray()
             .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude))
             .put(JSONObject().put("lat", target.latitude).put("lon", target.longitude))
