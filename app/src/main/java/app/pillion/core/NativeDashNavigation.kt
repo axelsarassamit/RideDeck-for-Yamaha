@@ -10,7 +10,7 @@ data class DashRoute(val revision: Int, val turns: List<DashTurn>, val activeInd
 /** Original interoperability encoder. Layouts checked against StreetCross 1.87 native packers. */
 object NativeDashNavigation {
     fun icon(sign: Int): Int = when(sign) {
-        -3 -> 32; -2 -> 34; -1 -> 6; 1 -> 7; 2 -> 35; 3 -> 33
+        -8 -> 36; 8 -> 37; -3 -> 32; -2 -> 34; -1 -> 6; 1 -> 7; 2 -> 35; 3 -> 33
         5 -> 0; 6 -> 14; 7 -> 7; else -> 8
     }
     private fun utf8(text: String, maximum: Int): ByteArray {

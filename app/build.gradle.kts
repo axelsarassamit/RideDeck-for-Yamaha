@@ -21,7 +21,8 @@ android {
         buildConfigField("String", "GRAPHHOPPER_KEY", providerKey("RIDEDECK_GRAPHHOPPER_KEY"))
         minSdk = 26
         targetSdk = 35
-        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.35").removePrefix("v")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.36").removePrefix("v")
         val parts = releaseVersion.split(".")
         require(parts.size >= 2 && parts.take(3).all { it.all(Char::isDigit) }) {
             "GX12_VERSION_NAME must use numeric semver such as 0.1.0"
@@ -51,11 +52,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".preview"
+            manifestPlaceholders["appLabel"] = "RideDeck Yamaha Preview"
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
         }
     }
+    testBuildType = providers.gradleProperty("phoneTestVariant").orElse("debug").get()
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -74,6 +80,9 @@ dependencies {
     implementation("androidx.core:core:1.16.0")
     implementation("org.maplibre.gl:android-sdk:13.4.1")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 tasks.withType<JavaCompile>().configureEach { options.encoding = "UTF-8" }

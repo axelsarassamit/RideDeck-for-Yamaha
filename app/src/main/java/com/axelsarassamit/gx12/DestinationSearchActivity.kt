@@ -21,6 +21,11 @@ class DestinationSearchActivity:Activity() {
     override fun onCreate(saved:Bundle?) {
         super.onCreate(saved);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(16),dp(16),dp(8));setBackgroundColor(RideStyle.BACKGROUND) }
+        page.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            view.setPadding(dp(16) + bars.left, dp(16) + bars.top, dp(16) + bars.right, dp(8) + bars.bottom)
+            insets
+        }
         page.addView(TextView(this).apply { text="Find a destination";textSize=28f;setTextColor(RideStyle.TEXT) })
         field=EditText(this).apply { hint="Street, store, address or coordinates";textSize=22f;setSingleLine();setText(intent.getStringExtra("query").orEmpty());
             imeOptions=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH;setOnEditorActionListener { _,a,_ -> if(a==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { search();true } else false } }
@@ -37,7 +42,7 @@ class DestinationSearchActivity:Activity() {
         status=TextView(this).apply { text="Search by name, or paste latitude, longitude.";textSize=16f;setTextColor(RideStyle.MUTED);setPadding(0,dp(8),0,dp(8)) };page.addView(status)
         results=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         page.addView(ScrollView(this).apply { addView(results) },LinearLayout.LayoutParams(-1,0,1f))
-        page.addView(button("Close") { finish() });setContentView(page);showSaved("")
+        page.addView(button("Close") { finish() });setContentView(page);page.requestApplyInsets();showSaved("")
     }
     private fun share(text:String) { startActivity(Intent(this,SharedLocationActivity::class.java).setAction(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT,text)) }
     private fun showSaved(query:String) {

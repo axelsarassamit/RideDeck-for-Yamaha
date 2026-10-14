@@ -7,6 +7,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class NativeDashNavigationTest {
+    @Test fun uTurnsKeepTheirOwnDashboardIcons() {
+        assertEquals(36, NativeDashNavigation.icon(-8)); assertEquals(37, NativeDashNavigation.icon(8))
+        assertEquals(32, NativeDashNavigation.icon(-3)); assertEquals(33, NativeDashNavigation.icon(3))
+    }
     @Test fun zoomFeedbackUsesRelativeBoundsAndUtf8Label() {
         val frame=NativeDashNavigation.zoomLevel(17)
         assertEquals(14,NaviLiteCodec.serviceTypeAt(frame,0))

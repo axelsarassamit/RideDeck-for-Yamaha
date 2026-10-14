@@ -4,6 +4,10 @@ import org.junit.Test
 import java.util.Locale
 
 class NavigationSpeechTest {
+    @Test fun uTurnDoesNotBecomeASharpTurn() {
+        for (sign in listOf(-8, 8)) assertEquals("In 150 meters, make a U-turn.", NavigationSpeech.prompt(sign, 150.0, ""))
+        assertEquals("In 150 meters, turn sharply left.", NavigationSpeech.prompt(-3, 150.0, ""))
+    }
     @Test fun thaiDeviceLocaleAndRoadCannotChangeEnglishManeuver() {
         val old=Locale.getDefault()
         try {

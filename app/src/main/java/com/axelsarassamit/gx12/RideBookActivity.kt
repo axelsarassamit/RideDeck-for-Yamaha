@@ -17,7 +17,7 @@ class RideBookActivity:RiderPage() {
     }
     override fun onCreate(saved:Bundle?) { super.onCreate(saved);build("Ride book");refresh() }
     private fun refresh() {
-        state.text="Phone GPS and mounted-phone estimates. Bike fuel consumption, RPM and engine data are not verified yet."
+        state.text="Phone GPS and mounted-phone estimates are recorded separately from Yamaha CCU readings. Connect Bike data before starting a ride to include source-decoded engine readings and raw bike fields."
         rows.removeAllViews()
         row(button(if(allTime) "Show ride history" else "Show all-time records") { allTime=!allTime;refresh() })
         row(button("Bike data and fuel range") { BikeDataActivity.open(this) })
@@ -50,12 +50,19 @@ class RideBookActivity:RiderPage() {
                 }
             } else for(ride in records) {
                 resultRows.addView(button("Ride ${ride.id} · ${ride.state}\n${date(ride.started)}\n${ride.seconds/60} min · ${String.format(Locale.US,"%.2f km",ride.meters/1000)}") {
-                    val detail=ride.peaks.entries.joinToString("\n\n") { peak(it.key,it.value.first)+"\n"+date(it.value.second) }.ifBlank { "No trusted measurements recorded. GPS may have been unavailable." }
+                    val detail=(ride.peaks.entries.map { peak(it.key,it.value.first)+"\n"+date(it.value.second) } + ride.bike.entries.map { (name,value)->
+                        val label=runCatching { app.pillion.core.BikeMetric.valueOf(name).label }.getOrDefault(name)
+                        "Maximum $label · ${String.format(Locale.US,"%.1f",value.maximum)} ${value.unit}\n${date(value.maximumAt)}\n${value.source}\nMinimum ${String.format(Locale.US,"%.1f",value.minimum)} ${value.unit} · ${date(value.minimumAt)}"
+                    }).joinToString("\n\n").ifBlank { "No measurements recorded. GPS or the bike connection may have been unavailable." }
                     android.app.AlertDialog.Builder(this).setTitle("Ride ${ride.id}").setMessage(detail).setPositiveButton("Close",null).show()
                 })
             }
+            if(allTime) for(metric in app.pillion.core.BikeMetric.entries) {
+                val winner=records.mapNotNull { ride->ride.bike[metric.name]?.let { ride to it } }.maxByOrNull { it.second.maximum }
+                if(winner!=null) resultRows.addView(text("Maximum ${metric.label} · ${String.format(Locale.US,"%.1f",winner.second.maximum)} ${metric.unit}\n${date(winner.second.maximumAt)} · Ride ${winner.first.id}\n${winner.second.source}"))
+            }
         }
-        row(text("GPS samples with poor accuracy, missing speed accuracy, gaps or implausible acceleration are excluded. Deceleration is not brake force. Lean depends on phone sensors and mount alignment and needs validation on the bike. Records are saved locally; no cloud upload."))
+        row(text("GPS samples with poor accuracy, missing speed accuracy, gaps or implausible acceleration are excluded. Deceleration is not brake force. Lean depends on the mounted phone. CCU values use the observed XMAX layout and need a dashboard comparison. Unknown brake/indicator fields are retained as raw bike data, never labeled as decoded controls. All records stay on this phone."))
     }
     override fun onResume() { super.onResume();telemetry=RideTelemetry(this).also { it.sensors() } }
     override fun onPause() { telemetry?.stop();telemetry=null;super.onPause() }

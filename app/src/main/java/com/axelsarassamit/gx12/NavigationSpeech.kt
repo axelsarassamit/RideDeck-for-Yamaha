@@ -13,6 +13,7 @@ object NavigationSpeech {
         val distance = if (safe >= 1000) String.format(Locale.US, "%.1f kilometers", safe / 1000)
             else "${(safe / 10).roundToInt() * 10} meters"
         val action = when (sign) {
+            -8, 8 -> "make a U-turn"
             -3 -> "turn sharply left"; -2 -> "turn left"; -1 -> "bear left"
             1 -> "bear right"; 2 -> "turn right"; 3 -> "turn sharply right"
             5 -> "arrive at your destination"; 6 -> "enter the roundabout"

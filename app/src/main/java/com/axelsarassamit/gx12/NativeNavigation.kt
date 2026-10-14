@@ -66,6 +66,7 @@ object NativeNavigation {
     private var styleRetryAt = 0L
     private var inFlight = false
     private var frameAt = 0L
+    @Volatile private var renderedZoomRevision = -1L
     private var renderStarted = 0L
     private var routeGeneration = 0
     private var dashRouteRevision = 0
@@ -238,8 +239,11 @@ object NativeNavigation {
         invalidateFrames()
     }
     private fun invalidateFrames() {
-        snapshotter?.cancel(); snapshotter = null; inFlight = false; frameAt = 0
-        phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneFrameAt = 0
+        val previous = snapshotter; val previousPhone = phoneSnapshotter
+        snapshotter = null; inFlight = false; frameAt = 0
+        phoneSnapshotter = null; phoneInFlight = false; phoneFrameAt = 0
+        // Cancel may deliver a callback synchronously. Detach first so it cannot publish an old frame.
+        previous?.cancel(); previousPhone?.cancel()
     }
     @JvmStatic fun zoom(inside: Boolean) { main.post {
         val level = mapZoom.change(inside)
@@ -424,10 +428,11 @@ object NativeNavigation {
         else { inFlight = true; renderStarted = SystemClock.elapsedRealtime() }
         try {
             val activeRoute = route
+            val requestedZoom = mapZoom.state()
             val heading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else if (activeRoute != null) routeBearing(activeRoute, progressIndex) else 0.0
             val cameraBuilder = CameraPosition.Builder()
                 .target(LatLng(fix.latitude, fix.longitude))
-                .zoom(mapZoom.level)
+                .zoom(requestedZoom.level.toDouble())
                 .bearing(heading)
             if (activeRoute != null) cameraBuilder.tilt(55.0)
             val camera = cameraBuilder.build()
@@ -440,6 +445,11 @@ object NativeNavigation {
             renderer.setCameraPosition(camera)
             renderer.start({ snapshot ->
                 if (!running || (if (phone) phoneSnapshotter else snapshotter) !== renderer) return@start
+                if (mapZoom.state().revision != requestedZoom.revision) {
+                    if (phone) phoneInFlight = false else inFlight = false
+                    main.post { if (running) location?.let { render(c, it, phone) } }
+                    return@start
+                }
                 val bitmap = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(bitmap)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -465,7 +475,7 @@ object NativeNavigation {
                 } else {
                     val output=Bitmap.createBitmap(480,renderHeight,Bitmap.Config.ARGB_8888)
                     BikeNavigationRenderer.draw(Canvas(output),bitmap,bikeLayout,bikeState(),frameNight)
-                    mapBitmap=output; mapJpeg=jpeg(output); frameAt=SystemClock.elapsedRealtime(); inFlight=false
+                    mapBitmap=output; mapJpeg=jpeg(output); renderedZoomRevision=requestedZoom.revision; frameAt=SystemClock.elapsedRealtime(); inFlight=false
                 }
             }) { _ ->
                 if ((if (phone) phoneSnapshotter else snapshotter) === renderer) { if (phone) { phoneInFlight=false; phoneSnapshotter=null } else { inFlight=false; snapshotter=null }; status="Map unavailable. Check provider key and internet connection"; BikeDiagnostics.record(c,"Native map render failed") }
@@ -507,7 +517,7 @@ object NativeNavigation {
         if(mode=="arrows" && route!=null) {
             banner(canvas,paint,guidance,0,40,20f)
             paint.color=if(night) 0xffb5ff76.toInt() else 0xff14251c.toInt(); paint.textSize=112f; paint.typeface=Typeface.DEFAULT_BOLD
-            val arrow=when { maneuver==6 -> "↻"; maneuver==5 -> "●"; maneuver<0 -> "←"; maneuver in 1..3 || maneuver==7 -> "→"; else -> "↑" }
+            val arrow=when { maneuver == -8 -> "↶"; maneuver == 8 -> "↷"; maneuver==6 -> "↻"; maneuver==5 -> "●"; maneuver<0 -> "←"; maneuver in 1..3 || maneuver==7 -> "→"; else -> "↑" }
             canvas.drawText(arrow,205f,167f,paint)
             if(!phone) banner(canvas,paint,"${distance(remaining)}  |  ${phoneTripSummary()}",height-34,height,18f)
             currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }

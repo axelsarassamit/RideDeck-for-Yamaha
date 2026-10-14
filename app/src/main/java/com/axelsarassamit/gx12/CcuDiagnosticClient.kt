@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Base64
 import app.pillion.core.CcuProtocol
+import app.pillion.core.CcuReadPlan
 import java.util.UUID
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
@@ -16,7 +17,7 @@ import java.util.concurrent.Executors
 /** User-started parked diagnostic session. Only observed authentication and data-read commands. */
 @SuppressLint("MissingPermission")
 class CcuDiagnosticClient(private val context: Context, private val report: (String) -> Unit,
-                          private val received: (CcuProtocol.Message) -> Unit) {
+                          private val received: (CcuProtocol.Message) -> Unit, private val ended: () -> Unit = {}) {
     companion object {
         private val SERVICE = UUID.fromString("afa2cdf4-eccf-46a7-a5ea-9da428c0157a")
         private val CLASSIC = UUID.fromString("00008911-0000-1000-8000-00805f9b34fb")
@@ -34,26 +35,36 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var closed = false
+    val isClosed get() = closed
+    val isAuthenticated get() = authenticated
     @Volatile private var socket: BluetoothSocket? = null
     private var gatt: BluetoothGatt? = null
     private var service: BluetoothGattService? = null
     private var credentials = byteArrayOf()
     private var authenticated = false
     private var cacheName = ""
-    private var supportedRequested = false
-    private var supportedIds = emptyList<Int>()
+    private val plan = CcuReadPlan(RidePreferences.prefs(context).getInt("bike_data_interval", 1000).takeIf { it in 100..5000 } ?: 1000)
+    private var waitingPhase: CcuReadPlan.Phase? = null
     private var mtu = 23
     private var transferId = 0
     private var transfer = byteArrayOf()
     private var stage = ""
     private var lastRead = -10000L
     private val assembly = CcuProtocol.Assembly()
+    private val notifications = CcuProtocol.Notifications()
     private data class Operation(val kind: String, val uuid: UUID, val start: () -> Boolean, val done: () -> Unit)
     private val operations = ArrayDeque<Operation>()
     private var pending: Operation? = null
     private val operationTimeout = Runnable { fail("Bike did not finish a Bluetooth operation. Stop and reconnect while parked.") }
     private val transferTimeout = Runnable { fail("Bike data transfer timed out. No reading was accepted.") }
     private val setupTimeout = Runnable { fail("Bike connection timed out. Check ignition, selected CCU and close Y-Connect / nRF Connect.") }
+    private val responseTimeout = Runnable {
+        val expected = waitingPhase
+        if (expected == null || expected != plan.phase || closed) return@Runnable
+        waitingPhase = null
+        if (!plan.timeout()) fail("${plan.request()?.label ?: "Bike data"} did not reply. Reconnect while parked.")
+        else { BikeDiagnostics.record(context, "CCU optional read unavailable phase=$expected"); startup() }
+    }
     fun start(device: BluetoothDevice) {
         check(!closed && gatt == null && socket == null)
         report("Getting accessory connection details from the paired Yamaha…")
@@ -150,19 +161,26 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     }
     fun readSnapshot() {
         if (!authenticated || closed) { report("Authenticate the Yamaha data connection first."); return }
-        if (supportedIds.isEmpty()) { report("Waiting for the bike's supported-field reply. No unsupported fields will be requested."); return }
+        if (plan.phase != CcuReadPlan.Phase.READY) { report("Bike data setup is still running. Live values appear as they arrive."); return }
         val now = SystemClock.elapsedRealtime()
         if (now - lastRead < 5000 || stage.isNotEmpty()) { report("Wait for the current request before reading again."); return }
         lastRead = now
         // IDs and server observed on the owner's XMAX. This is a snapshot, not a settings or actuator write.
-        report("Reading ${supportedIds.size} vehicle fields confirmed by the bike…")
-        begin(CcuProtocol.vehicleRequest(1248, supportedIds))
+        report("Reading ${plan.supported.size} vehicle fields confirmed by the bike…")
+        begin(CcuProtocol.vehicleRequest(1248, plan.supported))
     }
-    private fun requestSupported() {
-        if (!authenticated || stage.isNotEmpty() || supportedRequested) return
-        supportedRequested = true
-        // Fixed command plus BE16 server, verified in the reference SDK. No request ID is inserted.
-        write(CONTROL, byteArrayOf(0x01, 0x26, 0x04, 0xe0.toByte()))
+    private fun startup() {
+        if (!authenticated || stage.isNotEmpty() || waitingPhase != null || closed) return
+        val request = plan.request()
+        if (request == null) {
+            report("Bike data connected. Live readings are source-decoded; verify them against the dashboard. " +
+                if (plan.unavailable.isEmpty()) "" else "Some optional fields did not reply.")
+            return
+        }
+        report("Bike connected · reading ${request.label.lowercase()}…")
+        waitingPhase = plan.phase
+        main.postDelayed(responseTimeout, 10000)
+        if (request.control) write(CONTROL, request.bytes) else begin(request.bytes)
     }
     private fun notify(uuid: UUID, value: ByteArray) {
         if (closed) return
@@ -188,7 +206,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                         }
                         "complete" -> if (inactive) {
                             transfer.fill(0); transfer = byteArrayOf(); stage = ""; main.removeCallbacks(transferTimeout)
-                            requestSupported()
+                            startup()
                         }
                     }
                 }
@@ -199,10 +217,15 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                             fail("Yamaha authentication was rejected. Reconnect to request fresh connection details; pairing is preserved."); return
                         }
                         authenticated = true; credentials.fill(0); main.removeCallbacks(setupTimeout)
-                        report("Accessory authentication accepted. Waiting for vehicle packets. Use Read bike snapshot while parked.")
+                        report("Accessory authentication accepted. Reading the bike's capabilities…")
                         BikeDiagnostics.record(context, "CCU authentication accepted")
-                        requestSupported()
+                        startup()
                     }
+                    else if (value.size == 6 && CcuProtocol.u(value, 0, 2) == 0x120)
+                        decoded(CcuProtocol.Message(0x120, value.copyOfRange(2, 6)))
+                    else if (value.size == 3 && CcuProtocol.u(value, 0, 2) == 0x138)
+                        decoded(CcuProtocol.Message(0x138, value.copyOfRange(2, 3)))
+                    else if (value.size >= 5 && value.size - 5 == CcuProtocol.u(value, 2, 3)) decoded(CcuProtocol.message(value))
                 }
                 RECEIVE_HEADER -> {
                     assembly.begin(value, SystemClock.elapsedRealtime())
@@ -211,24 +234,38 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 RECEIVE_DATA -> {
                     assembly.accept(value, SystemClock.elapsedRealtime())?.let { frame ->
                         write(RECEIVE_DATA, byteArrayOf(value[0])) { write(RECEIVE_STATUS, byteArrayOf(0, 0)) }
-                        decoded(CcuProtocol.message(frame))
+                        decoded(wireMessage(frame))
                     }
                 }
                 VEHICLE -> {
-                    require(value.size >= 9 && value[2] == 1.toByte() && value[3] == 1.toByte())
-                    decoded(CcuProtocol.message(value.copyOfRange(4, value.size)))
+                    notifications.accept(value, SystemClock.elapsedRealtime())?.let(::decoded)
                 }
             }
-        }.onFailure { fail("Unexpected or incomplete Yamaha data packet. Session stopped; no guessed reading was stored.") }
+        }.onFailure {
+            BikeDiagnostics.record(context, "CCU packet rejected uuid=$uuid exception=${it.javaClass.simpleName}")
+            // A bad telemetry frame cannot change a reading or satisfy a pending request.
+            // Essential startup still times out rather than accepting an invalid capability/authentication reply.
+        }
     }
     private fun decoded(message: CcuProtocol.Message) {
-        if (message.command == 0x127) {
-            supportedIds = CcuProtocol.supportedIds(message, 1248).intersect(setOf(1, 3, 9, 72)).sorted()
-            report(if (supportedIds.isEmpty()) "Bike replied, but none of the observed XMAX fields were confirmed. No snapshot requested."
-                else "Bike confirmed vehicle IDs ${supportedIds.joinToString()}. Tap Read bike snapshot.")
+        if (!authenticated) return
+        if (message.command in setOf(0x10b, 0x10d, 0x10f, 0x127) && CcuProtocol.server(message) != 1248) return
+        if (waitingPhase == plan.phase && plan.accepts(message)) {
+            main.removeCallbacks(responseTimeout); waitingPhase = null
+            BikeDiagnostics.record(context, "CCU read verified phase=${plan.phase}")
+            plan.advance(); startup()
         }
-        // Never store authentication, IDs or unknown replies in a general report.
-        if (message.command in listOf(0x10f, 0x114, 0x127)) received(message)
+        // Only telemetry/known read replies cross the public callback. Authentication and identifiers never do.
+        if (message.command in setOf(0x10f, 0x114, 0x127, 0x104, 0x10b, 0x10d, 0x106, 0x120, 0x138)) received(message)
+    }
+    private fun wireMessage(frame: ByteArray): CcuProtocol.Message {
+        require(frame.size >= 2)
+        val command = CcuProtocol.u(frame, 0, 2)
+        return when {
+            command == 0x120 && frame.size == 6 -> CcuProtocol.Message(command, frame.copyOfRange(2, 6))
+            command == 0x138 && frame.size == 3 -> CcuProtocol.Message(command, frame.copyOfRange(2, 3))
+            else -> CcuProtocol.message(frame)
+        }
     }
     private val callbacks = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(client: BluetoothGatt, status: Int, state: Int) = post(client) {
@@ -272,10 +309,12 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     }
     private fun fail(message: String) { if (!closed) { report(message); BikeDiagnostics.record(context, "CCU diagnostic session ended: $message"); close() } }
     fun close() {
+        if (closed) return
         closed = true; main.removeCallbacksAndMessages(null); authenticated = false
-        credentials.fill(0); transfer.fill(0); operations.clear(); pending = null; assembly.clear()
+        credentials.fill(0); transfer.fill(0); operations.clear(); pending = null; assembly.clear(); notifications.clear()
         runCatching { socket?.close() }; socket = null
         runCatching { gatt?.disconnect(); gatt?.close() }; gatt = null; service = null
         worker.shutdownNow()
+        ended()
     }
 }

@@ -8,6 +8,19 @@ import java.io.InputStream
 class CcuProtocolTest {
     private fun bytes(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     private fun rejects(action: () -> Unit) { try { action(); fail("Malformed data accepted") } catch (_: IllegalArgumentException) { } }
+    @Test fun directNotifyFragmentsReassembleOutOfOrderAndRejectContradictingDuplicates() {
+        val frame=bytes("01040000041a02e009");val n=CcuProtocol.Notifications()
+        val one=bytes("00010102")+frame.copyOfRange(0,5)
+        val two=bytes("00010202")+frame.copyOfRange(5,frame.size)
+        assertNull(n.accept(two,100));assertNull(n.accept(two,101))
+        assertArrayEquals(bytes("1a02e009"),n.accept(one,102)!!.payload)
+        val conflict=CcuProtocol.Notifications();conflict.accept(one,100)
+        rejects { conflict.accept(bytes("00010102aabb"),101) }
+        rejects { n.accept(bytes("00010302aabb"),102) }
+        val old=CcuProtocol.Notifications();old.accept(one,0)
+        assertNull(old.accept(two,15001))
+        assertEquals(0x104,n.accept(bytes("00020101")+frame,103)!!.command)
+    }
     @Test fun classicHandlesShortReadsAndRejectsTruncatedOrHugeFrames() {
         val frame = bytes("0100000002013904")
         val short = object : InputStream() {

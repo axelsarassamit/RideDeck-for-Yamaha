@@ -47,7 +47,10 @@ object CcuProtocol {
         require(credentials.size == 20 && credentials.takeLast(6).all { it.toInt() in 48..57 })
         return be(0x101, 2) + credentials
     }
-    fun envelope(command: Int, payload: ByteArray) = be(command, 2) + be(payload.size, 3) + payload
+    fun envelope(command: Int, payload: ByteArray): ByteArray {
+        require(command in 0..65535 && payload.size <= MAX_MESSAGE - 5)
+        return be(command, 2) + be(payload.size, 3) + payload
+    }
     fun message(value: ByteArray): Message {
         require(value.size in 5..MAX_MESSAGE)
         require(u(value, 2, 3) == value.size - 5) { "CCU payload length invalid" }
@@ -72,6 +75,35 @@ object CcuProtocol {
     fun vehicleRequest(server: Int, ids: List<Int>): ByteArray {
         require(server in 0..65535 && ids.size in 1..256 && ids.all { it in 0..65535 })
         return envelope(0x10e, integer(3, server.toLong()) + ids.distinct().fold(byteArrayOf()) { a, id -> a + integer(4, id.toLong()) })
+    }
+    fun packed(field: Int, ids: List<Int>): ByteArray {
+        require(field in 1..536870911 && ids.size <= 256 && ids.all { it in 0..65535 })
+        val payload = ByteArrayOutputStream().apply { ids.distinct().forEach { varint(this, it.toLong()) } }.toByteArray()
+        return ByteArrayOutputStream().apply {
+            varint(this, (field.toLong() shl 3) or 2); varint(this, payload.size.toLong()); write(payload)
+        }.toByteArray()
+    }
+    fun control(command: Int, payload: ByteArray = byteArrayOf()): ByteArray {
+        require(command in setOf(0x103, 0x126, 0x11f, 0x137)) { "Not a supported read command" }
+        return be(command, 2) + payload
+    }
+    fun supportedRequest(server: Int): ByteArray {
+        require(server in 0..65535)
+        return control(0x126, be(server, 2))
+    }
+    fun readRequest(command: Int, server: Int, ids: List<Int> = emptyList(), interval: Int? = null): ByteArray {
+        require(command in setOf(0x105, 0x109, 0x10a, 0x10c, 0x10e, 0x110, 0x113, 0x13b)) { "Not a supported read request" }
+        require(server in 0..65535 && ids.size <= 256 && ids.all { it in 0..65535 })
+        if (interval != null) require(interval in 100..5000)
+        val payload = when (command) {
+            0x113, 0x13b -> { require(ids.isNotEmpty()); packed(3, ids) + if (command == 0x13b) integer(4, requireNotNull(interval).toLong()) else byteArrayOf() }
+            0x105 -> integer(3, server.toLong()) + integer(4, 1) + integer(6, 1)
+            0x109 -> integer(3, server.toLong()) + integer(4, 1) + integer(5, requireNotNull(interval).toLong())
+            0x10c -> integer(3, server.toLong()) + integer(5, 1)
+            else -> { require(ids.isNotEmpty()); integer(3, server.toLong()) + packed(4, ids) +
+                if (command == 0x110) integer(6, requireNotNull(interval).toLong()) else byteArrayOf() }
+        }
+        return envelope(command, payload)
     }
     fun fields(bytes: ByteArray): List<Field> {
         require(bytes.size <= MAX_MESSAGE); var at = 0
@@ -104,7 +136,7 @@ object CcuProtocol {
         return out
     }
     fun readings(message: Message): List<Reading> {
-        val list = when (message.command) { 0x10f -> 4; 0x114 -> 3; else -> return emptyList() }
+        val list = when (message.command) { 0x10b, 0x10d, 0x10f -> 4; 0x114 -> 3; else -> return emptyList() }
         return fields(message.payload).filter { it.number == list && it.bytes != null }.mapNotNull { item ->
             val nested = fields(item.bytes!!)
             val id = nested.firstOrNull { it.number == 1 }?.integer
@@ -112,12 +144,14 @@ object CcuProtocol {
             if (id == null || id !in 0..65535 || raw == null || raw.size > 4096) null else Reading(id.toInt(), raw)
         }
     }
+    fun server(message: Message): Int? = fields(message.payload).firstOrNull { it.number == 3 }?.integer?.takeIf { it in 0..65535 }?.toInt()
     fun supportedIds(message: Message, server: Int): List<Int> {
-        require(message.command == 0x127)
-        val decoded = fields(message.payload)
-        require(decoded.firstOrNull { it.number == 3 }?.integer == server.toLong()) { "Unexpected vehicle server" }
+        require(message.command == 0x127 && CcuProtocol.server(message) == server) { "Unexpected vehicle server" }
+        return numberList(message, 4)
+    }
+    fun numberList(message: Message, fieldNumber: Int): List<Int> {
         val ids = mutableListOf<Int>()
-        for (field in decoded.filter { it.number == 4 }) {
+        for (field in fields(message.payload).filter { it.number == fieldNumber }) {
             field.integer?.let { require(it in 0..65535); ids.add(it.toInt()) }
             field.bytes?.let { packed ->
                 var at = 0
@@ -134,6 +168,31 @@ object CcuProtocol {
             require(ids.size <= 256)
         }
         return ids.distinct()
+    }
+    /** Direct notify frames carry sequence/count/total before the command envelope. */
+    class Notifications {
+        private data class Parts(val count: Int, val started: Long, val bytes: MutableMap<Int, ByteArray>)
+        private val groups = linkedMapOf<Int, Parts>()
+        fun clear() { groups.clear() }
+        fun accept(value: ByteArray, now: Long): Message? {
+            require(value.size > 4)
+            val sequence = u(value, 0, 2); val count = value[2].toInt() and 255; val total = value[3].toInt() and 255
+            require(count in 1..total && total in 1..255)
+            groups.entries.removeAll { now - it.value.started !in 0..15000 }
+            val part = value.copyOfRange(4, value.size)
+            if (total == 1) return message(part)
+            val group = groups[sequence] ?: Parts(total, now, linkedMapOf()).also {
+                require(groups.size < 8); groups[sequence] = it
+            }
+            require(group.count == total)
+            group.bytes[count]?.let { require(it.contentEquals(part)); return null }
+            require(group.bytes.values.sumOf { it.size } + part.size <= MAX_MESSAGE)
+            group.bytes[count] = part
+            if (group.bytes.size != total) return null
+            val joined = ByteArrayOutputStream().apply { for (index in 1..total) write(group.bytes.getValue(index)) }.toByteArray()
+            groups.remove(sequence)
+            return message(joined)
+        }
     }
     /** Ordered transfer with exact duplicates accepted. Missing, conflicting and oversized fragments fail closed. */
     class Assembly {

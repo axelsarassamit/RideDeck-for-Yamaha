@@ -137,6 +137,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
         <service android:name=".YamahaCastService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice" />
+        <service android:name=".BikeDataService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice" />
         <service android:name=".NativeNavigationService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="location" />
         <service android:name=".DashRideService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse|location">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started motorcycle ride timer and authenticated RideDeck Dash recording-continuity lease, explicitly stopped by Pause or End ride" />

@@ -55,6 +55,14 @@ object BikeNavigationRenderer {
             p.style=Paint.Style.STROKE; p.strokeWidth=4f; canvas.drawLine(-18f,24f,-18f,-23f,p)
             p.style=Paint.Style.FILL
             for (row in 0..2) for (col in 0..3) if ((row+col)%2==0) canvas.drawRect(-15f+col*8,-23f+row*8,-7f+col*8,-15f+row*8,p)
+        } else if (kotlin.math.abs(sign) == 8) {
+            if (sign > 0) canvas.scale(-1f, 1f)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 9f
+            canvas.drawPath(Path().apply {
+                moveTo(15f, 25f); lineTo(15f, -5f); cubicTo(15f, -28f, -15f, -28f, -15f, -5f); lineTo(-15f, 7f)
+            }, p)
+            p.style = Paint.Style.FILL
+            canvas.drawPath(Path().apply { moveTo(-29f, 3f); lineTo(-15f, 22f); lineTo(-1f, 3f); close() }, p)
         } else if (sign == 6 || sign == 7) {
             p.style=Paint.Style.STROKE; p.strokeWidth=7f; canvas.drawArc(-19f,-19f,19f,19f,30f,290f,false,p)
             p.style=Paint.Style.FILL
