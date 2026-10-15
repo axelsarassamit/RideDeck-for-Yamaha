@@ -76,6 +76,20 @@ class CleanupMenuTest {
                         Thread.sleep(100)
                     }
                     assertTrue("Activity did not enter landscape",landscape)
+                    // Configuration changes arrive before the physical window finishes rotating.
+                    var settled=0
+                    for(attempt in 0..40) {
+                        instrumentation.waitForIdleSync()
+                        var laidOut=false
+                        scenario.onActivity { activity ->
+                            val root=activity.window.decorView
+                            laidOut=root.width>root.height && !root.isLayoutRequested
+                        }
+                        settled=if(laidOut)settled+1 else 0
+                        if(settled>=5)break
+                        Thread.sleep(200)
+                    }
+                    assertTrue("Landscape window did not settle",settled>=5)
                     scenario.onActivity { activity ->
                         fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply{isAccessible=true}.get(activity)
                         (field("handler") as android.os.Handler).removeCallbacks(field("trackRefresh") as Runnable)
@@ -83,21 +97,22 @@ class CleanupMenuTest {
                         (field("trackArtist") as TextView).text="Sample artist with a long name"
                         (field("phoneGuidance") as TextView).text="In 190 m, turn left onto Sukhumvit Road."
                     }
+                    Thread.sleep(200)
                     instrumentation.waitForIdleSync()
                     scenario.onActivity { activity ->
                         fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply{isAccessible=true}.get(activity) as View
-                        for(name in listOf("trackStatus","trackArtist","previousButton","playPauseButton","nextButton")) {
-                            val view=field(name);val visible=android.graphics.Rect()
-                            assertTrue("Hidden music control: $name",view.getGlobalVisibleRect(visible))
-                            assertTrue("Clipped music control: $name",visible.height()>=view.height-1 && visible.width()>=view.width-1)
-                            if(name.endsWith("Button"))assertTrue("Playback target too short",view.height>=55*activity.resources.displayMetrics.density)
-                        }
                         val root=activity.window.decorView
                         val bitmap=android.graphics.Bitmap.createBitmap(root.width,root.height,android.graphics.Bitmap.Config.ARGB_8888)
                         root.draw(android.graphics.Canvas(bitmap))
                         val folder=java.io.File(activity.getExternalFilesDir("tests"),"cleanup41-previews").apply{mkdirs()}
                         java.io.File(folder,"landscape-music-sample.png").outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
                         bitmap.recycle()
+                        for(name in listOf("trackStatus","trackArtist","previousButton","playPauseButton","nextButton")) {
+                            val view=field(name);val visible=android.graphics.Rect()
+                            assertTrue("Hidden music control: $name",view.getGlobalVisibleRect(visible))
+                            assertTrue("Clipped music control: $name visible=$visible view=${view.width}x${view.height}",visible.height()>=view.height-1 && visible.width()>=view.width-1)
+                            if(name.endsWith("Button"))assertTrue("Playback target too short",view.height>=55*activity.resources.displayMetrics.density)
+                        }
                     }
                 } finally { scenario.onActivity { it.requestedOrientation=originalOrientation } }
             }
