@@ -633,13 +633,15 @@ public class MainActivity extends android.app.Activity {
         LinearLayout workspace = new LinearLayout(this);
         workspace.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout controls = new LinearLayout(this); controls.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        // Navigation guidance shares the short landscape height with music.
+        boolean compactMusic = compact || (!portrait && getResources().getConfiguration().screenHeightDp < 500 && "music".equals(renderedPanel));
         LinearLayout music = rideCard("NOW PLAYING");
-        if (compact) {
+        if (compactMusic) {
             music.removeAllViews(); music.setOrientation(LinearLayout.HORIZONTAL);
             music.setGravity(Gravity.CENTER_VERTICAL); music.setPadding(dp(8), dp(4), dp(8), dp(4));
         }
         LinearLayout details = new LinearLayout(this); details.setGravity(Gravity.CENTER_VERTICAL);
-        if (!compact) {
+        if (!compactMusic) {
             albumArt = new android.widget.ImageView(this); albumArt.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             albumArt.setImageDrawable(new MusicArtworkDrawable());
             albumArt.setContentDescription("Album artwork");
@@ -651,25 +653,25 @@ public class MainActivity extends android.app.Activity {
         LinearLayout metadataColumn = new LinearLayout(this); metadataColumn.setOrientation(LinearLayout.VERTICAL);
         musicSource = text(RidePreferences.musicName(this), 12, RideTheme.accent(this), true);
         musicSource.setSingleLine(true); metadataColumn.addView(musicSource);
-        if (compact) musicSource.setVisibility(View.GONE);
-        trackStatus = text("Open " + RidePreferences.musicName(this), compact ? 16 : portrait ? 22 : 20, RideStyle.TEXT, true);
-        trackStatus.setMaxLines(compact ? 1 : 2); trackStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if (compactMusic) musicSource.setVisibility(View.GONE);
+        trackStatus = text("Open " + RidePreferences.musicName(this), compactMusic ? 16 : portrait ? 22 : 20, RideStyle.TEXT, true);
+        trackStatus.setMaxLines(compactMusic ? 1 : 2); trackStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
         trackStatus.setPadding(0, dp(2), 0, dp(2)); metadataColumn.addView(trackStatus);
-        trackArtist = text("Start a track to show its details", compact ? 12 : 15, RideStyle.MUTED, false);
+        trackArtist = text("Start a track to show its details", compactMusic ? 12 : 15, RideStyle.MUTED, false);
         trackArtist.setMaxLines(1); trackArtist.setEllipsize(android.text.TextUtils.TruncateAt.END);
         metadataColumn.addView(trackArtist);
         final TextView titleView = trackStatus, artistView = trackArtist, sourceView = musicSource;
         details.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             int remaining = bottom - top - artistView.getMeasuredHeight()
-                - (compact ? 0 : sourceView.getMeasuredHeight()) - titleView.getCompoundPaddingTop() - titleView.getCompoundPaddingBottom();
-            int lines = compact ? 1 : Math.max(1, Math.min(2, remaining / Math.max(1, titleView.getLineHeight())));
+                - (compactMusic ? 0 : sourceView.getMeasuredHeight()) - titleView.getCompoundPaddingTop() - titleView.getCompoundPaddingBottom();
+            int lines = compactMusic ? 1 : Math.max(1, Math.min(2, remaining / Math.max(1, titleView.getLineHeight())));
             if (titleView.getMaxLines() != lines) titleView.setMaxLines(lines);
         });
         details.setOnClickListener(v -> openPreferredMusic());
         music.setOnClickListener(v -> openPreferredMusic());
         details.addView(metadataColumn, new LinearLayout.LayoutParams(0, -2, 1));
-        music.addView(details, compact ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1));
-        if (!compact) {
+        music.addView(details, compactMusic ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1));
+        if (!compactMusic) {
             playbackTimeline = new PlaybackTimelineView(this);
             LinearLayout.LayoutParams timelineParams = new LinearLayout.LayoutParams(-1, dp(26));
             timelineParams.bottomMargin = dp(6);
@@ -683,11 +685,11 @@ public class MainActivity extends android.app.Activity {
         nextButton = rideAction("▶|", false); nextButton.setContentDescription("Next track");
         nextButton.setOnClickListener(v -> sendMedia(MediaAction.NEXT));
         transport.setGravity(Gravity.CENTER_VERTICAL);
-        transport.addView(previousButton, rideWeight(compact ? 56 : 64));
-        LinearLayout.LayoutParams playParams = rideWeight(compact ? 56 : portrait ? 72 : 64);
-        playParams.weight = compact ? 1 : 1.3f;
+        transport.addView(previousButton, rideWeight(compactMusic ? 56 : 64));
+        LinearLayout.LayoutParams playParams = rideWeight(compactMusic ? 56 : portrait ? 72 : 64);
+        playParams.weight = compactMusic ? 1 : 1.3f;
         transport.addView(playPauseButton, playParams);
-        transport.addView(nextButton, rideWeight(compact ? 56 : 64)); music.addView(transport, compact ? new LinearLayout.LayoutParams(dp(180), -2) : new LinearLayout.LayoutParams(-1, -2));
+        transport.addView(nextButton, rideWeight(compactMusic ? 56 : 64)); music.addView(transport, compactMusic ? new LinearLayout.LayoutParams(dp(180), -2) : new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams musicParams = compact
             ? new LinearLayout.LayoutParams(-1, dp(72))
             : portrait ? new LinearLayout.LayoutParams(-1, 0, 0.9f)
