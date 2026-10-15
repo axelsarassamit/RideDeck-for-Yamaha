@@ -21,18 +21,12 @@
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.APP_MUSIC" /></intent>
         <intent><action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" /></intent>
         <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
-        <package android:name="com.waze" />
-        <package android:name="com.grabtaxi.driver2" />
-        <package android:name="com.linecorp.lineman.driver" />
         <package android:name="jp.naver.line.android" />
         <package android:name="com.facebook.orca" />
         <package android:name="com.zhiliaoapp.musically" />
         <package android:name="com.ss.android.ugc.trill" />
         <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent>
-        <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
-        <package android:name="jp.co.yamahamotor.yamahamotorcycleconnect.sccu" />
-        <package android:name="com.garmin.android.apps.streetcross" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
         <intent>
@@ -47,12 +41,6 @@
         <package android:name="com.viber.voip" />
         <package android:name="com.discord" />
         <package android:name="com.tencent.mm" />
-        <package android:name="com.here.app.maps" />
-        <package android:name="com.sygic.aura" />
-        <package android:name="com.mapswithme.maps.pro" />
-        <package android:name="net.osmand" />
-        <package android:name="net.osmand.plus" />
-        <package android:name="app.organicmaps" />
     </queries>
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />

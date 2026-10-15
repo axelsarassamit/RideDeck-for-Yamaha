@@ -6,7 +6,6 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.content.ComponentName;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
@@ -25,13 +24,11 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.Chronometer;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import org.json.JSONArray;
@@ -52,10 +49,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends android.app.Activity {
     private static final String REPOSITORY = "axelsarassamit/RideDeck-for-Yamaha";
-    private static final String YAMAHA_Y_CONNECT_PACKAGE = "jp.co.yamahamotor.yamahamotorcycleconnect.sccu";
-    private static final String GARMIN_STREETCROSS_PACKAGE = "com.garmin.android.apps.streetcross";
     private static final int REQUEST_BLUETOOTH = 12;
-    private String castDeviceAddress;
     private String autoMapSession;
     private boolean activityResumed;
     private boolean phoneMapPending;
@@ -70,7 +64,6 @@ public class MainActivity extends android.app.Activity {
     private SpeedLimitIcon phoneSpeedLimit;
     private TextView messagePreview;
     private TextView messageSource;
-    private TextView dockMessage;
     private Button playPauseButton;
     private Button previousButton;
     private Button nextButton;
@@ -101,8 +94,6 @@ public class MainActivity extends android.app.Activity {
     private boolean cockpitVisible;
     private static long nextAutomaticBikeAttempt;
     private boolean activityVisible;
-    private Chronometer rideClock;
-    private Button rideButton;
     private File downloadedApk;
     private MediaController mediaController;
     private BluetoothProfile a2dpProfile;
@@ -150,7 +141,6 @@ public class MainActivity extends android.app.Activity {
         }
         Object retained = getLastNonConfigurationInstance();
         if (retained instanceof GX12NotificationListener.NotificationPreview) voiceReplyTarget = (GX12NotificationListener.NotificationPreview) retained;
-        if (state != null) castDeviceAddress = state.getString("cast_device");
         if (state != null) autoMapSession = state.getString("auto_map_session");
         if (state != null) phoneMapPending = state.getBoolean("phone_map_pending", false);
         if (this instanceof SetupActivity) buildSetupScreen();
@@ -269,10 +259,6 @@ public class MainActivity extends android.app.Activity {
         handler.removeCallbacks(dashStatusRefresh);DashRecordingConnection.stopStatusPolling();
         if (headsetMic != null) { externalVoiceDeparted = headsetMic.listening(); headsetMic.cancelPending(); }
         handler.removeCallbacks(trackRefresh);
-        SharedPreferences prefs = getPreferences(0);
-        if (prefs.getBoolean("ride_running", false) && rideClock != null) {
-            prefs.edit().putLong("ride_elapsed", android.os.SystemClock.elapsedRealtime() - rideClock.getBase()).apply();
-        }
         super.onPause();
     }
 
@@ -303,7 +289,7 @@ public class MainActivity extends android.app.Activity {
             return;
         }
         setupVisible = true; cockpitVisible = false;
-        albumArt = null; messagePreview = null; messageSource = null; dockMessage = null;
+        albumArt = null; messagePreview = null; messageSource = null;
         trackArtist = null; musicSource = null; playbackTimeline = null;
         phoneGuidance = null; phoneSpeedLimit = null; trackStatus = null; previousButton = null; playPauseButton = null; nextButton = null;
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
@@ -314,15 +300,15 @@ public class MainActivity extends android.app.Activity {
         Button back = rideAction("Done", false); back.setOnClickListener(v -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(88), dp(56))); root.addView(header);
         LinearLayout sections = new LinearLayout(this); sections.setOrientation(LinearLayout.VERTICAL);
-        sections.addView(text(BuildConfig.YAMAHA ? "RideDeck for Yamaha" : "RideDeck", 16, RideTheme.accent(this), true));
+        sections.addView(text("RideDeck for Yamaha", 16, RideTheme.accent(this), true));
         TextView parked = text("Make changes while parked", 14, 0xffaab4c0, false);
         parked.setPadding(0, dp(4), 0, dp(16)); sections.addView(parked);
-        LinearLayout page = setupGroup(sections, "Navigation", BuildConfig.YAMAHA ? "Maps, destinations and display panels" : "Choose the map app for split screen", false);
+        LinearLayout page = setupGroup(sections, "Navigation", "Maps, destinations and display panels", false);
         Button personalize = button("CUSTOMIZATION"); personalize.setOnClickListener(v -> showPersonalization());
         // Customization is presented in its own section below.
-        page.addView(text(BuildConfig.YAMAHA ? "MapLibre navigation for compatible Yamaha displays" : "Phone navigation with your chosen map app", 16, RideStyle.TEXT, true));
-        Button navigation = button(BuildConfig.YAMAHA ? "MAP + PANEL SETTINGS" : "CHOOSE MAP APP");
-        navigation.setOnClickListener(v -> { if (BuildConfig.YAMAHA) NavigationUi.configure(this); else chooseMapApp(); });
+        page.addView(text("MapLibre navigation for compatible Yamaha displays", 16, RideStyle.TEXT, true));
+        Button navigation = button("MAP + PANEL SETTINGS");
+        navigation.setOnClickListener(v -> { NavigationUi.configure(this); });
         page.addView(navigation, buttonParams());
         if (BuildConfig.YAMAHA) {
             CheckBox connect = new CheckBox(this); connect.setText("Connect to saved bike automatically"); connect.setTextColor(RideStyle.TEXT);
@@ -508,15 +494,9 @@ public class MainActivity extends android.app.Activity {
         for (int i = 0; i < devices.size(); i++) names[i] = devices.get(i).getName() + "\n" + devices.get(i).getAddress();
         new android.app.AlertDialog.Builder(this).setTitle("Choose your Yamaha dash")
             .setItems(names, (dialog, which) -> {
-                castDeviceAddress = devices.get(which).getAddress();
-                getSharedPreferences("bike_display", MODE_PRIVATE).edit().putString("dash_address", castDeviceAddress).apply();
-                if (BuildConfig.YAMAHA) {
-                    Intent dedicated = new Intent(this, YamahaCastService.class)
-                        .putExtra("device", castDeviceAddress).putExtra("dedicated", true);
-                    startForegroundService(dedicated); castDeviceAddress = null; buildScreen(); return;
-                }
-                castDeviceAddress = null;
-                displayError("Bike-only maps must be prepared first. Open Setup > Set up bike-only map. Phone mirroring is disabled.");
+                String address = devices.get(which).getAddress();
+                getSharedPreferences("bike_display", MODE_PRIVATE).edit().putString("dash_address", address).apply();
+                startSavedDash(address);
             }).setNegativeButton("Cancel", null).show();
     }
 
@@ -532,7 +512,7 @@ public class MainActivity extends android.app.Activity {
         state.putString("auto_map_session", autoMapSession);
         state.putBoolean("setup_visible", setupVisible);
         state.putBoolean("phone_map_pending", phoneMapPending);
-        state.putString("cast_device", castDeviceAddress); super.onSaveInstanceState(state);
+        super.onSaveInstanceState(state);
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -546,23 +526,16 @@ public class MainActivity extends android.app.Activity {
             if (result == RESULT_OK && target != null && words != null && !words.isEmpty() && !words.get(0).trim().isEmpty()) confirmVoiceReply(target, words.get(0));
             return;
         }
-        castDeviceAddress = null;
     }
 
     private void showAbout() {
-        String notice = BuildConfig.YAMAHA ? "MapLibre renders the map. MapTiler supplies map data and search. Optional TomTom supplies search, motorcycle routes and traffic; otherwise Valhalla supplies routes through the public FOSSGIS server. Provider terms, quotas and attribution apply.\n\nYamaha navigation protocol adapted from Pillion, revision 29497f4. Required Notice: Copyright 2026 the Pillion authors. PolyForm Noncommercial 1.0.0. Personal and hobby use. Independent of Yamaha, Garmin and Pillion." : "Phone controls and split screen with your chosen navigation app. Independent of navigation and music providers.";
-        new android.app.AlertDialog.Builder(this).setTitle(BuildConfig.YAMAHA ? "RideDeck for Yamaha" : "RideDeck").setMessage(notice).setPositiveButton("Close", null).show();
+        String notice = "MapLibre renders the map. MapTiler supplies map data and search. Optional TomTom supplies search, motorcycle routes and traffic; otherwise Valhalla supplies routes through the public FOSSGIS server. Provider terms, quotas and attribution apply.\n\nYamaha navigation protocol adapted from Pillion, revision 29497f4. Required Notice: Copyright 2026 the Pillion authors. PolyForm Noncommercial 1.0.0. Personal and hobby use. Independent of Yamaha, Garmin and Pillion.";
+        new android.app.AlertDialog.Builder(this).setTitle("RideDeck for Yamaha").setMessage(notice).setPositiveButton("Close", null).show();
     }
 
     private void displayError(String message) {
         new android.app.AlertDialog.Builder(this).setTitle("RideDeck")
             .setMessage(message).setPositiveButton("Close", null).show();
-    }
-
-    private void rideMapAction() {
-        if (!BuildConfig.YAMAHA) { openPhoneMap(); return; }
-        NativeNavigation.start(this);
-        NavigationUi.search(this, null);
     }
 
     private void startAutomaticMap() {
@@ -584,42 +557,21 @@ public class MainActivity extends android.app.Activity {
         } catch (RuntimeException e) { autoMapSession = null; openPhoneMap(); }
     }
 
-    private void openPhoneMap() {
-        if (BuildConfig.YAMAHA) { NativeNavigation.start(this); buildScreen(); return; }
-        autoMapSession = null;
-        YamahaCastService.automaticFallbackPending = false;
-        if (isFinishing() || isDestroyed()) return;
-        if (!activityResumed || setupVisible) { phoneMapPending = true; return; }
-        phoneMapPending = false;
-        if (YamahaCastService.active) {
-            stopService(new Intent(this, YamahaCastService.class));
-            handler.postDelayed(this::openPhoneMap, 1000);
-            return;
-        }
-        buildScreen();
-        if (!BuildConfig.YAMAHA && Build.VERSION.SDK_INT < 32 && !isInMultiWindowMode()) {
-            new android.app.AlertDialog.Builder(this).setTitle("Phone split-screen")
-                .setMessage("On this Android version, open Recent apps and put RideDeck in split-screen, then tap Map. No bike display or debugging setup is needed.")
-                .setPositiveButton("OK", null).show(); return;
-        }
-        openMapsAdjacent();
-    }
+    private void openPhoneMap() { NativeNavigation.start(this); buildScreen(); }
 
     private void startSavedDash(String address) {
         startForegroundService(new Intent(this, YamahaCastService.class).putExtra("device", address).putExtra("dedicated", true));
         buildScreen();
     }
 
-    private void buildAppDock() { buildScreen(); }
-
     private void buildScreen() {
         if (this instanceof SetupActivity) { buildSetupScreen(); return; }
         setupVisible = false; cockpitVisible = true;
         renderedPanel = RidePreferences.prefs(this).getString("phone_panel", "map");
         if (phoneMapPending) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
-        messagePreview = null; messageSource = null; dockMessage = null; albumArt = null;
+        messagePreview = null; messageSource = null; albumArt = null;
         trackArtist = null; musicSource = null; playbackTimeline = null;
-        rideClock = null; rideButton = null; phoneGuidance = null; phoneSpeedLimit = null;
+        phoneGuidance = null; phoneSpeedLimit = null;
         deviceStatus = text("", 12, 0xffaab4c0, false);
         updateStatus = text("", 12, 0xffaab4c0, false);
         boolean portrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
@@ -677,7 +629,6 @@ public class MainActivity extends android.app.Activity {
             LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
             guidanceParams.topMargin = dp(8); root.addView(guidanceRow, guidanceParams);
         }
-
 
         LinearLayout workspace = new LinearLayout(this);
         workspace.setOrientation(LinearLayout.HORIZONTAL);
@@ -901,10 +852,6 @@ public class MainActivity extends android.app.Activity {
         p.setMargins(dp(3), dp(4), dp(3), 0); return p;
     }
 
-    private LinearLayout.LayoutParams rideParams(int height) {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(height)); p.topMargin = dp(8); return p;
-    }
-
     private void showBikeScreenMenu() {
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
             .setTitle("Yamaha bike screen")
@@ -934,19 +881,6 @@ public class MainActivity extends android.app.Activity {
         if (messages.isEmpty()) return null;
         if (messages.get(0) != newestSeen) { newestSeen = messages.get(0); messageApp = null; }
         return messages.get(0);
-    }
-
-    private void chooseMessageSource() {
-        String[] packages = RidePreferences.messagePackages(this);
-        java.util.List<String> names = new java.util.ArrayList<>(), choices = new java.util.ArrayList<>();
-        names.add("Latest from all apps"); choices.add(null);
-        java.util.Set<String> selected = RidePreferences.selectedMessages(this);
-        for (int i = 0; i < packages.length; i++) if (!packages[i].isEmpty() && selected.contains(packages[i])) {
-            names.add(RidePreferences.MESSAGE_NAMES[i]); choices.add(packages[i]);
-        }
-        new android.app.AlertDialog.Builder(this).setTitle("Message source")
-            .setItems(names.toArray(new String[0]), (dialog, which) -> { messageApp = choices.get(which); refreshWhatsAppPreview(); })
-            .setNegativeButton("Close", null).show();
     }
 
     private void acknowledgeMessage(GX12NotificationListener.NotificationPreview item) {
@@ -1182,22 +1116,22 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showPersonalization() {
-        showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Navigation / rider app", "Reply method", "Controls / map placement", "Color theme", "Music player", "Bike map size", "Home and Work destinations", "Favorites", "Nearby fuel stations", "Bike position icon"}, (dialog, which) -> {
+        showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Reply method", "Phone panel placement", "Color theme", "Music player", "Home and Work destinations", "Favorites", "Nearby fuel stations", "Bike position icon"}, (dialog, which) -> {
                 if (which == 0) new android.app.AlertDialog.Builder(this).setTitle("Phone mount position")
                     .setSingleChoiceItems(new String[]{"Left: music controls on left", "Centre: controls on left", "Right: music controls on right"}, RidePreferences.prefs(this).getInt("mount", 1), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("mount", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
                     }).setNegativeButton("Cancel", null).show();
-                else if (which == 1) chooseMessageApps(); else if (which == 2) chooseMapApp();
-                else if (which == 4) showLayoutChoice();
-                else if (which == 5) new android.app.AlertDialog.Builder(this).setTitle("Color theme")
-                    .setSingleChoiceItems(RideTheme.NAMES, RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0), (d, selected) -> {
+                else if (which == 1) chooseMessageApps();
+                else if (which == 3) showLayoutChoice();
+                else if (which == 4) new android.app.AlertDialog.Builder(this).setTitle("Color theme")
+                    .setSingleChoiceItems(RideTheme.NAMES, RidePreferences.prefs(this).getInt("color_theme", 4), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("color_theme", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
                     }).setNegativeButton("Cancel", null).show();
-                else if (which == 6) chooseMusicPlayer();
-                else if (which == 9) showBikeFavorites();
-                else if (which == 10) prepareFuelStations();
-                else if (which == 11) YamahaPositionMarker.showPicker(this);
-                else if (which == 8) {
+                else if (which == 5) chooseMusicPlayer();
+                else if (which == 7) showBikeFavorites();
+                else if (which == 8) prepareFuelStations();
+                else if (which == 9) YamahaPositionMarker.showPicker(this);
+                else if (which == 6) {
                     LinearLayout fields = new LinearLayout(this); fields.setOrientation(LinearLayout.VERTICAL); fields.setPadding(dp(24), dp(12), dp(24), 0);
                     EditText home = new EditText(this); home.setHint("Home: latitude,longitude"); home.setText(RidePreferences.prefs(this).getString("bike_home", ""));
                     EditText work = new EditText(this); work.setHint("Work: latitude,longitude"); work.setText(RidePreferences.prefs(this).getString("bike_work", "")); fields.addView(home); fields.addView(work);
@@ -1218,16 +1152,7 @@ public class MainActivity extends android.app.Activity {
                             buildSetupScreen(); showPersonalization();
                         })); destinations.show();
                 }
-                else if (which == 7) {
-                    if (YamahaCastService.active) { displayError("Stop the bike display before changing map size."); return; }
-                    new android.app.AlertDialog.Builder(this).setTitle("Bike map size")
-                        .setSingleChoiceItems(RidePreferences.BIKE_MAP_SIZE_NAMES,
-                            Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("bike_map_size", 0))), (d, selected) -> {
-                            RidePreferences.prefs(this).edit().putInt("bike_map_size", selected).apply();
-                            d.dismiss(); buildSetupScreen(); showPersonalization();
-                        }).setNegativeButton("Close", null).show();
-                }
-                else if (which == 3) new android.app.AlertDialog.Builder(this).setTitle("Reply method")
+                else if (which == 2) new android.app.AlertDialog.Builder(this).setTitle("Reply method")
                     .setSingleChoiceItems(new String[]{"Voice to text - confirm before sending", "Voice message - open original app"}, RidePreferences.prefs(this).getInt("reply_mode", 0), (d, choice) -> {
                         RidePreferences.prefs(this).edit().putInt("reply_mode", choice).apply(); d.dismiss(); showPersonalization();
                     }).setNegativeButton("Cancel", null).show();
@@ -1287,19 +1212,16 @@ public class MainActivity extends android.app.Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout items = new LinearLayout(this); items.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < labels.length; i++) {
-            if (!BuildConfig.YAMAHA && i >= 7) continue;
-            if (BuildConfig.YAMAHA && (i == 2 || i == 7)) continue;
             final int choice = i;
             LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(16), dp(12), dp(12), dp(12));
             row.setBackground(RideStyle.row(this));
             LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
-            words.addView(text(BuildConfig.YAMAHA && i == 4 ? "Phone panel placement" : labels[i], 18, RideStyle.TEXT, true));
-            String detail = i == 11 ? YamahaPositionMarker.description(this) : i == 10 ? "OpenStreetMap fuel search; location required" : i == 9 ? "Save up to 20 destinations for the bike" : i == 8 ? "Set places for the bike Home and Work commands" : i == 5 ? RideTheme.NAMES[Math.max(0, Math.min(RideTheme.NAMES.length - 1, RidePreferences.prefs(this).getInt("color_theme", BuildConfig.YAMAHA ? 4 : 0)))]
-                : i == 7 ? RidePreferences.BIKE_MAP_SIZE_NAMES[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("bike_map_size", 0)))]
-                : i == 6 ? RidePreferences.musicName(this) : i == 2 ? RidePreferences.MAP_NAMES[Math.max(0, java.util.Arrays.asList(RidePreferences.MAP_PACKAGES).indexOf(RidePreferences.selectedMap(this)))]
+            words.addView(text(labels[i], 18, RideStyle.TEXT, true));
+            String detail = i == 9 ? YamahaPositionMarker.description(this) : i == 8 ? "OpenStreetMap fuel search; location required" : i == 7 ? "Save up to 20 destinations for the bike" : i == 6 ? "Set places for the bike Home and Work commands" : i == 4 ? RideTheme.NAMES[Math.max(0, Math.min(RideTheme.NAMES.length - 1, RidePreferences.prefs(this).getInt("color_theme", 4)))]
+                : i == 5 ? RidePreferences.musicName(this)
                 : i == 0 ? new String[]{"Left", "Centre", "Right"}[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("mount", 1)))]
-                : i == 1 ? "Choose which apps appear in Messages" : i == 3 ? (RidePreferences.prefs(this).getInt("reply_mode", 0) == 1 ? "Voice message in original app" : "Voice to text with send confirmation") : (RidePreferences.prefs(this).getInt("controls_side", 0) == 1 ? "Map / music left, messages right" : RidePreferences.prefs(this).getInt("controls_side", 0) == 2 ? "Messages left, map / music right" : "Automatic based on phone mount");
+                : i == 1 ? "Choose which apps appear in Messages" : i == 2 ? (RidePreferences.prefs(this).getInt("reply_mode", 0) == 1 ? "Voice message in original app" : "Voice to text with send confirmation") : (RidePreferences.prefs(this).getInt("controls_side", 0) == 1 ? "Map / music left, messages right" : RidePreferences.prefs(this).getInt("controls_side", 0) == 2 ? "Messages left, map / music right" : "Automatic based on phone mount");
             TextView detailText = text(detail, 14, RideStyle.MUTED, false); detailText.setPadding(0, dp(4), dp(8), 0);
             words.addView(detailText); row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
             TextView chevron = text("›", 26, RideStyle.MUTED, false);
@@ -1356,21 +1278,12 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showLayoutChoice() {
-        new android.app.AlertDialog.Builder(this).setTitle(BuildConfig.YAMAHA ? "Phone panel placement" : "Controls / map placement")
-            .setSingleChoiceItems(BuildConfig.YAMAHA ? new String[]{"Automatic based on phone mount", "Map / music left, messages right", "Messages left, map / music right"} : new String[]{"Automatic: left for left/centre mount", "Controls left / map right", "Controls right / map left"},
+        new android.app.AlertDialog.Builder(this).setTitle("Phone panel placement")
+            .setSingleChoiceItems(new String[]{"Automatic based on phone mount", "Map / music left, messages right", "Messages left, map / music right"},
                 RidePreferences.prefs(this).getInt("controls_side", 0), (dialog, choice) -> {
                     RidePreferences.prefs(this).edit().putInt("controls_side", choice).apply();
-                    dialog.dismiss(); buildScreen(); showSplitPlacementGuide();
+                    dialog.dismiss(); buildScreen();
                 }).setNegativeButton("Close", null).show();
-    }
-
-    private void showSplitPlacementGuide() {
-        if (BuildConfig.YAMAHA) return;
-        String arrangement = controlsOnRight() ? "Maps on the left and RideDeck on the right" : "RideDeck on the left and Maps on the right";
-        new android.app.AlertDialog.Builder(this).setTitle("Arrange split screen while parked")
-            .setMessage("Preferred landscape layout: " + arrangement + ".\n\nAndroid controls the positions of separate apps. Open split screen from Recent apps, then use your phone's swap control or choose the first app to arrange them. Rotate to landscape for side-by-side panels. In portrait Android normally stacks the apps.\n\nThis preference arranges RideDeck's own controls; it cannot move another app's window automatically.")
-            .setPositiveButton("Open map", (dialog, which) -> openMapsAdjacent())
-            .setNegativeButton("Done", null).show();
     }
 
     private void chooseMessageApps() {
@@ -1387,43 +1300,6 @@ public class MainActivity extends android.app.Activity {
                 GX12NotificationListener.reloadSelected(); messageApp = null; buildScreen();
                 android.widget.Toast.makeText(this, "Saved. New notifications from selected apps will appear after access is enabled.", android.widget.Toast.LENGTH_LONG).show();
             }).show();
-    }
-
-    private void chooseMapApp() {
-        if (BuildConfig.YAMAHA) { NavigationUi.configure(this); return; }
-        if (YamahaCastService.active) { displayError("Stop the bike display before changing its app."); return; }
-        if (DedicatedDisplay.ready) DedicatedDisplay.stop();
-        int current = java.util.Arrays.asList(RidePreferences.MAP_PACKAGES).indexOf(RidePreferences.selectedMap(this));
-        new android.app.AlertDialog.Builder(this).setTitle("Navigation / rider app")
-            .setSingleChoiceItems(RidePreferences.MAP_NAMES, current, (dialog, which) -> {
-                RidePreferences.prefs(this).edit().putString("map_app", RidePreferences.MAP_PACKAGES[which]).apply();
-                dialog.dismiss(); buildScreen();
-                android.widget.Toast.makeText(this, "Selected " + RidePreferences.MAP_NAMES[which], android.widget.Toast.LENGTH_LONG).show();
-            }).setNegativeButton("Cancel", null).show();
-    }
-
-    private void launchChosenApp(String pkg) {
-        if (BuildConfig.YAMAHA && pkg.equals("maplibre")) { rideMapAction(); return; }
-        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-        if (launch == null) { displayError("This app is not installed or does not expose a launch screen."); return; }
-        try { startActivity(launch); } catch (Exception e) { displayError("Could not open the selected app."); }
-    }
-
-    private void showRideApps() {
-        java.util.ArrayList<String> labels = new java.util.ArrayList<>();
-        java.util.ArrayList<String> packages = new java.util.ArrayList<>();
-        labels.add("Spotify"); packages.add("com.spotify.music");
-        labels.add(RidePreferences.mapName(this)); packages.add(RidePreferences.selectedMap(this));
-        String[] chatPackages = RidePreferences.messagePackages(this);
-        for (int i = 0; i < chatPackages.length; i++) if (RidePreferences.selectedMessages(this).contains(chatPackages[i])) {
-            labels.add(RidePreferences.MESSAGE_NAMES[i]); packages.add(chatPackages[i]);
-        }
-
-        labels.add("Layout + apps"); packages.add("");
-        new android.app.AlertDialog.Builder(this).setTitle("Ride apps")
-            .setItems(labels.toArray(new String[0]), (dialog, which) -> {
-                if (packages.get(which).isEmpty()) showPersonalization(); else launchChosenApp(packages.get(which));
-            }).setNegativeButton("Close", null).show();
     }
 
     private void readMessageAloud() {
@@ -1449,22 +1325,6 @@ public class MainActivity extends android.app.Activity {
                 if (result == android.speech.tts.TextToSpeech.ERROR) { showRideMessage("Could not read this message aloud. Check Android speech settings."); break; }
             }
         }
-    }
-
-    private Button dockButton(String title) {
-        Button b = button(title); b.setTextSize(15); b.setMinHeight(dp(76)); b.setPadding(dp(6), dp(6), dp(6), dp(6));
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff252e39)); b.setTextColor(RideStyle.TEXT); return b;
-    }
-
-    private LinearLayout.LayoutParams dockButtonParams() {
-        LinearLayout.LayoutParams p = params(); p.topMargin = dp(10); return p;
-    }
-
-    private Button cockpitButton(String eyebrow, String label) {
-        Button b = button(eyebrow + "\n" + label);
-        b.setTextSize(17); b.setAllCaps(false); b.setMinHeight(dp(100)); b.setPadding(dp(8), dp(8), dp(8), dp(8));
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff252e39)); b.setTextColor(RideStyle.TEXT);
-        return b;
     }
 
     private void addCockpitCard(LinearLayout parent, String heading, View content) {
@@ -1620,11 +1480,10 @@ public class MainActivity extends android.app.Activity {
 
     private void refreshWhatsAppPreview() {
         refreshCallPanel();
-        if (messagePreview == null && dockMessage == null) return;
+        if (messagePreview == null) return;
         if (!hasNotificationAccess(new ComponentName(this, GX12NotificationListener.class))) {
             if (messageSource != null) messageSource.setText("ACCESS IS OFF");
             if (messagePreview != null) messagePreview.setText("Enable message access while parked");
-            if (dockMessage != null) dockMessage.setText("Messages\nChoose apps and enable access in Setup.");
             return;
         }
         GX12NotificationListener.NotificationPreview preview = displayedMessage();
@@ -1633,153 +1492,6 @@ public class MainActivity extends android.app.Activity {
             : preview.appName.toUpperCase(java.util.Locale.ROOT) + (preview.acknowledged ? " - SEEN" : ""));
         String label = preview == null ? "No message received yet." : preview.appName + " • " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text);
         if (messagePreview != null) messagePreview.setText(label);
-        if (dockMessage != null) dockMessage.setText("Messages\n" + (preview == null ? "No new preview" : preview.appName + " - " + preview.title + (preview.text.isEmpty() ? "" : "\n" + preview.text)));
-    }
-
-    private void toggleRide() {
-        SharedPreferences prefs = getPreferences(0);
-        boolean running = prefs.getBoolean("ride_running", false);
-        if (running) {
-            rideClock.stop();
-            rideButton.setText("Resume ride");
-            prefs.edit().putBoolean("ride_running", false).putLong("ride_elapsed", android.os.SystemClock.elapsedRealtime() - rideClock.getBase()).apply();
-        } else {
-            long elapsed = prefs.getLong("ride_elapsed", 0);
-            rideClock.setBase(android.os.SystemClock.elapsedRealtime() - elapsed);
-            rideClock.start();
-            rideButton.setText("Pause ride");
-            prefs.edit().putBoolean("ride_running", true).apply();
-        }
-    }
-
-    private void restoreRide() {
-        if (rideClock == null || rideButton == null) return;
-        SharedPreferences prefs = getPreferences(0);
-        boolean running = prefs.getBoolean("ride_running", false);
-        long elapsed = prefs.getLong("ride_elapsed", 0);
-        if (running) {
-            rideClock.setBase(android.os.SystemClock.elapsedRealtime() - elapsed);
-            rideClock.start(); rideButton.setText("Pause ride");
-        } else if (elapsed > 0) {
-            rideClock.setBase(android.os.SystemClock.elapsedRealtime() - elapsed);
-            rideClock.setText(formatElapsed(elapsed));
-            rideButton.setText("Resume ride");
-        } else {
-            rideButton.setText("Start ride");
-        }
-    }
-
-    private String formatElapsed(long elapsed) {
-        long seconds = elapsed / 1000, hours = seconds / 3600, minutes = (seconds % 3600) / 60;
-        return String.format(Locale.ROOT, "%02d:%02d:%02d", hours, minutes, seconds % 60);
-    }
-
-    private void resetRide() {
-        getPreferences(0).edit().putBoolean("ride_running", false).putLong("ride_elapsed", 0).apply();
-        rideClock.stop(); rideClock.setBase(android.os.SystemClock.elapsedRealtime()); rideClock.setText("00:00"); rideButton.setText("Start ride");
-    }
-
-    private void openMaps() {
-        Intent maps = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="));
-        maps.setPackage("com.google.android.apps.maps");
-        try { startActivity(maps); } catch (Exception ignored) { showRideMessage("No maps app is available on this phone."); }
-    }
-
-    private void openMapsAdjacent() {
-        if (!RidePreferences.selectedMap(this).equals("com.google.android.apps.maps")) {
-            Intent launch = getPackageManager().getLaunchIntentForPackage(RidePreferences.selectedMap(this));
-            if (launch == null) { displayError("Install " + RidePreferences.mapName(this) + " first."); return; }
-            try { startAdjacent(launch); } catch (Exception e) { displayError("Could not open map in split-screen. Check that this map app supports split-screen."); } return;
-        }
-        Intent maps = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q="));
-        maps.setPackage("com.google.android.apps.maps");
-        try { startAdjacent(maps); }
-        catch (Exception ignored) { displayError("Could not open Google Maps in split-screen."); }
-    }
-
-    private void startAdjacent(Intent intent) {
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
-        startActivity(intent);
-    }
-
-    private void openSpotifyAdjacent() {
-        Intent spotify = getPackageManager().getLaunchIntentForPackage("com.spotify.music");
-        if (spotify == null) { openSpotify(); return; }
-        try { startAdjacent(spotify); } catch (Exception ignored) { openSpotify(); }
-    }
-
-    private void openSpotify() {
-        Intent spotify = getPackageManager().getLaunchIntentForPackage("com.spotify.music");
-        if (spotify != null) {
-            try { startActivity(spotify); return; } catch (Exception ignored) { }
-        }
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com")));
-        } catch (Exception ignored) {
-            showRideMessage("Spotify is not installed and no browser is available.");
-        }
-    }
-
-    private void openYamahaApp() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage(YAMAHA_Y_CONNECT_PACKAGE);
-        if (launch == null) {
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("Yamaha Y-Connect not found")
-                    .setMessage("Install Yamaha Motorcycle Connect from Google Play, then try again.")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Google Play", (dialog, which) -> {
-                        Intent store = new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + YAMAHA_Y_CONNECT_PACKAGE));
-                        try { startActivity(store); } catch (Exception ignored) { showRideMessage("Could not open Google Play."); }
-                    }).show();
-            return;
-        }
-        try { startActivity(launch); }
-        catch (Exception ignored) {
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("Could not open Y-Connect")
-                    .setMessage("Check that Yamaha Motorcycle Connect is installed and try again.")
-                    .setPositiveButton("OK", null).show();
-        }
-    }
-
-    private void openYamahaAppAdjacent() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage(YAMAHA_Y_CONNECT_PACKAGE);
-        if (launch == null) { openYamahaApp(); return; }
-        try { startAdjacent(launch); } catch (Exception ignored) { openYamahaApp(); }
-    }
-
-    private void openStreetCross() {
-        openStreetCross(false);
-    }
-
-    private void openStreetCross(boolean adjacent) {
-        Intent launch = getPackageManager().getLaunchIntentForPackage(GARMIN_STREETCROSS_PACKAGE);
-        if (launch != null) {
-            try { if (adjacent) startAdjacent(launch); else startActivity(launch); return; } catch (Exception ignored) { }
-        }
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("StreetCross not found")
-                .setMessage("Install Garmin StreetCross from Google Play if it is available for your motorcycle and region. StreetCross and Google Maps remain separate navigation apps.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Google Play", (dialog, which) -> {
-                    Intent store = new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=Garmin%20StreetCross&c=apps"));
-                    try { startActivity(store); } catch (Exception ignored) { showRideMessage("Could not open Google Play."); }
-                }).show();
-    }
-
-    private void openWhatsApp() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage("com.whatsapp");
-        if (launch == null) launch = getPackageManager().getLaunchIntentForPackage("com.whatsapp.w4b");
-        if (launch != null) { try { startActivity(launch); return; } catch (Exception ignored) { } }
-        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/"))); }
-        catch (Exception ignored) { showRideMessage("WhatsApp is not available on this phone."); }
-    }
-
-    private void openWhatsAppAdjacent() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage("com.whatsapp");
-        if (launch == null) launch = getPackageManager().getLaunchIntentForPackage("com.whatsapp.w4b");
-        if (launch == null) { openWhatsApp(); return; }
-        try { startAdjacent(launch); } catch (Exception ignored) { openWhatsApp(); }
     }
 
     private void withHeadsetMicrophone(Runnable listen) {
@@ -1831,35 +1543,9 @@ public class MainActivity extends android.app.Activity {
         });
     }
 
-    private void setDestination() {
-        EditText destination = new EditText(this);
-        destination.setSingleLine(true);
-        destination.setHint("Place or address");
-        destination.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("Find a destination")
-                .setView(destination)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Open maps", (dialog, which) -> {
-                    String query = destination.getText().toString().trim();
-                    if (query.isEmpty()) { openMaps(); return; }
-                    Intent search = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(query)));
-                    search.setPackage("com.google.android.apps.maps");
-                    try { startActivity(search); } catch (Exception ignored) { showRideMessage("No maps app is available on this phone."); }
-                }).show();
-    }
-
     private void showRideMessage(String message) {
         if (trackStatus != null) trackStatus.setText(message);
         else android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show();
-    }
-
-    private void addSection(LinearLayout parent, String heading, TextView content) {
-        TextView label = text(heading, 12, 0xff63768b, true);
-        LinearLayout.LayoutParams labelParams = params(); labelParams.topMargin = dp(23); parent.addView(label, labelParams);
-        LinearLayout.LayoutParams contentParams = params(); contentParams.topMargin = dp(7);
-        content.setPadding(dp(15), dp(14), dp(15), dp(14)); content.setBackgroundColor(0xffffffff); content.setGravity(Gravity.CENTER_VERTICAL);
-        parent.addView(content, contentParams);
     }
 
     private void refreshDeviceStatus() {
@@ -1964,7 +1650,7 @@ public class MainActivity extends android.app.Activity {
     private Button button(String label) { Button b = new Button(this); b.setText(label); b.setTextColor(RideStyle.TEXT); b.setAllCaps(false); b.setBackground(RideStyle.row(this)); return b; }
     private LinearLayout.LayoutParams params() { return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT); }
     private LinearLayout.LayoutParams buttonParams() { LinearLayout.LayoutParams p = params(); p.topMargin = dp(8); return p; }
-    private LinearLayout.LayoutParams weightedButtonParams() { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1); p.setMargins(dp(2), dp(4), dp(2), dp(4)); return p; }
+
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 
 }

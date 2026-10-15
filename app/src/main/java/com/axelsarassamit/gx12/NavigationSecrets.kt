@@ -20,11 +20,10 @@ object NavigationSecrets {
         try {
             require(file.length() < 4096)
             val setup = org.json.JSONObject(file.readText(Charsets.UTF_8))
-            for (name in listOf("maptiler", "graphhopper", "tomtom")) {
+            for (name in listOf("maptiler", "tomtom")) {
                 val value = setup.optString(name)
                 if (value.isNotBlank()) save(context, name, value)
             }
-            RidePreferences.prefs(context).edit().putString("routing_profile", setup.optString("profile", "scooter")).apply()
             BikeDiagnostics.record(context, "Provider keys configured in encrypted private storage")
         } finally { file.delete() }
     }
@@ -53,7 +52,6 @@ object NavigationSecrets {
 
     private fun bundled(name: String): String = when (name) {
         "maptiler" -> BuildConfig.MAPTILER_KEY
-        "graphhopper" -> BuildConfig.GRAPHHOPPER_KEY
         else -> ""
     }
 }

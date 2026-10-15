@@ -82,14 +82,14 @@ class YamahaCastService : Service() {
             wake=RideSessionWakeLock(this,"bike_connection")
             // Custom images never replace the bike's native music player or navigation views.
             RidePreferences.prefs(this).edit().putString("dash_panel","map").apply()
-            diagnostic("Session started automatic=$automatic map=${RidePreferences.selectedMap(this)} density=${RidePreferences.bikeMapDensity(this)} Android=${Build.VERSION.SDK_INT}")
+            diagnostic("Session started automatic=$automatic renderer=MapLibre Android=${Build.VERSION.SDK_INT}")
             BikeDiagnostics.snapshot(this)
             status = "Connecting to the selected Yamaha dash\u2026"
             deadline = SystemClock.elapsedRealtime() + 20000
             watchdog.scheduleWithFixedDelay({
                 val timedOutSocket=socket
                 if (running && SystemClock.elapsedRealtime() > deadline) {
-                    diagnostic("Watchdog timeout receiving=${DedicatedDisplay.receiving()} imageRequested=$imageRequested")
+                    diagnostic("Watchdog timeout navigationRunning=${NativeNavigation.running} imageRequested=$imageRequested")
                     status = "Bike connection timed out. Retrying in the background."
                     deadline=SystemClock.elapsedRealtime()+60000
                     try { timedOutSocket?.close() } catch (_: Exception) { }
@@ -213,7 +213,7 @@ class YamahaCastService : Service() {
                             val item = (incoming.payload[0].toInt() and 255) or ((incoming.payload[1].toInt() and 255) shl 8)
                             val list = (incoming.payload[2].toInt() and 255) or ((incoming.payload[3].toInt() and 255) shl 8)
                             if (googleMaps && list == 0 && incoming.payload[4].toInt() == 1 && item in activeList.indices) {
-                                runCatching { DedicatedDisplay.route(activeList[item].destination) }
+                                runCatching { NativeNavigation.routeText(activeList[item].destination) }
                                     .onSuccess { diagnostic("Bike list destination forwarded index=$item"); imageRequested = true }
                                     .onFailure { diagnostic("Bike list route failure exception=${it.javaClass.simpleName}") }
                             } else { diagnostic("Unsupported bike list request list=$list item=$item routeOption=${incoming.payload[4]}"); status = "Use Start new route. Adding stops is not supported." }
@@ -223,21 +223,21 @@ class YamahaCastService : Service() {
                             && incoming.payload.size in 1..2 && (incoming.payload.size == 1 || incoming.payload[1].toInt() == 0)) {
                             val key = if (incoming.serviceType == 53) "bike_home" else "bike_work"
                             val destination = places.getString(key, "") ?: ""
-                            if (incoming.payload[0].toInt() == 1 && googleMaps && destination.isNotBlank() && DedicatedDisplay.latestFrame() != null) {
-                                runCatching { DedicatedDisplay.route(destination) }
+                            if (incoming.payload[0].toInt() == 1 && googleMaps && destination.isNotBlank() && NativeNavigation.frame("map") != null) {
+                                runCatching { NativeNavigation.routeText(destination) }
                                     .onSuccess { diagnostic("Bike saved-place request service=${incoming.serviceType} forwarded"); status = "Starting saved destination on the bike." }
                                     .onFailure { diagnostic("Saved-place request could not be forwarded exception=${it.javaClass.simpleName}"); status = "Map is not ready for a destination. Try again in a moment." }
                             } else { diagnostic("Saved-place request unavailable service=${incoming.serviceType}"); status = "Set Home and Work coordinates in Customization." }
                             continue
                         }
                         if (incoming.frameType == 1 && incoming.payloadDataType == 0 && incoming.payload.isEmpty() && incoming.serviceType in listOf(51, 52)) {
-                            runCatching { DedicatedDisplay.zoom(incoming.serviceType == 51) }
+                            runCatching { NativeNavigation.zoom(incoming.serviceType == 51) }
                                 .onSuccess { diagnostic("Bike zoom gesture forwarded service=${incoming.serviceType}") }
                                 .onFailure { diagnostic("Bike zoom unavailable exception=${it.javaClass.simpleName}") }
                             continue
                         }
                         if (googleMaps && incoming.frameType == 1 && incoming.serviceType == 49 && incoming.payloadDataType == 0 && incoming.payload.isEmpty()) {
-                            runCatching { DedicatedDisplay.stopRoute() }
+                            runCatching { NativeNavigation.stopRoute() }
                                 .onSuccess { link.write(NaviLiteCodec.build(6, 2, 0, byteArrayOf(0, 0))); diagnostic("Bike stop navigation forwarded") }
                                 .onFailure { diagnostic("Bike stop navigation unavailable exception=${it.javaClass.simpleName}") }
                             continue
@@ -324,10 +324,9 @@ class YamahaCastService : Service() {
                 if (!imageRequested) { Thread.sleep(100); continue }
                 val sourceJpeg = NativeNavigation.frame("map")
                 if (sourceJpeg == null) {
-                    check(DedicatedDisplay.receiving()) { DedicatedDisplay.status }
                     if (waitingForFrameSince == 0L) waitingForFrameSince = SystemClock.elapsedRealtime()
                     check(SystemClock.elapsedRealtime() - waitingForFrameSince < 30000) {
-                        "No map frames. Reconnect bike display in Setup. ${if (dedicated) DedicatedDisplay.status else ""}"
+                        "No map frames. Reconnect bike display in Setup."
                     }
                     Thread.sleep(100); continue
                 }

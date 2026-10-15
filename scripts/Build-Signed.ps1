@@ -1,4 +1,4 @@
-param([string]$Version = "0.12.0")
+param([Parameter(Mandatory=$true)][ValidatePattern("^\d+\.\d+\.\d+$")][string]$Version)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 if (git status --porcelain) { throw 'Commit changes before requesting a signed build.' }

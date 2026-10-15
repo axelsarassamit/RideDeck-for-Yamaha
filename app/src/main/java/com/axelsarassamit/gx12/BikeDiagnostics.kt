@@ -24,7 +24,7 @@ object BikeDiagnostics {
     @JvmStatic @Synchronized fun report(context: Context): String {
         snapshot(context)
         val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        val header = "RideDeck $version; Android ${android.os.Build.VERSION.RELEASE}; map=${RidePreferences.selectedMap(context)}; density=${RidePreferences.bikeMapDensity(context)}\nMetadata only. No locations, messages or images.\n"
+        val header = "RideDeck $version; Android ${android.os.Build.VERSION.RELEASE}; renderer=MapLibre\nMetadata only. No locations, messages or images.\n"
         return header + listOf("bike-diagnostics.previous.txt", "bike-diagnostics.txt").joinToString("\n") {
             runCatching { cleanLog(File(context.filesDir, it).readText()) }.getOrDefault("")
         }
@@ -44,7 +44,7 @@ object BikeDiagnostics {
             val listenerAllowed = listener.split(':').any { android.content.ComponentName.unflattenFromString(it) == own }
             record(context, "Snapshot batteryLevel=${battery?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)} batteryScale=${battery?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)} temperatureTenthsC=${battery?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, -1)} interactive=${power.isInteractive} powerSave=${power.isPowerSaveMode} batteryExempt=${power.isIgnoringBatteryOptimizations(context.packageName)}")
             record(context, "Snapshot wifi=${caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true} cellular=${caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true} internetValidated=${caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true} notificationAccess=$listenerAllowed notificationsEnabled=${notification.areNotificationsEnabled()} quietAccess=${notification.isNotificationPolicyAccessGranted} audioMode=${audio.mode} communicationDeviceType=$micType")
-            record(context, "Snapshot bikeActive=${YamahaCastService.active} helperReady=${DedicatedDisplay.ready} automatic=${RidePreferences.automaticMap(context)} model=${android.os.Build.MODEL} AndroidSdk=${android.os.Build.VERSION.SDK_INT}")
+            record(context, "Snapshot bikeActive=${YamahaCastService.active} navigationRunning=${NativeNavigation.running} automatic=${RidePreferences.automaticMap(context)} model=${android.os.Build.MODEL} AndroidSdk=${android.os.Build.VERSION.SDK_INT}")
         }.onFailure { record(context, "Snapshot unavailable exception=${it.javaClass.simpleName}") }
     }
 }
