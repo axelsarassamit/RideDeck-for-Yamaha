@@ -1,6 +1,7 @@
 package com.axelsarassamit.gx12
 
 import android.view.View
+import android.view.ViewGroup
 import android.view.inspector.WindowInspector
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -102,6 +103,19 @@ class CleanupMenuTest {
                     scenario.onActivity { activity ->
                         fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply{isAccessible=true}.get(activity) as View
                         val root=activity.window.decorView
+                        fun findClock(view: View): CockpitClockView? {
+                            if(view is CockpitClockView)return view
+                            if(view is ViewGroup)for(i in 0 until view.childCount) {
+                                val found=findClock(view.getChildAt(i));if(found!=null)return found
+                            }
+                            return null
+                        }
+                        val caption=findClock(root)?.getChildAt(0) as? TextView
+                        assertTrue("Clock caption missing",caption!=null && caption.text.isNotBlank())
+                        val captionRect=android.graphics.Rect()
+                        assertTrue("Clock caption clipped",caption!!.getGlobalVisibleRect(captionRect) && captionRect.height()>=caption.height-1)
+                        val preview=field("messagePreview") as TextView
+                        assertTrue("Message first line clipped",preview.height>=preview.lineHeight+preview.compoundPaddingTop+preview.compoundPaddingBottom)
                         val bitmap=android.graphics.Bitmap.createBitmap(root.width,root.height,android.graphics.Bitmap.Config.ARGB_8888)
                         root.draw(android.graphics.Canvas(bitmap))
                         val folder=java.io.File(activity.getExternalFilesDir("tests"),"cleanup41-previews").apply{mkdirs()}

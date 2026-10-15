@@ -578,7 +578,7 @@ public class MainActivity extends android.app.Activity {
         boolean compact = isInMultiWindowMode();
         boolean stacked = compact || portrait;
         boolean shortMusic = !portrait && getResources().getConfiguration().screenHeightDp < 500 && "music".equals(renderedPanel);
-        int headerHeight = shortMusic ? 56 : 64;
+        int headerHeight = 64;
         boolean controlsRight = controlsOnRight();
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -725,6 +725,7 @@ public class MainActivity extends android.app.Activity {
         controls.addView(mediaSlot, musicParams);
 
         LinearLayout messages = rideCard("MESSAGES");
+        if (shortMusic) messages.setPadding(dp(16), dp(8), dp(16), dp(8));
         messageSource = text("LATEST MESSAGE", compact ? 13 : 20, RideTheme.accent(this), true);
         messageSource.setMaxLines(1); messageSource.setEllipsize(android.text.TextUtils.TruncateAt.END);
         messages.addView(messageSource);
