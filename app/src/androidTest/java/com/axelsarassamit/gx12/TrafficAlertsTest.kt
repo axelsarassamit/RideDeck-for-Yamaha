@@ -31,7 +31,7 @@ class TrafficAlertsTest {
             val state=BikeNavigationState(-2,150.0,"Oak Road","Main Road","11:25",80)
             fun render(value:BikeNavigationState)=Bitmap.createBitmap(480,height,Bitmap.Config.ARGB_8888).also{BikeNavigationRenderer.draw(Canvas(it),map,layout,value,false)}
             val base=render(state);val alert=render(state.copy(alert=TrafficAlert("sample",kind,500.0)))
-            for(y in 0 until height)for(x in 0 until 480)if(x<135 || y>53 || y<3)
+            for(y in 0 until height)for(x in 0 until 480)if(x<51 || x>=layout.panelLeft || y>53 || y<3)
                 assertEquals("Alert covered existing controls at $x,$y",base.getPixel(x,y),alert.getPixel(x,y))
             File(folder,"${kind.name.lowercase()}-$height.png").outputStream().use{alert.compress(Bitmap.CompressFormat.PNG,100,it)}
             base.recycle();alert.recycle();map.recycle()

@@ -163,8 +163,9 @@ object NavigationApi {
             .put(JSONObject().put("lat", target.latitude).put("lon", target.longitude))
         val payload = JSONObject().put("locations", locations).put("costing", "motorcycle")
             .put("units", "kilometers").put("language", "en-US").put("alternates", if(alternatives) 2 else 0)
+            .put("costing_options",JSONObject().put("motorcycle",JSONObject().put("use_highways",0.0).put("use_tolls",0.0)))
         val response = request(Uri.parse("https://valhalla1.openstreetmap.de/route"), "Valhalla", payload)
-        return parseRoutes(response, target)
+        return RouteChoices.ranked(parseRoutes(response, target))
     }
 
     internal fun parseRoutes(response: JSONObject, target: NavigationPlace): List<NavigationRoute> {

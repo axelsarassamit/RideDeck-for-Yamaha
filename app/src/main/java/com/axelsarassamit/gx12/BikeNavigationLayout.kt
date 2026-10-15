@@ -8,8 +8,10 @@ data class BikeNavigationLayout(val height: Int) {
     val creditHeight = 12
     val roadHeight = 26
     val mapWidth = width - panelWidth
+    val mapLeft = 0
+    val panelLeft = mapWidth
     val mapHeight = height - creditHeight - roadHeight
-    val speedX = width - 31f
+    val speedX = mapWidth - 31f
     val speedY = mapHeight - 31f
     val speedRadius = 27f
 

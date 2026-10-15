@@ -60,6 +60,7 @@ class RoutePreviewActivity : Activity() {
     private var busy=false
     private var routeRequest=0
     private val lineChoices=HashMap<Long,Int>()
+    private val routeColors=intArrayOf(0xff087eff.toInt(),0xffe7a23b.toInt(),0xff20bba6.toInt())
     private val blue=0xff087eff.toInt()
     private fun dp(value: Int)=(resources.displayMetrics.density*value).toInt()
     private fun button(label: String, primary: Boolean=false)=Button(this).apply {
@@ -80,8 +81,8 @@ class RoutePreviewActivity : Activity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor=0xff101722.toInt(); window.navigationBarColor=0xff101722.toInt()
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff101722.toInt()); setPadding(dp(12),dp(8),dp(12),dp(8)) }
-        page.setOnApplyWindowInsetsListener { v,insets ->
-            val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(page) { v,insets ->
+            val bars=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
             v.setPadding(bars.left+dp(12),bars.top+dp(8),bars.right+dp(12),bars.bottom+dp(8)); insets
         }
         val header=LinearLayout(this)
@@ -99,18 +100,22 @@ class RoutePreviewActivity : Activity() {
         val wide=resources.configuration.screenWidthDp>=600
         val body=LinearLayout(this).apply { orientation=if(wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }
         page.addView(body,LinearLayout.LayoutParams(-1,0,1f))
+        val mapColumn=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        body.addView(mapColumn,if(wide) LinearLayout.LayoutParams(0,-1,1f) else LinearLayout.LayoutParams(-1,0,1f))
         val mapArea=FrameLayout(this)
-        body.addView(mapArea,if(wide) LinearLayout.LayoutParams(0,-1,1f) else LinearLayout.LayoutParams(-1,0,1f))
+        mapColumn.addView(mapArea,LinearLayout.LayoutParams(-1,0,1f))
         mapView=MapView(this); mapView.onCreate(saved); mapArea.addView(mapView,FrameLayout.LayoutParams(-1,-1))
         mapStatus=TextView(this).apply { text="Loading map..."; textSize=18f; setTextColor(Color.WHITE); setBackgroundColor(0xee101722.toInt()); setPadding(dp(12),dp(12),dp(12),dp(12)); gravity=Gravity.CENTER }
         mapArea.addView(mapStatus,FrameLayout.LayoutParams(-1,-2,Gravity.CENTER))
-        val zoom=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        listOf("+","−").forEachIndexed { i,text -> zoom.addView(button(text).apply {
-            contentDescription=if(i==0) "Zoom in" else "Zoom out"
-            setOnClickListener { map?.animateCamera(if(i==0) CameraUpdateFactory.zoomIn() else CameraUpdateFactory.zoomOut()) }
-        },LinearLayout.LayoutParams(dp(72),dp(72)).apply { bottomMargin=dp(8) }) }
-        mapArea.addView(zoom,FrameLayout.LayoutParams(-2,-2,Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin=dp(8) })
-        mapArea.addView(button("Overview").apply { textSize=18f; minHeight=dp(56); setOnClickListener { overview() } },FrameLayout.LayoutParams(dp(132),dp(56),Gravity.END or Gravity.TOP).apply { topMargin=dp(8); rightMargin=dp(8) })
+        val tools=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
+        listOf("−","Overview","+").forEachIndexed { index,label ->
+            tools.addView(button(label).apply {
+                minHeight=dp(56);textSize=20f
+                contentDescription=when(index){0->"Zoom out";2->"Zoom in";else->"Show all routes"}
+                setOnClickListener { when(index){0->map?.animateCamera(CameraUpdateFactory.zoomOut());2->map?.animateCamera(CameraUpdateFactory.zoomIn());else->overview()} }
+            },LinearLayout.LayoutParams(if(index==1) 0 else dp(72),dp(56),if(index==1) 1f else 0f).apply { leftMargin=dp(4);rightMargin=dp(4) })
+        }
+        mapColumn.addView(tools,LinearLayout.LayoutParams(-1,dp(60)))
         mapArea.addView(TextView(this).apply {
             text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",0)
             textSize=12f; setTextColor(Color.WHITE); setBackgroundColor(0xdd101722.toInt()); setPadding(dp(8),dp(4),dp(8),dp(4))
@@ -123,7 +128,7 @@ class RoutePreviewActivity : Activity() {
         choices=LinearLayout(this).apply { orientation=if(wide) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
         choiceScroll=ScrollView(this).apply { addView(choices) }
         if(wide) controls.addView(choiceScroll,LinearLayout.LayoutParams(-1,0,1f))
-        else { choiceScroll.removeView(choices);controls.addView(choices,LinearLayout.LayoutParams(-1,dp(96))) }
+        else { choiceScroll.removeView(choices);controls.addView(choices,LinearLayout.LayoutParams(-1,dp(126))) }
         start=button("Start navigation",true).apply { isEnabled=false; setOnClickListener { startChosen() } }
         retry=button("Retry routes").apply { setOnClickListener { loadRoutes() } }
         controls.addView(retry,LinearLayout.LayoutParams(-1,dp(64)).apply { topMargin=dp(8) })
@@ -195,7 +200,7 @@ class RoutePreviewActivity : Activity() {
             }
         }
     }
-    private fun freshFix()=NativeNavigation.location?.takeIf { SystemClock.elapsedRealtimeNanos()-it.elapsedRealtimeNanos < 30_000_000_000L }
+    private fun freshFix()=NativeNavigation.location?.takeIf { SystemClock.elapsedRealtimeNanos()-it.elapsedRealtimeNanos < 10_000_000_000L }
     private fun loadStyle() {
         val cached=styleJson
         if(cached!=null) { applyStyle(cached); return }
@@ -242,11 +247,13 @@ class RoutePreviewActivity : Activity() {
         status.text=(routes.firstOrNull()?.let { if(it.provider=="TomTom") "TomTom · Live traffic · " else "Valhalla · No live traffic · " } ?: "")+if(routes.size==1) "One route available" else "${routes.size} routes · Route ${selected+1} selected"
         retry.visibility=View.GONE
         routes.forEachIndexed { index,r ->
-            choices.addView(button((if(index==selected) "✓ " else "")+"Route ${index+1}"+"\n"+
-                RouteTimeEstimator.durationText(r.millis)+(if(wide) "  ·  " else "\n")+String.format(Locale.US,"%.1f km",r.meters/1000),index==selected).apply {
-                textSize=if(wide) 20f else 18f;gravity=if(wide) Gravity.START or Gravity.CENTER_VERTICAL else Gravity.CENTER;setPadding(dp(4),dp(4),dp(4),dp(4));setOnClickListener { select(index) }
-            },if(wide) LinearLayout.LayoutParams(-1,dp(72)).apply { bottomMargin=dp(8) }
-                else LinearLayout.LayoutParams(0,dp(96),1f).apply { rightMargin=if(index<routes.lastIndex) dp(8) else 0 })
+            choices.addView(button((if(index==selected) "✓ " else "")+RouteChoices.label(routes,index)+"\n"+
+                RouteTimeEstimator.durationText(r.millis)+(if(wide) "  ·  " else "\n")+String.format(Locale.US,"%.1f km",r.meters/1000)+"\n"+RouteChoices.comparison(routes,index),index==selected).apply {
+                (background as GradientDrawable).setStroke(dp(3),routeColors[index])
+                contentDescription="Route ${index+1}, ${if(index==selected) "selected, " else ""}${RouteChoices.label(routes,index)}, ${RouteTimeEstimator.durationText(r.millis)}, ${String.format(Locale.US,"%.1f kilometers",r.meters/1000)}"
+                textSize=if(wide) 19f else 16f;gravity=if(wide) Gravity.START or Gravity.CENTER_VERTICAL else Gravity.CENTER;setPadding(dp(4),dp(4),dp(4),dp(4));setOnClickListener { select(index) }
+            },if(wide) LinearLayout.LayoutParams(-1,dp(112)).apply { bottomMargin=dp(8) }
+                else LinearLayout.LayoutParams(0,dp(126),1f).apply { rightMargin=if(index<routes.lastIndex) dp(8) else 0 })
         }
         start.isEnabled=routes.isNotEmpty() && !busy
     }
@@ -256,7 +263,7 @@ class RoutePreviewActivity : Activity() {
         if(!styleReady || routes.isEmpty()) return
         m.clear(); lineChoices.clear()
         (routes.indices.filter { it!=selected }+selected).forEach { index ->
-            val line=m.addPolyline(PolylineOptions().addAll(routes[index].points).color(if(index==selected) blue else 0xff8393ad.toInt()).width(if(index==selected) 7f else 5f))
+            val line=m.addPolyline(PolylineOptions().addAll(routes[index].points).color(routeColors[index]).width(if(index==selected) 8f else 4f))
             lineChoices[line.id]=index
         }
         origin?.let { m.addMarker(MarkerOptions().position(LatLng(it.latitude,it.longitude)).title("Start")) }
@@ -266,7 +273,7 @@ class RoutePreviewActivity : Activity() {
     private fun overview() {
         if(!styleReady || routes.isEmpty()) return
         val bounds=LatLngBounds.Builder().includes(routes.flatMap { it.points }+LatLng(goal.latitude,goal.longitude)).build()
-        mapView.post { if(!isDestroyed) map?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds,dp(48),dp(70),dp(48),dp(48))) }
+        mapView.post { if(!isDestroyed) map?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds,dp(32),dp(32),dp(32),dp(48))) }
     }
     private fun startChosen() {
         val r=routes.getOrNull(selected) ?: return

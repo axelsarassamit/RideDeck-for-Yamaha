@@ -37,11 +37,15 @@ object TomTomApi {
     fun routes(c:Context,origin:Location,target:NavigationPlace,alternatives:Boolean):List<NavigationRoute> {
         val url=endpoint(c,"routing/1/calculateRoute/${origin.latitude},${origin.longitude}:${target.latitude},${target.longitude}/json")
             .appendQueryParameter("travelMode","motorcycle").appendQueryParameter("traffic","true").appendQueryParameter("departAt","now")
-            .appendQueryParameter("avoid","motorways").appendQueryParameter("avoid","tollRoads")
+            .appendQueryParameter("avoid","motorways").appendQueryParameter("avoid","tollRoads").appendQueryParameter("avoid","unpavedRoads")
+            .appendQueryParameter("routeType","fastest").appendQueryParameter("alternativeType","anyRoute")
             .appendQueryParameter("maxAlternatives",if(alternatives) "2" else "0")
             .appendQueryParameter("instructionsType","text").appendQueryParameter("language","en-GB")
+        NativeNavigation.reliableHeading(origin)?.takeIf { android.os.SystemClock.elapsedRealtimeNanos()-origin.elapsedRealtimeNanos in 0..5_000_000_000L }?.let {
+            url.appendQueryParameter("vehicleHeading","${kotlin.math.round(it).toInt()%360}")
+        }
         for(section in listOf("speedLimit","traffic","motorway","toll","tollVignette","travelMode")) url.appendQueryParameter("sectionType",section)
-        return parseRoutes(NavigationApi.request(url.build(),"TomTom"),target)
+        return RouteChoices.ranked(parseRoutes(NavigationApi.request(url.build(),"TomTom"),target))
     }
     internal fun parseRoutes(json:JSONObject,target:NavigationPlace):List<NavigationRoute> {
         val result=mutableListOf<NavigationRoute>();val raw=json.getJSONArray("routes")

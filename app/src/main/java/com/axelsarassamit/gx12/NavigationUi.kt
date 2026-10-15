@@ -135,27 +135,36 @@ object NavigationUi {
                 AlertDialog.Builder(activity).setTitle("Map credits").setView(credit).setPositiveButton("Close",null).show()
             }
         }
-        val mapArea = FrameLayout(activity)
-        mapArea.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ -> NativeNavigation.phoneViewport(right - left, bottom - top) }
-        mapArea.addView(image, FrameLayout.LayoutParams(-1, -1))
-        val zoom = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-        val density = activity.resources.displayMetrics.density
-        fun dp(value: Int) = (value * density).toInt()
-        listOf("+", "−").forEachIndexed { index, label ->
-            zoom.addView(Button(activity).apply {
-                text = label; textSize = 30f; isAllCaps = false
-                contentDescription = if (index == 0) "Zoom in" else "Zoom out"
-                setOnClickListener { NativeNavigation.zoom(index == 0) }
-            }, LinearLayout.LayoutParams(dp(72), dp(72)).apply { bottomMargin=dp(8) })
+        val directions=TextView(activity).apply {
+            textSize=22f;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;setTextColor(android.graphics.Color.WHITE)
+            setPadding(12,6,12,6);setBackgroundColor(0xff101c2b.toInt());contentDescription="Next navigation instruction"
         }
-        mapArea.addView(zoom, FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL).apply {
-            leftMargin = dp(8)
-        })
-        page.addView(mapArea, LinearLayout.LayoutParams(-1, 0, 1f))
+        page.addView(directions,LinearLayout.LayoutParams(-1,-2))
+        val body=LinearLayout(activity)
+        val mapArea=FrameLayout(activity)
+        mapArea.addOnLayoutChangeListener { _,left,top,right,bottom,_,_,_,_ -> NativeNavigation.phoneViewport(right-left,bottom-top) }
+        mapArea.addView(image,FrameLayout.LayoutParams(-1,-1))
+        body.addView(mapArea,LinearLayout.LayoutParams(0,-1,1f))
+        val density=activity.resources.displayMetrics.density
+        fun dp(value:Int)=(value*density).toInt()
+        val zoom=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setBackgroundColor(0xff101c2b.toInt()) }
+        listOf("+","−").forEachIndexed { index,label ->
+            zoom.addView(Button(activity).apply {
+                text=label;textSize=30f;isAllCaps=false;minWidth=0;minimumWidth=0
+                contentDescription=if(index==0) "Zoom in" else "Zoom out"
+                setOnClickListener { NativeNavigation.zoom(index==0) }
+            },LinearLayout.LayoutParams(dp(64),dp(64)))
+        }
+        body.addView(zoom,LinearLayout.LayoutParams(dp(64),-1))
+        page.addView(body,LinearLayout.LayoutParams(-1,0,1f))
+        val gps=TextView(activity).apply { textSize=13f;setTextColor(0xffc2d7eb.toInt());setPadding(12,2,12,2) }
+        page.addView(gps)
         page.addView(state)
         val refresh=object: Runnable { override fun run() {
             if(!page.isAttachedToWindow) return
             image.setImageBitmap(NativeNavigation.phoneBitmap(RidePreferences.prefs(activity).getString("phone_panel","map") ?: "map"))
+            directions.text=NativeNavigation.phoneGuidance()
+            gps.text=NativeNavigation.gpsSummary()
             state.text="© MapTiler  © OpenStreetMap contributors"
             main.postDelayed(this,750)
         } }

@@ -308,7 +308,7 @@ class YamahaCastService : Service() {
                         val index = nav.activeIndex.coerceIn(nav.turns.indices)
                         val turn = nav.turns[index]
                         val fix = NativeNavigation.location
-                        val fresh = fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L
+                        val fresh = fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L
                         link.write(NaviLiteCodec.build(6,13,0,byteArrayOf(if(fresh) 1 else 0,0)))
                         link.write(NativeDashNavigation.nextTurn(turn.sign,nav.nextMeters,if(fresh) turn.road.ifBlank { turn.instruction } else "Waiting for GPS"))
                         link.write(NativeDashNavigation.activeIndex(index))

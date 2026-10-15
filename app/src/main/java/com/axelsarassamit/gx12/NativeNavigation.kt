@@ -149,14 +149,16 @@ object NativeNavigation {
         }
     }
     fun update(next: Location) {
-        if (!next.hasAccuracy() || next.accuracy > 50f || SystemClock.elapsedRealtimeNanos() - next.elapsedRealtimeNanos > 30_000_000_000L) {
-            speedLimit = null
-            acquisitionStatus = "Waiting for a precise GPS fix"
-            status = acquisitionStatus; return
+        val now=SystemClock.elapsedRealtimeNanos()
+        val previous=location
+        if(!next.hasAccuracy() || !NavigationFixQuality.accept(quality(next),previous?.let(::quality),now)) {
+            if(previous==null || now-previous.elapsedRealtimeNanos>10_000_000_000L) {
+                speedLimit=null;acquisitionStatus="Waiting for a precise GPS fix";status=acquisitionStatus
+            }
+            return
         }
-        val previous = location
-        if (previous != null && next.elapsedRealtimeNanos < previous.elapsedRealtimeNanos) return
-        location = Location(next)
+        location=Location(next)
+        acquisitionStatus=if(next.provider==LocationManager.GPS_PROVIDER) "GPS connected" else "Network position; waiting for GPS"
         pendingDestination?.let { target ->
             pendingDestination = null
             context?.let { navigate(it, target) }
@@ -165,6 +167,19 @@ object NativeNavigation {
         if (route != null) status = "Navigating"
         else if (!routeBusy && !status.startsWith("Route unavailable:")) status = "GPS ready. Choose a destination"
         updateGuidance(next)
+    }
+    private fun quality(fix:Location)=NavigationFix(fix.latitude,fix.longitude,fix.accuracy.toDouble(),fix.elapsedRealtimeNanos,fix.provider==LocationManager.GPS_PROVIDER)
+    private fun reliableSpeed(fix:Location)=NavigationFixQuality.speed(if(fix.hasSpeed()) fix.speed.toDouble() else null,
+        if(fix.hasSpeedAccuracy()) fix.speedAccuracyMetersPerSecond.toDouble() else null)
+    internal fun reliableHeading(fix:Location)=NavigationFixQuality.heading(reliableSpeed(fix),if(fix.hasBearing()) fix.bearing.toDouble() else null,
+        if(fix.hasBearingAccuracy()) fix.bearingAccuracyDegrees.toDouble() else null)
+    @JvmStatic fun gpsSummary():String {
+        val fix=location ?: return acquisitionStatus
+        val age=SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos
+        if(age !in 0..5_000_000_000L) return "GPS signal weak; waiting for a fresh position"
+        val source=if(fix.provider==LocationManager.GPS_PROVIDER) "GPS" else "Network"
+        val speed=reliableSpeed(fix)?.let { " · ${kotlin.math.round(it*3.6).toInt()} km/h" }.orEmpty()
+        return "$source ±${kotlin.math.ceil(fix.accuracy.toDouble()).toInt()} m$speed"
     }
     @JvmStatic fun phoneGuidance(): String = if (route != null) guidance else status
     @JvmStatic fun isNightMap(): Boolean {
@@ -175,20 +190,20 @@ object NativeNavigation {
     }
     @JvmStatic fun currentSpeedLimitKph(): Int? {
         val fix=location ?: return null
-        if(!running || route == null || routeBusy || offRouteSamples > 0 || SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 30_000_000_000L) return null
+        if(!running || route == null || routeBusy || offRouteSamples > 0 || SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 10_000_000_000L) return null
         return speedLimit
     }
     @JvmStatic fun cockpitTrip(): CockpitTrip? {
         val fix=location ?: return null
         val progress=dashRoute ?: return null
         if (!running || route == null || routeBusy || offRouteSamples > 0 || progress.revision != dashRouteRevision ||
-            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 30_000_000_000L || !remaining.isFinite()) return null
+            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 10_000_000_000L || !remaining.isFinite()) return null
         return CockpitTrip(progress.remainingMillis?.let { RouteTimeEstimator.arrivalMillis(System.currentTimeMillis(),it) },remaining.coerceAtLeast(0.0),progress.remainingMillis)
     }
     @JvmStatic fun phoneTripSummary(): String {
         if (route == null) return ""
         val fix=location
-        if (fix == null || SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 30_000_000_000L) return "Arrival time: waiting for GPS"
+        if (fix == null || SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos >= 10_000_000_000L) return "Arrival time: waiting for GPS"
         if (routeBusy || offRouteSamples > 0) return "Recalculating arrival time"
         val duration=dashRoute?.remainingMillis ?: return "Calculating arrival time"
         val now=System.currentTimeMillis()
@@ -216,7 +231,7 @@ object NativeNavigation {
         context = c.applicationContext
         RideBackgroundSession.saveDestination(c,target)
         val origin = location
-        if (origin == null || SystemClock.elapsedRealtimeNanos() - origin.elapsedRealtimeNanos > 30_000_000_000L) {
+        if (origin == null || SystemClock.elapsedRealtimeNanos() - origin.elapsedRealtimeNanos > 10_000_000_000L) {
             pendingDestination = target
             status = "Waiting for GPS to calculate the route"; return
         }
@@ -315,7 +330,7 @@ object NativeNavigation {
             offRouteSamples++
             dashRoute = dashRoute?.copy(remainingMillis=null)
             guidance = "Off route. Recalculating"
-            if(offRouteSamples >= 3 && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L) announce(announcements.offRoute())
+            if(offRouteSamples >= 3 && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L) announce(announcements.offRoute())
             if (!routeBusy && offRouteSamples >= 3 && SystemClock.elapsedRealtime() - lastReroute > 30000) {
                 lastReroute = SystemClock.elapsedRealtime(); context?.let { navigate(it, r.destination) }
             }
@@ -326,8 +341,8 @@ object NativeNavigation {
         travelledMeters=travelled
         remaining = max(0.0, r.cumulative.last() - travelled)
         val segment=if(bestFraction >= 0.999) bestIndex+1 else bestIndex
-        val headingDifference=if(fix.hasBearing() && fix.speed > 1f) abs(((fix.bearing-routeBearing(r,bestIndex)+540)%360)-180) else 0.0
-        val fresh=SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L
+        val headingDifference=reliableHeading(fix)?.let { abs(((it-routeBearing(r,bestIndex)+540)%360)-180) } ?: 0.0
+        val fresh=SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L
         speedLimit=if(remaining > 10 && RoadSpeedLimits.visible(fresh,routeBusy,fix.accuracy,bestDistance,headingDifference)) speedWindow?.at(segment) else null
         if(!routeBusy) refreshSpeedLimits(r)
         val next = r.turns.firstOrNull { it.start > bestIndex } ?: r.turns.lastOrNull()
@@ -345,7 +360,7 @@ object NativeNavigation {
             next != null && it.start > next.start && r.cumulative[it.start] - r.cumulative[next.start] <= 120 && meters <= 120
         }?.let { NavigationSpeech.following(it.sign,it.road) }.orEmpty()
         if(!routeBusy && fresh) {
-            val speed=if(fix.hasSpeed()) fix.speed.toDouble() else 0.0
+            val speed=reliableSpeed(fix) ?: 0.0
             val cue=announcements.next(next?.start ?: r.points.lastIndex,maneuver,meters,next?.road.orEmpty(),speed,
                 remaining < 25 && bestIndex >= r.points.size - 4,SystemClock.elapsedRealtime(),following)
             announce(cue)
@@ -372,7 +387,7 @@ object NativeNavigation {
         val c=context ?: return null;val fix=location ?: return null
         val age=incidentCheckedAt?.let{SystemClock.elapsedRealtime()-it} ?: return null
         if(!running || route==null || routeBusy || offRouteSamples>0 || age !in 0..360000 || incidentRevision!=dashRouteRevision ||
-            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos>=30_000_000_000L || !RidePreferences.prefs(c).getBoolean("tomtom_incident_alerts",true))return null
+            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos>=10_000_000_000L || !RidePreferences.prefs(c).getBoolean("tomtom_incident_alerts",true))return null
         val match=incidentMatches.firstOrNull{it.endMeters>=travelledMeters-20 && it.startMeters-travelledMeters<=3000} ?: return null
         return TrafficAlert(match.incident.id,match.incident.kind,(match.startMeters-travelledMeters).coerceAtLeast(0.0))
     }
@@ -461,7 +476,7 @@ object NativeNavigation {
             if (!running) return
             val c = context ?: return
             val fix = location
-            val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos < 30_000_000_000L
+            val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos < 10_000_000_000L
             val activeRoute=route
             if(fresh && !routeBusy && activeRoute?.provider=="TomTom" &&
                 RidePreferences.prefs(c).getBoolean("tomtom_refresh",true) && SystemClock.elapsedRealtime()-lastTrafficRefresh >= 300000) {
@@ -476,13 +491,13 @@ object NativeNavigation {
             if (phoneInFlight && SystemClock.elapsedRealtime() - phoneRenderStarted > 15000) {
                 phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false
             }
-            if (fresh && !inFlight && SystemClock.elapsedRealtime() - frameAt > 750) render(c, fix!!)
-            if (fresh && phoneVisible && !phoneInFlight && SystemClock.elapsedRealtime() - phoneFrameAt > 750) render(c, fix!!, true)
+            if (fresh && !inFlight && SystemClock.elapsedRealtime() - frameAt > 400) render(c, fix!!)
+            if (fresh && phoneVisible && !phoneInFlight && SystemClock.elapsedRealtime() - phoneFrameAt > 400) render(c, fix!!, true)
             if (SystemClock.elapsedRealtime() - lastSummary > 10000) {
                 lastSummary = SystemClock.elapsedRealtime()
                 BikeDiagnostics.record(c, "Native map status gpsFresh=$fresh route=${route != null} renderBusy=$inFlight frameAgeMs=${if(frameAt==0L)-1 else lastSummary-frameAt}")
             }
-            main.postDelayed(this, 500)
+            main.postDelayed(this, 250)
         }
     }
     private fun activateMapStyle(c: Context, json: String, dark: Boolean) {
@@ -532,7 +547,7 @@ object NativeNavigation {
         try {
             val activeRoute = route
             val requestedZoom = mapZoom.state()
-            val heading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else if (activeRoute != null) routeBearing(activeRoute, progressIndex) else 0.0
+            val heading = reliableHeading(fix) ?: if (activeRoute != null) routeBearing(activeRoute, progressIndex) else 0.0
             val cameraBuilder = CameraPosition.Builder()
                 .target(LatLng(fix.latitude, fix.longitude))
                 .zoom(requestedZoom.level.toDouble())
@@ -556,7 +571,7 @@ object NativeNavigation {
                 val bitmap = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(bitmap)
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-                canvas.save(); canvas.clipRect(0, if(phone) 34 else 0, mapWidth, mapHeight)
+                canvas.save(); canvas.clipRect(0, 0, mapWidth, mapHeight)
                 activeRoute?.let { r ->
                     val path = Path()
                     r.points.drop((progressIndex-1).coerceAtLeast(0)).forEachIndexed { i, point ->
@@ -568,11 +583,10 @@ object NativeNavigation {
                     paint.strokeWidth=5f; canvas.drawPath(path,paint)
                 }
                 val pixel = snapshot.pixelForLatLng(LatLng(fix.latitude,fix.longitude))
-                val riderHeading = if (fix.hasBearing() && fix.speed > 1f) fix.bearing.toDouble() else heading
+                val riderHeading = reliableHeading(fix) ?: heading
                 YamahaPositionMarker.draw(c,canvas,pixel.x,pixel.y,(riderHeading-camera.bearing).toFloat())
                 canvas.restore()
                 if (phone) {
-                    banner(canvas, paint, guidance, 0, 34, 19f,frameNight)
                     if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
                     currentTrafficAlert()?.let { TrafficAlertRenderer.draw(canvas,it,84f,38f,388f) }
                     phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false
@@ -589,7 +603,7 @@ object NativeNavigation {
     private fun bikeState(): BikeNavigationState {
         val nav=dashRoute
         val fix=location
-        val fresh=fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L
+        val fresh=fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L
         val next=nav?.turns?.getOrNull(nav.activeIndex)
         val currentRoad=route?.turns?.lastOrNull { it.start <= progressIndex && it.road.isNotBlank() }?.road.orEmpty()
         val arrival=cockpitTrip()?.arrivalMillis?.let { java.text.SimpleDateFormat("HH:mm",java.util.Locale.US).format(java.util.Date(it)) }
@@ -666,7 +680,11 @@ class NativeNavigationService : Service(), LocationListener {
             providers.forEach { provider ->
                 try {
                     // Zero distance also delivers fixes while the rider is stationary.
-                    locations!!.requestLocationUpdates(provider, 1000L, 0f, this, Looper.getMainLooper())
+                    if(Build.VERSION.SDK_INT>=31) {
+                        val request=LocationRequest.Builder(if(provider==LocationManager.GPS_PROVIDER) 500L else 2000L)
+                            .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY).setMinUpdateIntervalMillis(250L).setMaxUpdateDelayMillis(0L).build()
+                        locations!!.requestLocationUpdates(provider,request,mainExecutor,this)
+                    } else locations!!.requestLocationUpdates(provider,500L,0f,this,Looper.getMainLooper())
                     registered++
                 } catch (e: Exception) {
                     BikeDiagnostics.record(this, "Native location registration failed provider=$provider exception=${e.javaClass.simpleName}")

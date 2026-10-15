@@ -15,31 +15,31 @@ object BikeNavigationRenderer {
     fun draw(canvas: Canvas, map: Bitmap, layout: BikeNavigationLayout, state: BikeNavigationState, night: Boolean) {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         canvas.drawColor(Color.BLACK)
-        canvas.drawBitmap(map, null, Rect(layout.panelWidth, 0, layout.width, layout.mapHeight), p)
+        canvas.drawBitmap(map, null, Rect(layout.mapLeft, 0, layout.mapWidth, layout.mapHeight), p)
         p.color = if (night) 0xff101724.toInt() else 0xff202632.toInt()
-        canvas.drawRect(0f, 0f, layout.panelWidth.toFloat(), (layout.height-layout.creditHeight).toFloat(), p)
+        canvas.drawRect(layout.panelLeft.toFloat(), 0f, layout.width.toFloat(), (layout.height-layout.creditHeight).toFloat(), p)
         p.color=Color.WHITE; p.style=Paint.Style.FILL
-        arrow(canvas, p, state.sign, layout.panelWidth / 2f, 38f)
+        arrow(canvas, p, state.sign, layout.panelLeft + layout.panelWidth / 2f, 38f)
         p.textAlign=Paint.Align.CENTER; p.typeface=Typeface.DEFAULT_BOLD; p.textSize=32f
         val distance = state.meters?.let { if (it >= 1000) String.format(Locale.US,"%.1f km",it/1000)
             else "${(it.coerceAtLeast(0.0)/10).toInt()*10} m" } ?: "GPS"
-        canvas.drawText(distance, layout.panelWidth/2f, 89f, p)
+        canvas.drawText(distance, layout.panelLeft+layout.panelWidth/2f, 89f, p)
         val title = state.notice.ifBlank { state.nextRoad.ifBlank { "Continue straight" } }
-        wrapped(canvas, title, 9f, 104f, layout.panelWidth-18, 19f, 3)
+        wrapped(canvas, title, layout.panelLeft+9f, 104f, layout.panelWidth-18, 19f, 3)
         if (!state.arrival.isNullOrBlank()) {
-            p.color=0xff293957.toInt(); canvas.drawRect(0f,(layout.mapHeight).toFloat(),layout.panelWidth.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
+            p.color=0xff293957.toInt(); canvas.drawRect(layout.panelLeft.toFloat(),(layout.mapHeight).toFloat(),layout.width.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
             p.color=Color.WHITE; p.textSize=15f; p.textAlign=Paint.Align.CENTER
-            canvas.drawText("Arrival ${state.arrival}",layout.panelWidth/2f,layout.mapHeight+18f,p)
+            canvas.drawText("Arrival ${state.arrival}",layout.panelLeft+layout.panelWidth/2f,layout.mapHeight+18f,p)
         }
         // Exactly one speed sign belongs to this image. Unknown limits remain absent.
         state.speedLimit?.let { SpeedLimitIcon.draw(canvas,layout.speedX,layout.speedY,layout.speedRadius,it) }
         p.style=Paint.Style.FILL; p.color=0xe6101724.toInt()
-        canvas.drawRect(layout.panelWidth.toFloat(),layout.mapHeight.toFloat(),480f,(layout.height-layout.creditHeight).toFloat(),p)
+        canvas.drawRect(0f,layout.mapHeight.toFloat(),layout.mapWidth.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
         p.color=Color.WHITE; p.textAlign=Paint.Align.LEFT; p.textSize=18f; p.typeface=Typeface.DEFAULT_BOLD
         val road=state.currentRoad.ifBlank { "RideDeck navigation" }
         val shown=TextUtils.ellipsize(road,TextPaint(p),(layout.mapWidth-20).toFloat(),TextUtils.TruncateAt.END).toString()
-        canvas.drawText(shown,layout.panelWidth+10f,layout.mapHeight+19f,p)
-        state.alert?.let { TrafficAlertRenderer.draw(canvas,it,layout.panelWidth+4f,4f,layout.mapWidth-8f) }
+        canvas.drawText(shown,10f,layout.mapHeight+19f,p)
+        state.alert?.let { TrafficAlertRenderer.draw(canvas,it,52f,4f,layout.mapWidth-56f) }
         p.color=0xff101724.toInt(); canvas.drawRect(0f,(layout.height-layout.creditHeight).toFloat(),480f,layout.height.toFloat(),p)
         p.color=Color.WHITE; p.typeface=Typeface.DEFAULT; p.textSize=10f
         canvas.drawText("© MapTiler  © OpenStreetMap contributors",7f,layout.height-3f,p)

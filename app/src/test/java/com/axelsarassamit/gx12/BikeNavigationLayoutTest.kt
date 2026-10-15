@@ -13,8 +13,8 @@ class BikeNavigationLayoutTest {
             assertEquals(480,l.panelWidth+l.mapWidth)
             assertEquals(height,l.mapHeight+l.roadHeight+l.creditHeight)
             assertTrue(l.mapWidth >= 348 && l.mapHeight >= 196)
-            assertTrue(l.speedX-l.speedRadius > l.panelWidth)
-            assertTrue(l.speedX+l.speedRadius < l.width)
+            assertTrue(l.speedX-l.speedRadius > l.mapLeft)
+            assertTrue(l.speedX+l.speedRadius < l.panelLeft)
             assertTrue(l.speedY+l.speedRadius < l.mapHeight)
         }
     }
