@@ -12,6 +12,11 @@ object NavigationSpeech {
         val safe = meters.takeIf { it.isFinite() }?.coerceAtLeast(0.0) ?: 0.0
         val distance = if (safe >= 1000) String.format(Locale.US, "%.1f kilometers", safe / 1000)
             else "${(safe / 10).roundToInt() * 10} meters"
+        return "In $distance, ${action(sign,road)}."
+    }
+    fun now(sign: Int, road: String): String = "Now, ${action(sign,road)}."
+    fun following(sign: Int, road: String): String = "Then, ${action(sign,road)}."
+    private fun action(sign: Int, road: String): String {
         val action = when (sign) {
             -8, 8 -> "make a U-turn"
             -3 -> "turn sharply left"; -2 -> "turn left"; -1 -> "bear left"
@@ -25,6 +30,7 @@ object NavigationSpeech {
             name.isNotBlank() && name.any { it in 'A'..'Z' || it in 'a'..'z' } &&
                 name.all { !it.isLetter() || Character.UnicodeScript.of(it.code) == Character.UnicodeScript.LATIN }
         }
-        return "In $distance, $action${spokenRoad?.let { " onto $it" }.orEmpty()}."
+        val roadSuffix = if(sign in listOf(5,6,7)) "" else spokenRoad?.let { " onto $it" }.orEmpty()
+        return "$action$roadSuffix"
     }
 }

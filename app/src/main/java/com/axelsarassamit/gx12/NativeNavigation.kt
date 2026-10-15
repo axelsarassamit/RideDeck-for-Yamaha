@@ -76,7 +76,7 @@ object NativeNavigation {
     private var remaining = 0.0
     private var lastReroute = 0L
     private var offRouteSamples = 0
-    private var lastSpoken = ""
+    private val announcements = NavigationAnnouncements()
     private var speaker: TextToSpeech? = null
     private var speechReady = false
     private var trafficRefreshBusy = false
@@ -114,7 +114,7 @@ object NativeNavigation {
         phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapBitmap = null; englishStyle = null; styleLoading = false
         styleGeneration++; styleCache.clear(); styleDark = null; styleRetryAt = 0L; lastSolarNight = null
         location = null; route = null; mapJpeg = null; mapBitmap = null; dashRoute = null; speedWindow = null; speedLimit = null
-        status = "Navigation stopped"
+        announcements.reset(); status = "Navigation stopped"
     }
     fun resize(width: Int, h: Int) {
         require(width == 480 && h in listOf(234, 240))
@@ -185,7 +185,7 @@ object NativeNavigation {
 
     @JvmStatic fun stopRoute() {
         context?.let { RideBackgroundSession.clearDestination(it) }
-        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; lastSpoken = ""; progressIndex = 0; speaker?.stop() }
+        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); progressIndex = 0; speaker?.stop() }
     }
     @JvmStatic fun routeText(text: String) {
         val c = context ?: error("Open RideDeck navigation first")
@@ -202,6 +202,7 @@ object NativeNavigation {
             status = "Waiting for GPS to calculate the route"; return
         }
         val generation = ++routeGeneration
+        val recalculating = route != null
         routeBusy = true; speedLimit = null; speedWindow = null; lastSpeedRequest = -30000L; dashRoute = dashRoute?.copy(remainingMillis=null); status = "Calculating route"
         worker.execute {
             val result = runCatching { NavigationApi.route(c, origin, target) }
@@ -209,7 +210,7 @@ object NativeNavigation {
                 if (generation != routeGeneration) return@post
                 routeBusy = false
                 result.onSuccess {
-                    applyRoute(c, it)
+                    applyRoute(c, it, recalculated = recalculating)
                     BikeDiagnostics.record(c, "Native route ready points=${it.points.size} instructions=${it.turns.size}")
                 }.onFailure { error ->
                     val detail = when (error) {
@@ -230,8 +231,8 @@ object NativeNavigation {
         RideBackgroundSession.saveDestination(c, selected.destination)
         applyRoute(c, selected)
     }
-    private fun applyRoute(c: Context, selected: NavigationRoute) {
-        route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; lastSpoken = ""; offRouteSamples = 0
+    private fun applyRoute(c: Context, selected: NavigationRoute, announceStart: Boolean = true, recalculated: Boolean = false) {
+        route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; announcements.reset(announceStart,recalculated); offRouteSamples = 0
         speedLimit = null; speedWindow = selected.speedLimits?.let { SpeedLimitWindow(0,it) }; lastSpeedRequest = -30000L
         lastTrafficRefresh=SystemClock.elapsedRealtime()
         mapZoom.navigationStarted()
@@ -283,12 +284,13 @@ object NativeNavigation {
             offRouteSamples++
             dashRoute = dashRoute?.copy(remainingMillis=null)
             guidance = "Off route. Recalculating"
+            if(offRouteSamples >= 3 && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 30_000_000_000L) announce(announcements.offRoute())
             if (!routeBusy && offRouteSamples >= 3 && SystemClock.elapsedRealtime() - lastReroute > 30000) {
                 lastReroute = SystemClock.elapsedRealtime(); context?.let { navigate(it, r.destination) }
             }
             return
         }
-        offRouteSamples = 0; progressIndex = bestIndex
+        offRouteSamples = 0; progressIndex = bestIndex; announcements.onTrack()
         val travelled = r.cumulative[bestIndex] + bestFraction*(r.cumulative[bestIndex+1]-r.cumulative[bestIndex])
         remaining = max(0.0, r.cumulative.last() - travelled)
         val segment=if(bestFraction >= 0.999) bestIndex+1 else bestIndex
@@ -306,12 +308,19 @@ object NativeNavigation {
         val duration = if(routeBusy) null else RouteTimeEstimator.remainingMillis(r.cumulative.last(),r.millis,travelled,r.timeLegs)
         dashRoute = DashRoute(dashRouteRevision,turns,r.turns.indexOf(next).coerceAtLeast(0),meters,duration)
         guidance = if (remaining < 25 && bestIndex >= r.points.size - 4) "Arriving at destination" else "${distance(meters)}  ${next?.text ?: "Continue"}"
-        val speechId = "${routeGeneration}:${next?.start}"
-        if (meters < 200 && lastSpoken != speechId && speechReady && context?.let { RidePreferences.prefs(it).getBoolean("navigation_voice", true) } == true) {
-            val speech = NavigationSpeech.prompt(maneuver,meters,next?.road.orEmpty(),remaining < 25 && bestIndex >= r.points.size - 4)
-            if (speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) == true &&
-                speaker?.speak(speech, TextToSpeech.QUEUE_FLUSH, null, speechId) == TextToSpeech.SUCCESS) lastSpoken = speechId
-        }
+        val nextIndex = r.turns.indexOf(next)
+        val following = r.turns.getOrNull(nextIndex + 1)?.takeIf {
+            next != null && it.start > next.start && r.cumulative[it.start] - r.cumulative[next.start] <= 120 && meters <= 120
+        }?.let { NavigationSpeech.following(it.sign,it.road) }.orEmpty()
+        if(!routeBusy && fresh) announce(announcements.next(next?.start ?: r.points.lastIndex,maneuver,meters,next?.road.orEmpty(),
+            if(fix.hasSpeed()) fix.speed.toDouble() else 0.0,remaining < 25 && bestIndex >= r.points.size - 4,
+            SystemClock.elapsedRealtime(),following))
+    }
+    private fun announce(cue: NavigationAnnouncements.Cue?) {
+        if(cue == null || !speechReady || context?.let { RidePreferences.prefs(it).getBoolean("navigation_voice",true) } != true) return
+        if(speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) != true) return
+        if(speaker?.speak(cue.text,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:${cue.id}") == TextToSpeech.SUCCESS)
+            announcements.accepted(cue,SystemClock.elapsedRealtime())
     }
     private fun refreshTrafficRoute(c:Context,current:NavigationRoute) {
         if(trafficRefreshBusy) return
@@ -322,7 +331,7 @@ object NativeNavigation {
             main.post {
                 trafficRefreshBusy=false
                 if(!running || routeGeneration!=generation || route!==current) return@post
-                result.onSuccess { routeGeneration++;applyRoute(c,it);BikeDiagnostics.record(c,"Traffic route refreshed provider=${it.provider}") }
+                result.onSuccess { routeGeneration++;applyRoute(c,it,false);BikeDiagnostics.record(c,"Traffic route refreshed provider=${it.provider}") }
                     .onFailure { BikeDiagnostics.record(c,"Traffic route refresh unavailable; retained current route exception=${it.javaClass.simpleName}") }
             }
         }
@@ -365,7 +374,7 @@ object NativeNavigation {
                 RidePreferences.prefs(c).getBoolean("tomtom_refresh",true) && SystemClock.elapsedRealtime()-lastTrafficRefresh >= 300000) {
                 lastTrafficRefresh=SystemClock.elapsedRealtime();refreshTrafficRoute(c,activeRoute)
             }
-            if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS" }
+            if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS"; if(route != null && fix != null) announce(announcements.gpsLost()) }
             if (inFlight && SystemClock.elapsedRealtime() - renderStarted > 15000) {
                 snapshotter?.cancel(); snapshotter = null; inFlight = false
                 BikeDiagnostics.record(c, "Native map render timeout")
