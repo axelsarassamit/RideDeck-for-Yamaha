@@ -58,4 +58,50 @@ class CleanupMenuTest {
             } finally { prefs.edit().apply { if(hadBefore) putInt("reply_mode",before) else remove("reply_mode") }.commit() }
         }
     }
+    @Test fun landscapeMusicKeepsLongMetadataAndAllPlaybackControlsVisible() {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val prefs=RidePreferences.prefs(instrumentation.targetContext)
+        val hadPanel=prefs.contains("phone_panel");val before=prefs.getString("phone_panel","map")
+        prefs.edit().putString("phone_panel","music").commit()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                var originalOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
+                scenario.onActivity { activity -> originalOrientation=activity.requestedOrientation;activity.requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+                try {
+                    var landscape=false
+                    for(attempt in 0..50) {
+                        instrumentation.waitForIdleSync()
+                        scenario.onActivity { landscape=it.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE }
+                        if(landscape)break
+                        Thread.sleep(100)
+                    }
+                    assertTrue("Activity did not enter landscape",landscape)
+                    scenario.onActivity { activity ->
+                        fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply{isAccessible=true}.get(activity)
+                        (field("handler") as android.os.Handler).removeCallbacks(field("trackRefresh") as Runnable)
+                        (field("trackStatus") as TextView).text="Landscape sample: a long song title to check available space"
+                        (field("trackArtist") as TextView).text="Sample artist with a long name"
+                        (field("phoneGuidance") as TextView).text="In 190 m, turn left onto Sukhumvit Road."
+                    }
+                    instrumentation.waitForIdleSync()
+                    scenario.onActivity { activity ->
+                        fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply{isAccessible=true}.get(activity) as View
+                        for(name in listOf("trackStatus","trackArtist","previousButton","playPauseButton","nextButton")) {
+                            val view=field(name);val visible=android.graphics.Rect()
+                            assertTrue("Hidden music control: $name",view.getGlobalVisibleRect(visible))
+                            assertTrue("Clipped music control: $name",visible.height()>=view.height-1 && visible.width()>=view.width-1)
+                            if(name.endsWith("Button"))assertTrue("Playback target too short",view.height>=55*activity.resources.displayMetrics.density)
+                        }
+                        val root=activity.window.decorView
+                        val bitmap=android.graphics.Bitmap.createBitmap(root.width,root.height,android.graphics.Bitmap.Config.ARGB_8888)
+                        root.draw(android.graphics.Canvas(bitmap))
+                        val folder=java.io.File(activity.getExternalFilesDir("tests"),"cleanup41-previews").apply{mkdirs()}
+                        java.io.File(folder,"landscape-music-sample.png").outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+                        bitmap.recycle()
+                    }
+                } finally { scenario.onActivity { it.requestedOrientation=originalOrientation } }
+            }
+        } finally { prefs.edit().apply{if(hadPanel)putString("phone_panel",before)else remove("phone_panel")}.commit() }
+    }
+
 }
