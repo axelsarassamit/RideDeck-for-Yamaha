@@ -577,6 +577,8 @@ public class MainActivity extends android.app.Activity {
         boolean portrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
         boolean compact = isInMultiWindowMode();
         boolean stacked = compact || portrait;
+        boolean shortMusic = !portrait && getResources().getConfiguration().screenHeightDp < 500 && "music".equals(renderedPanel);
+        int headerHeight = shortMusic ? 56 : 64;
         boolean controlsRight = controlsOnRight();
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -602,12 +604,12 @@ public class MainActivity extends android.app.Activity {
         yamahaLogo.setPadding(0, 0, 0, 0);
         LinearLayout.LayoutParams yamahaLogoParams = new LinearLayout.LayoutParams(dp(28), dp(28));
         logoSlot.addView(yamahaLogo, yamahaLogoParams);
-        header.addView(logoSlot, new LinearLayout.LayoutParams(dp(80), dp(64)));
+        header.addView(logoSlot, new LinearLayout.LayoutParams(dp(80), dp(headerHeight)));
         castStatus = text(YamahaCastService.status, 11, RideStyle.MUTED, false);
         castStatus.setMaxLines(1); castStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
         CockpitClockView clock = new CockpitClockView(this);
-        header.addView(clock, new LinearLayout.LayoutParams(0, dp(64), 1));
-        if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
+        header.addView(clock, new LinearLayout.LayoutParams(0, dp(headerHeight), 1));
+        if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(headerHeight)));
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
             phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, RideStyle.TEXT, true);
             phoneGuidance.setMaxLines(portrait && !compact ? 3 : 2);
@@ -634,7 +636,7 @@ public class MainActivity extends android.app.Activity {
         workspace.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout controls = new LinearLayout(this); controls.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         // Navigation guidance shares the short landscape height with music.
-        boolean compactMusic = compact || (!portrait && getResources().getConfiguration().screenHeightDp < 500 && "music".equals(renderedPanel));
+        boolean compactMusic = compact || shortMusic;
         LinearLayout music = rideCard("NOW PLAYING");
         if (compactMusic) {
             music.removeAllViews(); music.setOrientation(LinearLayout.HORIZONTAL);
@@ -685,11 +687,17 @@ public class MainActivity extends android.app.Activity {
         nextButton = rideAction("▶|", false); nextButton.setContentDescription("Next track");
         nextButton.setOnClickListener(v -> sendMedia(MediaAction.NEXT));
         transport.setGravity(Gravity.CENTER_VERTICAL);
-        transport.addView(previousButton, rideWeight(compactMusic ? 56 : 64));
+        transport.setBaselineAligned(false);
+        LinearLayout.LayoutParams previousParams = rideWeight(compactMusic ? 56 : 64);
+        previousParams.topMargin = 0;
+        transport.addView(previousButton, previousParams);
         LinearLayout.LayoutParams playParams = rideWeight(compactMusic ? 56 : portrait ? 72 : 64);
         playParams.weight = compactMusic ? 1 : 1.3f;
+        playParams.topMargin = 0;
         transport.addView(playPauseButton, playParams);
-        transport.addView(nextButton, rideWeight(compactMusic ? 56 : 64)); music.addView(transport, compactMusic ? new LinearLayout.LayoutParams(dp(180), -2) : new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams nextParams = rideWeight(compactMusic ? 56 : 64);
+        nextParams.topMargin = 0;
+        transport.addView(nextButton, nextParams); music.addView(transport, compactMusic ? new LinearLayout.LayoutParams(dp(186), -2) : new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams musicParams = compact
             ? new LinearLayout.LayoutParams(-1, dp(72))
             : portrait ? new LinearLayout.LayoutParams(-1, 0, 0.9f)
