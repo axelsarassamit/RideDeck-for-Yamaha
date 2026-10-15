@@ -124,5 +124,34 @@ object TomTomApi {
             listOf(details,road).filter { it.isNotBlank() }.joinToString("\n").ifBlank { "Traffic incident reported" }
         }
     }
+    fun routeIncidents(c:Context,points:List<IncidentPoint>):List<ReportedIncident> {
+        require(points.isNotEmpty() && points.all{it.valid()})
+        val pad=.005
+        val bbox="${(points.minOf{it.longitude}-pad).coerceAtLeast(-180.0)},${(points.minOf{it.latitude}-pad).coerceAtLeast(-85.0)},${(points.maxOf{it.longitude}+pad).coerceAtMost(180.0)},${(points.maxOf{it.latitude}+pad).coerceAtMost(85.0)}"
+        val url=endpoint(c,"traffic/services/5/incidentDetails").appendQueryParameter("bbox",bbox)
+            .appendQueryParameter("fields","{incidents{geometry{type,coordinates},properties{id,iconCategory,timeValidity,probabilityOfOccurrence,startTime,endTime}}}")
+            .appendQueryParameter("language","en-GB").appendQueryParameter("categoryFilter","Accident,RoadClosed")
+            .appendQueryParameter("timeValidityFilter","present").build()
+        return parseRouteIncidents(NavigationApi.request(url,"TomTom traffic"),System.currentTimeMillis())
+    }
+    internal fun parseRouteIncidents(json:JSONObject,now:Long):List<ReportedIncident> {
+        val rows=json.optJSONArray("incidents") ?: return emptyList()
+        return (0 until minOf(rows.length(),100)).mapNotNull { i -> runCatching {
+            val row=rows.getJSONObject(i);val p=row.getJSONObject("properties")
+            val id=p.optString("id").takeIf{it.isNotBlank() && it.length<=256} ?: return@runCatching null
+            val kind=IncidentKind.fromCode(p.optInt("iconCategory",-1)) ?: return@runCatching null
+            if(p.optString("timeValidity")!="present" || p.optString("probabilityOfOccurrence") !in listOf("certain","probable"))return@runCatching null
+            for(field in listOf("startTime","endTime")){
+                val value=p.optString(field).takeUnless{it.isBlank() || it=="null"} ?: continue
+                val time=java.time.Instant.parse(value).toEpochMilli()
+                if((field=="startTime" && time>now) || (field=="endTime" && time<=now))return@runCatching null
+            }
+            val geometry=row.getJSONObject("geometry");val raw=geometry.getJSONArray("coordinates")
+            fun point(a:org.json.JSONArray):IncidentPoint {require(a.length()>=2);return IncidentPoint(a.getDouble(1),a.getDouble(0)).also{require(it.valid())}}
+            val line=geometry.getString("type")=="LineString"
+            val points=when(geometry.getString("type")){"Point"->listOf(point(raw));"LineString"->{require(raw.length() in 2..512);(0 until raw.length()).map{point(raw.getJSONArray(it))}};else->return@runCatching null}
+            ReportedIncident(id,kind,points,line)
+        }.getOrNull() }.distinctBy{it.id}
+    }
 }
 data class FuelPrice(val grade:String,val value:Double,val currency:String,val unit:String,val updated:String)

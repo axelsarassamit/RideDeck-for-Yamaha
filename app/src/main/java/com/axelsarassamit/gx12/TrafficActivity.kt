@@ -10,6 +10,7 @@ class TrafficActivity:RiderPage() {
         super.onCreate(saved);build("Traffic nearby")
         state.text="TomTom reports near your current position. Coverage may be incomplete. This is a nearby list, not a claim that every incident affects your route."
         row(button("Check traffic") { load() })
+        row(text(NativeNavigation.trafficAlertSummary()))
         row(text("TomTom motorcycle routing uses current traffic when enabled. During navigation, route refresh every 5 minutes can respond to new closures and delays. Turn it off in Map and routing accounts to reduce requests."))
     }
     private fun load() {

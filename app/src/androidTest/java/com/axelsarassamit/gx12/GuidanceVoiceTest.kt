@@ -19,10 +19,11 @@ class GuidanceVoiceTest {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val main=Handler(Looper.getMainLooper())
         val initialized=CountDownLatch(1)
-        val finished=CountDownLatch(3)
+        val finished=CountDownLatch(5)
         val error=AtomicReference<String?>()
         var engine:TextToSpeech?=null
-        ActivityScenario.launch(SetupActivity::class.java).use {
+        ActivityScenario.launch(SetupActivity::class.java).use { scenario ->
+            scenario.onActivity{it.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
             try {
                 instrumentation.runOnMainSync {
                     engine=TextToSpeech(instrumentation.targetContext) { result -> main.post {
@@ -47,6 +48,10 @@ class GuidanceVoiceTest {
                         val cue=scheduler.next(10,-2,meters,"Oak Road",20.0,false,index*10000L)!!
                         assertEquals(TextToSpeech.SUCCESS,engine!!.speak(cue.text,TextToSpeech.QUEUE_ADD,null,"guidance-sample-$index"))
                         scheduler.accepted(cue,index*10000L)
+                    }
+                    for((index,kind) in IncidentKind.entries.withIndex()){
+                        val sample="Sample alert. "+TrafficAlert("sample",kind,500.0).speech
+                        assertEquals(TextToSpeech.SUCCESS,engine!!.speak(sample,TextToSpeech.QUEUE_ADD,null,"incident-sample-$index"))
                     }
                 }
                 assertTrue("Speech samples did not finish",finished.await(45,TimeUnit.SECONDS))

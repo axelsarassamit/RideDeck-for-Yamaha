@@ -78,17 +78,19 @@ object NavigationUi {
         val prefs=RidePreferences.prefs(activity)
         val routing=CheckBox(activity).apply { text="TomTom motorcycle routes with traffic";isChecked=prefs.getBoolean("tomtom_routing",true) };fields.addView(routing)
         val refresh=CheckBox(activity).apply { text="Refresh traffic route every 5 minutes";isChecked=prefs.getBoolean("tomtom_refresh",true) };fields.addView(refresh)
+        val incidents=CheckBox(activity).apply { text="Accident and road-closure alerts (TomTom)";isChecked=prefs.getBoolean("tomtom_incident_alerts",true) };fields.addView(incidents)
+        fields.addView(TextView(activity).apply { text="Checks reports near the route ahead every 5 minutes. Spoken alerts follow the navigation voice setting. Reports may concern another lane, carriageway or level. Uses Traffic API requests and needs account access.";textSize=15f })
         val fuel=CheckBox(activity).apply { text="My account has separate Fuel Prices API access";isChecked=prefs.getBoolean("tomtom_fuel_entitled",false) };fields.addView(fuel)
         AlertDialog.Builder(activity).setTitle("Map and routing accounts")
             .setMessage("MapTiler draws the map. Optional TomTom improves place search, nearby stations and traffic-aware motorcycle routes. Without TomTom, Valhalla uses a public fair-use server without live traffic. Requests send your search or location to the selected provider. TomTom has usage allowances; automatic refresh uses routing requests. Fuel Prices requires separate access and is excluded from the free plan. Keys are encrypted on this phone.")
-            .setView(fields).setNegativeButton("Close",null).setNeutralButton("MapTiler website") { _,_ ->
+            .setView(android.widget.ScrollView(activity).apply{addView(fields)}).setNegativeButton("Close",null).setNeutralButton("MapTiler website") { _,_ ->
                 activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://cloud.maptiler.com/")))
             }.setPositiveButton("Save",null).create().also { dialog ->
                 dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                     try {
                         if(map.text.isNotBlank()) NavigationSecrets.save(activity,"maptiler",map.text.toString().trim())
                         if(tomtom.text.isNotBlank()) NavigationSecrets.save(activity,"tomtom",tomtom.text.toString().trim())
-                        prefs.edit().putBoolean("tomtom_routing",routing.isChecked).putBoolean("tomtom_refresh",refresh.isChecked).putBoolean("tomtom_fuel_entitled",fuel.isChecked).apply()
+                        prefs.edit().putBoolean("tomtom_routing",routing.isChecked).putBoolean("tomtom_refresh",refresh.isChecked).putBoolean("tomtom_incident_alerts",incidents.isChecked).putBoolean("tomtom_fuel_entitled",fuel.isChecked).apply()
                         dialog.dismiss(); Toast.makeText(activity,"Saved on this phone",Toast.LENGTH_SHORT).show()
                     } catch(_: Exception) { map.error="Could not store keys on this phone" }
                 } }; dialog.show()

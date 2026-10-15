@@ -8,7 +8,7 @@ import android.text.Layout
 import java.util.Locale
 
 data class BikeNavigationState(val sign: Int, val meters: Double?, val nextRoad: String,
-    val currentRoad: String, val arrival: String?, val speedLimit: Int?, val notice: String = "")
+    val currentRoad: String, val arrival: String?, val speedLimit: Int?, val notice: String = "",val alert:TrafficAlert?=null)
 
 /** One compositor for the 480-pixel bike image and its diagnostic preview. */
 object BikeNavigationRenderer {
@@ -39,6 +39,7 @@ object BikeNavigationRenderer {
         val road=state.currentRoad.ifBlank { "RideDeck navigation" }
         val shown=TextUtils.ellipsize(road,TextPaint(p),(layout.mapWidth-20).toFloat(),TextUtils.TruncateAt.END).toString()
         canvas.drawText(shown,layout.panelWidth+10f,layout.mapHeight+19f,p)
+        state.alert?.let { TrafficAlertRenderer.draw(canvas,it,layout.panelWidth+4f,4f,layout.mapWidth-8f) }
         p.color=0xff101724.toInt(); canvas.drawRect(0f,(layout.height-layout.creditHeight).toFloat(),480f,layout.height.toFloat(),p)
         p.color=Color.WHITE; p.typeface=Typeface.DEFAULT; p.textSize=10f
         canvas.drawText("© MapTiler  © OpenStreetMap contributors",7f,layout.height-3f,p)

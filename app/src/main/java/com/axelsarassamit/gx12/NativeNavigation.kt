@@ -31,6 +31,7 @@ object NativeNavigation {
     private val worker = Executors.newSingleThreadExecutor()
     private val speedWorker = Executors.newSingleThreadExecutor()
     private val styleWorker = Executors.newSingleThreadExecutor()
+    private val incidentWorker = Executors.newSingleThreadExecutor()
     private var speedWindow: SpeedLimitWindow? = null
     private var speedRequestBusy = false
     private var lastSpeedRequest = -30000L
@@ -78,6 +79,23 @@ object NativeNavigation {
     private var offRouteSamples = 0
     private val announcements = NavigationAnnouncements()
     private val trafficAnnouncements = TrafficAnnouncements()
+    private val incidentAnnouncements = IncidentAnnouncements()
+    private var incidentBusy=false
+    private var lastIncidentRequest=-300000L
+    private var incidentCheckedAt:Long?=null
+    private var incidentRevision=-1
+    private var incidentRequestedRevision=-1
+    private var incidentMatches=emptyList<RouteIncident>()
+    private var travelledMeters=0.0
+    private var lastClosureCheck=-60000L
+    private val checkedClosures=HashMap<String,Long>()
+    @Volatile private var incidentStatus="Start navigation to check accident and road-closure reports near the route."
+    @JvmStatic fun trafficAlertSummary():String=when {
+        route==null -> "Start navigation to check accident and road-closure reports near the route."
+        context?.let{!RidePreferences.prefs(it).getBoolean("tomtom_incident_alerts",true)}==true -> "Accident and road-closure alerts are off in Map and routing accounts."
+        incidentCheckedAt?.let{SystemClock.elapsedRealtime()-it>360000}==true -> "Incident reports are out of date. Waiting for a successful update."
+        else -> incidentStatus
+    }
     private var speaker: TextToSpeech? = null
     private var speechReady = false
     private var trafficRefreshBusy = false
@@ -115,7 +133,7 @@ object NativeNavigation {
         phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapBitmap = null; englishStyle = null; styleLoading = false
         styleGeneration++; styleCache.clear(); styleDark = null; styleRetryAt = 0L; lastSolarNight = null
         location = null; route = null; mapJpeg = null; mapBitmap = null; dashRoute = null; speedWindow = null; speedLimit = null
-        announcements.reset(); trafficAnnouncements.reset(); status = "Navigation stopped"
+        announcements.reset(); trafficAnnouncements.reset(); incidentMatches=emptyList();incidentCheckedAt=null;incidentAnnouncements.reset();incidentStatus="Navigation stopped. Incident checks paused."; status = "Navigation stopped"
     }
     fun resize(width: Int, h: Int) {
         require(width == 480 && h in listOf(234, 240))
@@ -186,7 +204,7 @@ object NativeNavigation {
 
     @JvmStatic fun stopRoute() {
         context?.let { RideBackgroundSession.clearDestination(it) }
-        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); trafficAnnouncements.reset(); progressIndex = 0; speaker?.stop() }
+        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); trafficAnnouncements.reset(); incidentMatches=emptyList();incidentCheckedAt=null;incidentAnnouncements.reset();progressIndex = 0; speaker?.stop() }
     }
     @JvmStatic fun routeText(text: String) {
         val c = context ?: error("Open RideDeck navigation first")
@@ -233,8 +251,18 @@ object NativeNavigation {
         applyRoute(c, selected)
     }
     private fun applyRoute(c: Context, selected: NavigationRoute, announceStart: Boolean = true, recalculated: Boolean = false) {
+        val previousIncidents=incidentMatches.map{it.incident};val previousCheck=incidentCheckedAt
         route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; announcements.reset(announceStart,recalculated); offRouteSamples = 0
         if(announceStart && !recalculated) trafficAnnouncements.reset()
+        if(announceStart && !recalculated) incidentAnnouncements.reset()
+        incidentMatches=emptyList();incidentCheckedAt=null;travelledMeters=0.0
+        if((!announceStart || recalculated) && previousIncidents.isNotEmpty() && previousCheck!=null && SystemClock.elapsedRealtime()-previousCheck<=360000 && !incidentBusy){
+            val revision=dashRouteRevision;incidentBusy=true
+            incidentWorker.execute {
+                val matches=runCatching{RouteIncidentMatcher.match(selected.points.map{IncidentPoint(it.latitude,it.longitude)},selected.cumulative,0.0,previousIncidents)}
+                main.post {incidentBusy=false;if(running && route===selected && dashRouteRevision==revision)matches.onSuccess{incidentMatches=it;incidentRevision=revision;incidentCheckedAt=previousCheck;invalidateFrames()}}
+            }
+        }
         trafficAnnouncements.report(if(selected.provider=="TomTom") selected.trafficDelayMillis.coerceIn(0,selected.millis) else 0,SystemClock.elapsedRealtime())
         speedLimit = null; speedWindow = selected.speedLimits?.let { SpeedLimitWindow(0,it) }; lastSpeedRequest = -30000L
         lastTrafficRefresh=SystemClock.elapsedRealtime()
@@ -295,6 +323,7 @@ object NativeNavigation {
         }
         offRouteSamples = 0; progressIndex = bestIndex; announcements.onTrack()
         val travelled = r.cumulative[bestIndex] + bestFraction*(r.cumulative[bestIndex+1]-r.cumulative[bestIndex])
+        travelledMeters=travelled
         remaining = max(0.0, r.cumulative.last() - travelled)
         val segment=if(bestFraction >= 0.999) bestIndex+1 else bestIndex
         val headingDifference=if(fix.hasBearing() && fix.speed > 1f) abs(((fix.bearing-routeBearing(r,bestIndex)+540)%360)-180) else 0.0
@@ -321,7 +350,7 @@ object NativeNavigation {
                 remaining < 25 && bestIndex >= r.points.size - 4,SystemClock.elapsedRealtime(),following)
             announce(cue)
             // Direction prompts take priority. Delay reports wait for room before the next turn.
-            if(cue==null && meters>max(150.0,speed*15)) announceTraffic()
+            if(cue==null && meters>max(150.0,speed*15) && !announceIncident()) announceTraffic()
         }
     }
     private fun announce(cue: NavigationAnnouncements.Cue?) {
@@ -338,6 +367,53 @@ object NativeNavigation {
         if(speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) != true) return
         if(speaker?.speak(cue.text,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:traffic-delay") == TextToSpeech.SUCCESS)
             trafficAnnouncements.accepted(cue,now)
+    }
+    @JvmStatic fun currentTrafficAlert():TrafficAlert? {
+        val c=context ?: return null;val fix=location ?: return null
+        val age=incidentCheckedAt?.let{SystemClock.elapsedRealtime()-it} ?: return null
+        if(!running || route==null || routeBusy || offRouteSamples>0 || age !in 0..360000 || incidentRevision!=dashRouteRevision ||
+            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos>=30_000_000_000L || !RidePreferences.prefs(c).getBoolean("tomtom_incident_alerts",true))return null
+        val match=incidentMatches.firstOrNull{it.endMeters>=travelledMeters-20 && it.startMeters-travelledMeters<=3000} ?: return null
+        return TrafficAlert(match.incident.id,match.incident.kind,(match.startMeters-travelledMeters).coerceAtLeast(0.0))
+    }
+    private fun announceIncident():Boolean {
+        val alert=currentTrafficAlert() ?: return false;val now=SystemClock.elapsedRealtime()
+        if(!incidentAnnouncements.next(alert,now) || !speechReady || speaker?.isSpeaking!=false ||
+            context?.let{RidePreferences.prefs(it).getBoolean("navigation_voice",true)}!=true ||
+            speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice)!=true)return false
+        if(speaker?.speak(alert.speech,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:incident")!=TextToSpeech.SUCCESS)return false
+        incidentAnnouncements.accepted(alert,now);return true
+    }
+    private fun refreshIncidents(c:Context,r:NavigationRoute) {
+        if(incidentBusy || routeBusy || trafficRefreshBusy || !TomTomApi.configured(c) || !RidePreferences.prefs(c).getBoolean("tomtom_incident_alerts",true))return
+        val now=SystemClock.elapsedRealtime()
+        val due=if(incidentRequestedRevision!=dashRouteRevision)60000 else 300000
+        if(now-lastIncidentRequest<due)return
+        val revision=dashRouteRevision;val travelled=travelledMeters
+        val points=r.points.map{IncidentPoint(it.latitude,it.longitude)}
+        val indices=r.cumulative.indices.filter{r.cumulative[it]>=travelled && r.cumulative[it]<=travelled+10000}
+        val start=(indices.firstOrNull() ?: progressIndex).minus(1).coerceAtLeast(0)
+        val end=((indices.lastOrNull() ?: progressIndex)+1).coerceAtMost(points.lastIndex)
+        if(end<=start)return
+        incidentBusy=true;lastIncidentRequest=now;incidentRequestedRevision=revision;incidentStatus="Checking reported accidents and closures near the route ahead."
+        incidentWorker.execute {
+            val result=runCatching{RouteIncidentMatcher.match(points,r.cumulative,travelled,TomTomApi.routeIncidents(c,points.subList(start,end+1)))}
+            main.post {
+                incidentBusy=false
+                if(!running || route!==r || revision!=dashRouteRevision)return@post
+                result.onSuccess { matches ->
+                    incidentMatches=matches;incidentRevision=revision;incidentCheckedAt=SystemClock.elapsedRealtime();invalidateFrames()
+                    incidentStatus=if(matches.isEmpty()) "No current reports matched the route corridor. Coverage may be incomplete." else "${matches.size} reports matched near the route ahead. Lane and direction are unverified."
+                    BikeDiagnostics.record(c,"Route incident check completed matched=${matches.size}")
+                    // Ask the traffic-aware provider to check the route, rather than inventing an avoidance edge.
+                    val closure=matches.firstOrNull{it.incident.kind==IncidentKind.ROAD_CLOSED && it.endMeters>=travelledMeters && it.startMeters-travelledMeters<=5000}
+                    val checked=SystemClock.elapsedRealtime()
+                    if(r.provider=="TomTom" && closure!=null && checked-lastClosureCheck>=60000 && checked-(checkedClosures[closure.incident.id] ?: -300000L)>=300000 && !routeBusy && !trafficRefreshBusy){
+                        checkedClosures[closure.incident.id]=checked;lastClosureCheck=checked;lastTrafficRefresh=checked;refreshTrafficRoute(c,r)
+                    }
+                }.onFailure { incidentStatus="Incident alerts unavailable. Check internet and TomTom Traffic API access. Existing route remains available.";BikeDiagnostics.record(c,"Route incident check unavailable exception=${it.javaClass.simpleName}") }
+            }
+        }
     }
     private fun refreshTrafficRoute(c:Context,current:NavigationRoute) {
         if(trafficRefreshBusy) return
@@ -391,6 +467,7 @@ object NativeNavigation {
                 RidePreferences.prefs(c).getBoolean("tomtom_refresh",true) && SystemClock.elapsedRealtime()-lastTrafficRefresh >= 300000) {
                 lastTrafficRefresh=SystemClock.elapsedRealtime();refreshTrafficRoute(c,activeRoute)
             }
+            if(fresh && activeRoute!=null && !routeBusy && offRouteSamples==0)refreshIncidents(c,activeRoute)
             if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS"; if(route != null && fix != null) announce(announcements.gpsLost()) }
             if (inFlight && SystemClock.elapsedRealtime() - renderStarted > 15000) {
                 snapshotter?.cancel(); snapshotter = null; inFlight = false
@@ -497,6 +574,7 @@ object NativeNavigation {
                 if (phone) {
                     banner(canvas, paint, guidance, 0, 34, 19f,frameNight)
                     if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
+                    currentTrafficAlert()?.let { TrafficAlertRenderer.draw(canvas,it,84f,38f,388f) }
                     phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false
                 } else {
                     val output=Bitmap.createBitmap(480,renderHeight,Bitmap.Config.ARGB_8888)
@@ -516,7 +594,7 @@ object NativeNavigation {
         val currentRoad=route?.turns?.lastOrNull { it.start <= progressIndex && it.road.isNotBlank() }?.road.orEmpty()
         val arrival=cockpitTrip()?.arrivalMillis?.let { java.text.SimpleDateFormat("HH:mm",java.util.Locale.US).format(java.util.Date(it)) }
         val notice=when { !fresh -> "Waiting for GPS"; routeBusy || offRouteSamples > 0 -> "Recalculating"; route == null -> "Choose destination"; else -> "" }
-        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice)
+        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice,currentTrafficAlert())
     }
     private fun banner(canvas: Canvas, paint: Paint, text: String, top: Int, bottom: Int, size: Float, dark: Boolean = isNightMap()) {
         paint.style=Paint.Style.FILL; paint.color=if(dark) 0xff14251c.toInt() else 0xfff4f6fa.toInt(); canvas.drawRect(0f,top.toFloat(),480f,bottom.toFloat(),paint)
