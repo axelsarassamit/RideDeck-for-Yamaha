@@ -50,6 +50,26 @@ public final class DashCompanion {
         // Queued after any outstanding renewal; the provider clears only this UID's lease.
         WORKER.execute(() -> { String result = call(app, "stop"); BikeDiagnostics.record(app, "Dash lease stop result=" + result); });
     }
+    /** A rider's voice action first finalizes Dash's clip and releases its headset call mode. */
+    public static void pauseForVoice(Context context, java.util.function.BooleanSupplier needed,
+                                     java.util.function.Consumer<Bundle> completion) {
+        Context app=context.getApplicationContext();
+        WORKER.execute(()->{
+            Bundle result=new Bundle();result.putBoolean("accepted",true);
+            if(!needed.getAsBoolean()) { result.putBoolean("accepted",false);completion.accept(result);return; }
+            try {
+                if(installed(app)) {
+                    Bundle extras=new Bundle();extras.putInt("protocolVersion",1);
+                    result=app.getContentResolver().call(BRIDGE,"pauseForVoice",null,extras);
+                    if(result==null || result.getInt("protocolVersion",0)!=1) throw new IllegalStateException();
+                }
+            } catch(RuntimeException error) {
+                result=new Bundle();result.putBoolean("accepted",false);
+                result.putString("message","Dash could not release its microphone. Pause Dash recording and try voice again, or update Dash.");
+            }
+            completion.accept(result);
+        });
+    }
     private static String call(Context app, String method) {
         try {
             if (!installed(app)) return "RideDeck Dash is not installed";

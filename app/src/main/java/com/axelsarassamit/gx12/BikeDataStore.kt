@@ -15,15 +15,20 @@ data class BikeDataState(val active: Boolean = false, val authenticated: Boolean
 
 /** Private, bounded log and immutable UI snapshots. No authentication, VIN or pairing payload is admitted. */
 object BikeDataStore {
+    private var logContext: Context? = null
     @Volatile var state = BikeDataState(); private set
     private val logNames = listOf("ccu-parked-test.previous.jsonl", "ccu-parked-test.jsonl")
     @Synchronized fun start(c: Context) {
+        logContext=c.applicationContext
         state = BikeDataState(active = true, status = "Connecting to the paired Yamaha…")
         append(c, JSONObject().put("event", "session_start").put("version", BuildConfig.VERSION_NAME).put("decoder", "xmax-1248-v1"))
     }
-    @Synchronized fun status(text: String, authenticated: Boolean) { state = state.copy(status = text, authenticated = authenticated) }
+    @Synchronized fun status(text: String, authenticated: Boolean) {
+        state = state.copy(status = text, authenticated = authenticated)
+        logContext?.let { append(it,JSONObject().put("event","connection_status").put("status",text.take(500)).put("authenticated",authenticated)) }
+    }
     @Synchronized fun stop(c: Context, text: String) {
-        if (state.active) append(c, JSONObject().put("event", "session_stop"))
+        if (state.active) append(c, JSONObject().put("event", "session_stop").put("status",text.take(500)))
         state = state.copy(active = false, authenticated = false, status = text)
     }
     @Synchronized fun accept(c: Context, message: CcuProtocol.Message) {

@@ -1,0 +1,7 @@
+# Yamaha 0.12.37 voice and bike-data diagnostics
+
+Voice-to-text and the Assistant button now ask the signed Dash companion to save its current recording and release the microphone before opening voice input. Dash 0.8.2 is required for this handoff. Recording resumes when Yamaha returns to the foreground only if the same explicit ride is still active. A brief recording gap is expected; saved clips remain intact. Stopping or ending the ride prevents voice from starting it again. An old Dash version shows an instruction to pause recording or update, rather than claiming the microphone is ready.
+
+The Yamaha bike-data connection now records its startup phase and final failure reason in the private test log. The previous export contained only start/stop markers and could not distinguish a stalled accessory channel from BLE authentication. Raw credentials and authentication payloads remain excluded. Map rendering and navigation transport behavior are unchanged.
+
+The reported independent Yamaha data-connection failure still needs its phase identified and a parked-bike test. This update does not claim it has been hardware-verified or repaired. RideDeck's voice buttons are covered by the new handoff; unrelated apps and external hotword triggers may still require manually pausing headset recording.

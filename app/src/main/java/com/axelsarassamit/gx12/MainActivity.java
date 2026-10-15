@@ -87,6 +87,9 @@ public class MainActivity extends android.app.Activity {
     private android.widget.ImageView albumArt;
     private boolean externalVoiceDeparted;
     private HeadsetMicRoute headsetMic;
+    private volatile boolean voiceSetupPending;
+    private boolean voiceDashResume;
+    private long voiceDashGeneration;
     private Runnable pendingHeadsetVoice;
     private android.speech.tts.TextToSpeech speech;
     private boolean speechReady;
@@ -141,6 +144,10 @@ public class MainActivity extends android.app.Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         headsetMic = new HeadsetMicRoute(this);
+        if(state!=null) {
+            voiceDashResume=state.getBoolean("voice_dash_resume",false);
+            voiceDashGeneration=state.getLong("voice_dash_generation",-1);
+        }
         Object retained = getLastNonConfigurationInstance();
         if (retained instanceof GX12NotificationListener.NotificationPreview) voiceReplyTarget = (GX12NotificationListener.NotificationPreview) retained;
         if (state != null) castDeviceAddress = state.getString("cast_device");
@@ -249,6 +256,7 @@ public class MainActivity extends android.app.Activity {
         RideQuietMode.refresh(this);
         if (phoneMapPending && !setupVisible) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
         if (externalVoiceDeparted) { headsetMic.release(); externalVoiceDeparted = false; }
+        if(voiceDashResume && !voiceSetupPending) resumeDashAfterVoice();
         if (deviceStatus != null) refreshDeviceStatus();
         refreshWhatsAppPreview();
         if (downloadedApk != null && canInstallPackages()) openInstaller(downloadedApk);
@@ -519,6 +527,8 @@ public class MainActivity extends android.app.Activity {
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("voice_dash_resume",voiceDashResume);
+        state.putLong("voice_dash_generation",voiceDashGeneration);
         state.putString("auto_map_session", autoMapSession);
         state.putBoolean("setup_visible", setupVisible);
         state.putBoolean("phone_map_pending", phoneMapPending);
@@ -527,9 +537,10 @@ public class MainActivity extends android.app.Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request == 83) { headsetMic.release(); return; }
+        if (request == 83) { headsetMic.release(); resumeDashAfterVoice(); return; }
         if (request == 82) {
             headsetMic.release();
+            resumeDashAfterVoice();
             GX12NotificationListener.NotificationPreview target = voiceReplyTarget; voiceReplyTarget = null;
             java.util.ArrayList<String> words = data == null ? null : data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
             if (result == RESULT_OK && target != null && words != null && !words.isEmpty() && !words.get(0).trim().isEmpty()) confirmVoiceReply(target, words.get(0));
@@ -1028,6 +1039,7 @@ public class MainActivity extends android.app.Activity {
             try { startActivityForResult(speechIntent, 82); }
             catch (RuntimeException e) {
                 headsetMic.release(); voiceReplyTarget = null;
+                resumeDashAfterVoice();
                 confirmVoiceReply(target, "");
                 android.widget.Toast.makeText(this, "Speech recognition is unavailable. You can type your reply.", android.widget.Toast.LENGTH_LONG).show();
             }
@@ -1771,15 +1783,35 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void withHeadsetMicrophone(Runnable listen) {
+        if(voiceSetupPending) return;
         java.util.ArrayList<String> permissions = new java.util.ArrayList<>();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.RECORD_AUDIO);
         if (!permissions.isEmpty()) {
             pendingHeadsetVoice = listen; requestPermissions(permissions.toArray(new String[0]), 84); return;
         }
         android.widget.Toast.makeText(this, "Preparing voice input.", android.widget.Toast.LENGTH_SHORT).show();
-        headsetMic.start(listen, message -> {
-            finishActivity(82); finishActivity(83); voiceReplyTarget = null; showRideMessage(message);
-        });
+        voiceSetupPending=true;
+        final long generation=DashRideService.generation();
+        DashCompanion.pauseForVoice(this,()->voiceSetupPending && activityResumed && !isFinishing() && !isDestroyed(), result->handler.post(()->{
+            voiceSetupPending=false;
+            voiceDashResume=result.getBoolean("resumeAllowed",false);voiceDashGeneration=generation;
+            if(!activityResumed || isFinishing() || isDestroyed()) return;
+            if(!result.getBoolean("accepted",false)) { showRideMessage(result.getString("message","Voice preparation cancelled."));return; }
+            if(result.getBoolean("paused",false)) {
+                DashRideService.recordingStatus="Dash paused for voice input";
+                android.widget.Toast.makeText(this,"Dash paused for voice. Your clip is saved.",android.widget.Toast.LENGTH_SHORT).show();
+            }
+            headsetMic.start(listen, message -> {
+                finishActivity(82); finishActivity(83); voiceReplyTarget = null; resumeDashAfterVoice();showRideMessage(message);
+            });
+        }));
+    }
+
+    private void resumeDashAfterVoice() {
+        if(!voiceDashResume || !activityResumed) return;
+        voiceDashResume=false;
+        if(VoiceResumePolicy.allow(true,activityResumed,DashRideService.active(),voiceDashGeneration,DashRideService.generation()))
+            DashRecordingConnection.start(this,voiceDashGeneration,()->activityResumed && !isFinishing() && !isDestroyed());
     }
 
     private void startGoogleVoice() {
@@ -1789,9 +1821,12 @@ public class MainActivity extends android.app.Activity {
             try { startActivityForResult(voice, 83); }
             catch (android.content.ActivityNotFoundException first) {
                 try { startActivityForResult(new Intent("android.intent.action.VOICE_COMMAND"), 83); }
-                catch (android.content.ActivityNotFoundException ignored) {
-                    headsetMic.release(); showRideMessage("No hands-free assistant is configured. Set your digital assistant in Android Settings.");
+                catch (RuntimeException ignored) {
+                    headsetMic.release(); resumeDashAfterVoice();showRideMessage("No hands-free assistant is configured. Set your digital assistant in Android Settings.");
                 }
+            }
+            catch (RuntimeException error) {
+                headsetMic.release();resumeDashAfterVoice();showRideMessage("Assistant could not open. Try again from RideDeck.");
             }
         });
     }

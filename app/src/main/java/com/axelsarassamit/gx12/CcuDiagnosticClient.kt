@@ -42,6 +42,12 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private var service: BluetoothGattService? = null
     private var credentials = byteArrayOf()
     private var authenticated = false
+    @Volatile private var setupStep = "requesting accessory connection details"
+    private fun setupStep(value: String) {
+        setupStep=value
+        BikeDiagnostics.record(context,"CCU setup step=$value")
+        main.post { if(!closed) report("Yamaha data: $value…") }
+    }
     private var cacheName = ""
     private val plan = CcuReadPlan(RidePreferences.prefs(context).getInt("bike_data_interval", 1000).takeIf { it in 100..5000 } ?: 1000)
     private var waitingPhase: CcuReadPlan.Phase? = null
@@ -57,7 +63,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private var pending: Operation? = null
     private val operationTimeout = Runnable { fail("Bike did not finish a Bluetooth operation. Stop and reconnect while parked.") }
     private val transferTimeout = Runnable { fail("Bike data transfer timed out. No reading was accepted.") }
-    private val setupTimeout = Runnable { fail("Bike connection timed out. Check ignition, selected CCU and close Y-Connect / nRF Connect.") }
+    private val setupTimeout = Runnable { fail("Yamaha data timed out while $setupStep. Close Y-Connect / nRF Connect and reconnect while parked. Pairing is preserved.") }
     private val responseTimeout = Runnable {
         val expected = waitingPhase
         if (expected == null || expected != plan.phase || closed) return@Runnable
@@ -75,6 +81,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 cacheName = "ccu_" + device.address.replace(":", "")
                 val cached = NavigationSecrets.read(context, cacheName)
                 if (cached.isNotBlank()) {
+                    setupStep("loading this bike's saved accessory details")
                     val bytes = Base64.decode(cached, Base64.NO_WRAP)
                     CcuProtocol.authentication(bytes); bytes
                 } else {
@@ -82,7 +89,9 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                     val peer = device.createRfcommSocketToServiceRecord(CLASSIC)
                     socket = peer
                     try {
+                        setupStep("opening the paired accessory channel")
                         check(!closed); peer.connect(); check(!closed)
+                        setupStep("waiting for accessory connection details")
                         peer.outputStream.write(CcuProtocol.classic(byteArrayOf(0x01, 0x39))); peer.outputStream.flush()
                         var result: ByteArray? = null
                         repeat(16) {
@@ -92,6 +101,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                             }
                         }
                         val bytes = result ?: error("Connection details missing")
+                        setupStep("accessory connection details received")
                         check(!closed)
                         NavigationSecrets.save(context, cacheName, Base64.encodeToString(bytes, Base64.NO_WRAP))
                         bytes
@@ -102,6 +112,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 if (closed) { result.getOrNull()?.fill(0); return@post }
                 result.onSuccess { bytes ->
                     credentials = bytes
+                    setupStep("connecting to the bike-data service")
                     report("Connection details available. Connecting to the Yamaha data service…")
                     gatt = runCatching { device.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE) }.getOrNull()
                     if (gatt == null) fail("Could not open the Yamaha data service.")
@@ -270,6 +281,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private val callbacks = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(client: BluetoothGatt, status: Int, state: Int) = post(client) {
             if (status == BluetoothGatt.GATT_SUCCESS && state == BluetoothProfile.STATE_CONNECTED) {
+                setupStep("discovering the bike-data service")
                 if (!client.discoverServices()) fail("Yamaha service discovery could not start.")
             } else if (state == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS)
                 fail("Bike data disconnected (status $status). Turn ignition on and reconnect while parked.")
@@ -277,10 +289,11 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         override fun onServicesDiscovered(client: BluetoothGatt, status: Int) = post(client) {
             service = client.getService(SERVICE)
             if (status != BluetoothGatt.GATT_SUCCESS || service == null) { fail("This connection does not expose the observed XMAX accessory service."); return@post }
+            setupStep("configuring the bike-data notifications")
             queue("mtu", SERVICE, { client.requestMtu(247) }) {
                 for (uuid in listOf(REPLY, STATUS, RECEIVE_HEADER, RECEIVE_DATA, VEHICLE)) subscribe(uuid)
                 // Queue a status read behind all descriptor writes; authentication starts only after subscriptions finish.
-                readStatus { if (!closed) { report("Authenticating the Yamaha accessory connection…"); begin(CcuProtocol.authentication(credentials)) } }
+                readStatus { if (!closed) { setupStep("waiting for accessory authentication"); begin(CcuProtocol.authentication(credentials)) } }
             }
         }
         override fun onMtuChanged(client: BluetoothGatt, value: Int, status: Int) = post(client) {
