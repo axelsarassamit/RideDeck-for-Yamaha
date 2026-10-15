@@ -14,3 +14,4 @@ release-key.properties
 
 legacy-adb/
 __pycache__/
+design-build.log
