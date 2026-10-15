@@ -77,6 +77,7 @@ object NativeNavigation {
     private var lastReroute = 0L
     private var offRouteSamples = 0
     private val announcements = NavigationAnnouncements()
+    private val trafficAnnouncements = TrafficAnnouncements()
     private var speaker: TextToSpeech? = null
     private var speechReady = false
     private var trafficRefreshBusy = false
@@ -114,7 +115,7 @@ object NativeNavigation {
         phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapBitmap = null; englishStyle = null; styleLoading = false
         styleGeneration++; styleCache.clear(); styleDark = null; styleRetryAt = 0L; lastSolarNight = null
         location = null; route = null; mapJpeg = null; mapBitmap = null; dashRoute = null; speedWindow = null; speedLimit = null
-        announcements.reset(); status = "Navigation stopped"
+        announcements.reset(); trafficAnnouncements.reset(); status = "Navigation stopped"
     }
     fun resize(width: Int, h: Int) {
         require(width == 480 && h in listOf(234, 240))
@@ -185,7 +186,7 @@ object NativeNavigation {
 
     @JvmStatic fun stopRoute() {
         context?.let { RideBackgroundSession.clearDestination(it) }
-        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); progressIndex = 0; speaker?.stop() }
+        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); trafficAnnouncements.reset(); progressIndex = 0; speaker?.stop() }
     }
     @JvmStatic fun routeText(text: String) {
         val c = context ?: error("Open RideDeck navigation first")
@@ -233,6 +234,8 @@ object NativeNavigation {
     }
     private fun applyRoute(c: Context, selected: NavigationRoute, announceStart: Boolean = true, recalculated: Boolean = false) {
         route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; announcements.reset(announceStart,recalculated); offRouteSamples = 0
+        if(announceStart && !recalculated) trafficAnnouncements.reset()
+        trafficAnnouncements.report(if(selected.provider=="TomTom") selected.trafficDelayMillis.coerceIn(0,selected.millis) else 0,SystemClock.elapsedRealtime())
         speedLimit = null; speedWindow = selected.speedLimits?.let { SpeedLimitWindow(0,it) }; lastSpeedRequest = -30000L
         lastTrafficRefresh=SystemClock.elapsedRealtime()
         mapZoom.navigationStarted()
@@ -312,15 +315,29 @@ object NativeNavigation {
         val following = r.turns.getOrNull(nextIndex + 1)?.takeIf {
             next != null && it.start > next.start && r.cumulative[it.start] - r.cumulative[next.start] <= 120 && meters <= 120
         }?.let { NavigationSpeech.following(it.sign,it.road) }.orEmpty()
-        if(!routeBusy && fresh) announce(announcements.next(next?.start ?: r.points.lastIndex,maneuver,meters,next?.road.orEmpty(),
-            if(fix.hasSpeed()) fix.speed.toDouble() else 0.0,remaining < 25 && bestIndex >= r.points.size - 4,
-            SystemClock.elapsedRealtime(),following))
+        if(!routeBusy && fresh) {
+            val speed=if(fix.hasSpeed()) fix.speed.toDouble() else 0.0
+            val cue=announcements.next(next?.start ?: r.points.lastIndex,maneuver,meters,next?.road.orEmpty(),speed,
+                remaining < 25 && bestIndex >= r.points.size - 4,SystemClock.elapsedRealtime(),following)
+            announce(cue)
+            // Direction prompts take priority. Delay reports wait for room before the next turn.
+            if(cue==null && meters>max(150.0,speed*15)) announceTraffic()
+        }
     }
     private fun announce(cue: NavigationAnnouncements.Cue?) {
         if(cue == null || !speechReady || context?.let { RidePreferences.prefs(it).getBoolean("navigation_voice",true) } != true) return
+        if(cue.stage==0 && speaker?.isSpeaking==true) return
         if(speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) != true) return
         if(speaker?.speak(cue.text,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:${cue.id}") == TextToSpeech.SUCCESS)
             announcements.accepted(cue,SystemClock.elapsedRealtime())
+    }
+    private fun announceTraffic() {
+        val now=SystemClock.elapsedRealtime()
+        val cue=trafficAnnouncements.next(now) ?: return
+        if(!speechReady || speaker?.isSpeaking!=false || context?.let { RidePreferences.prefs(it).getBoolean("navigation_voice",true) } != true) return
+        if(speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) != true) return
+        if(speaker?.speak(cue.text,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:traffic-delay") == TextToSpeech.SUCCESS)
+            trafficAnnouncements.accepted(cue,now)
     }
     private fun refreshTrafficRoute(c:Context,current:NavigationRoute) {
         if(trafficRefreshBusy) return
