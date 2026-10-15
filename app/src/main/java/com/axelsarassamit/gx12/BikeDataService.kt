@@ -37,6 +37,17 @@ class BikeDataService : Service() {
                 (it.name.orEmpty().contains("YCCU", true) || it.name.orEmpty().contains("Yamaha", true)) }
         }.getOrNull()
         if (device == null) { BikeDataStore.status("Selected Yamaha pairing unavailable. Check Bluetooth and Nearby devices permission.", false); stopSelf(); return START_NOT_STICKY }
+        // Another GATT client may still own the data session after its screen was closed.
+        // Do not authenticate over that session or disconnect a connection belonging to it.
+        val alreadyConnected=runCatching {
+            getSystemService(BluetoothManager::class.java).getConnectedDevices(android.bluetooth.BluetoothProfile.GATT)
+                .any { it.address.equals(device.address,true) }
+        }.getOrDefault(false)
+        if(alreadyConnected) {
+            BikeDataStore.start(this)
+            BikeDataStore.stop(this,"The Yamaha data service is already connected to another app. Disconnect Y-Connect and nRF Connect first; closing their screen may leave them connected. The map connection can remain in use.")
+            stopSelf();return START_NOT_STICKY
+        }
         try {
             val notifications = getSystemService(NotificationManager::class.java)
             notifications.createNotificationChannel(NotificationChannel("yamaha_data", "Yamaha bike data", NotificationManager.IMPORTANCE_LOW))
