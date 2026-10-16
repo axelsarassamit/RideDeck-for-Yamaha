@@ -42,7 +42,7 @@ class CleanupMenuTest {
                 instrumentation.waitForIdleSync()
                 scenario.onActivity {
                     val labels=controls().map{it.text.toString()}
-                    val expected=listOf("Phone mount: Left / Centre / Right","Messaging apps (choose several)","Reply method","Phone panel placement","Color theme","Music player","Home and Work destinations","Favorites","Nearby fuel stations","Bike position icon")
+                    val expected=listOf("Phone mount: Left / Centre / Right","Messages and email (choose several)","Reply method","Phone panel placement","Color theme","Music player","Home and Work destinations","Favorites","Nearby fuel stations","Bike position icon")
                     expected.forEach{label->assertTrue("Missing Yamaha setting: $label",labels.contains(label))}
                     assertFalse(labels.contains("Navigation / rider app"))
                     assertFalse(labels.contains("Bike map size"))
