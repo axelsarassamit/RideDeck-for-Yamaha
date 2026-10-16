@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Base64
 import app.pillion.core.CcuProtocol
 import app.pillion.core.CcuReadPlan
 import java.util.UUID
@@ -54,7 +53,6 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         BikeDiagnostics.record(context,"CCU setup step=$value")
         main.post { if(!closed) report("Yamaha data: $value…") }
     }
-    private var cacheName = ""
     private val plan = CcuReadPlan(RidePreferences.prefs(context).getInt("bike_data_interval", 1000).takeIf { it in 100..5000 } ?: 1000)
     private var waitingPhase: CcuReadPlan.Phase? = null
     private var mtu = 23
@@ -87,35 +85,31 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         main.postDelayed(setupTimeout, 30000)
         worker.execute {
             val result = runCatching {
-                // A per-device encrypted cache is populated only by a response from the paired peer.
-                cacheName = "ccu_" + device.address.replace(":", "")
-                val cached = NavigationSecrets.read(context, cacheName)
-                if (cached.isNotBlank()) {
-                    setupStep("loading this bike's saved accessory details")
-                    val bytes = Base64.decode(cached, Base64.NO_WRAP)
-                    CcuProtocol.authentication(bytes); bytes
-                } else {
-                    check(!closed)
-                    val peer = device.createRfcommSocketToServiceRecord(CLASSIC)
-                    socket = peer
-                    try {
-                        setupStep("opening the paired accessory channel")
-                        check(!closed); peer.connect(); check(!closed)
-                        setupStep("waiting for accessory connection details")
-                        peer.outputStream.write(CcuProtocol.classic(byteArrayOf(0x01, 0x39))); peer.outputStream.flush()
-                        var result: ByteArray? = null
-                        repeat(16) {
-                            if (result == null) {
-                                val frame = CcuProtocol.readClassic(peer.inputStream)
-                                if (CcuProtocol.u(frame, 0, 2) == 0x13a) result = CcuProtocol.credentials(frame)
-                            }
+                // Reproduce the reference's live accessory session during LE setup.
+                // Fresh details stay in memory; old stored details and pairing are untouched.
+                check(!closed)
+                val peer = device.createRfcommSocketToServiceRecord(CLASSIC)
+                socket = peer
+                try {
+                    setupStep("opening the paired accessory channel")
+                    check(!closed); peer.connect(); check(!closed)
+                    setupStep("waiting for fresh accessory connection details")
+                    peer.outputStream.write(CcuProtocol.classic(byteArrayOf(0x01, 0x39))); peer.outputStream.flush()
+                    var details: ByteArray? = null
+                    repeat(16) {
+                        if (details == null) {
+                            val frame = CcuProtocol.readClassic(peer.inputStream)
+                            if (CcuProtocol.u(frame, 0, 2) == 0x13a) details = CcuProtocol.credentials(frame)
                         }
-                        val bytes = result ?: error("Connection details missing")
-                        setupStep("accessory connection details received")
-                        check(!closed)
-                        NavigationSecrets.save(context, cacheName, Base64.encodeToString(bytes, Base64.NO_WRAP))
-                        bytes
-                    } finally { runCatching { peer.close() }; socket = null }
+                    }
+                    val bytes = details ?: error("Connection details missing")
+                    check(!closed)
+                    setupStep("fresh accessory connection details received")
+                    // close() owns the socket after success, through authentication/data reads.
+                    bytes
+                } catch (failure: Exception) {
+                    runCatching { peer.close() }; socket = null
+                    throw failure
                 }
             }
             main.post {
@@ -150,7 +144,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                     }
                     if (!matches) return@post
                     stopDiscovery()
-                    BikeDiagnostics.record(context, "CCU paired live data signal found")
+                    BikeDiagnostics.record(context, "CCU paired live data signal found bondState=${result.device.bondState}")
                     setupStep("connecting to the bike-data service")
                     main.removeCallbacks(setupTimeout); main.postDelayed(setupTimeout, 30000)
                     gatt = runCatching { result.device.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE) }.getOrNull()
@@ -274,7 +268,6 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 REPLY -> {
                     if (value.size == 3 && CcuProtocol.u(value, 0, 2) == 0x102) {
                         if (value[2] != 1.toByte()) {
-                            runCatching { NavigationSecrets.save(context, cacheName, "") }
                             fail("Yamaha authentication was rejected. Reconnect to request fresh connection details; pairing is preserved."); return
                         }
                         authenticated = true; credentials.fill(0); main.removeCallbacks(setupTimeout)
