@@ -148,6 +148,7 @@ public class MainActivity extends android.app.Activity {
         else if ("android.app.action.AUTOMATIC_ZEN_RULE".equals(getIntent().getAction())) buildSetupScreen();
         else buildScreen();
         refreshDeviceStatus();
+        if (!(this instanceof SetupActivity)) StartupReveal.show(this,state,"Yamaha",RideStyle.BACKGROUND,RideTheme.accent(this),RideStyle.TEXT,()->GX12NotificationListener.activeCall!=null || getSystemService(android.media.AudioManager.class).getMode()!=android.media.AudioManager.MODE_NORMAL);
         if (state == null && RidePreferences.automaticMap(this) && RidePreferences.prefs(this).getBoolean("map_startup", true)) {
             handler.postDelayed(() -> {
                 if (activityResumed && !setupVisible && !YamahaCastService.active && autoMapSession == null) startAutomaticMap();
