@@ -65,8 +65,11 @@ class BikeDataActivity : RiderPage() {
         refresh()
     }
     private fun choose() {
-        if(android.os.Build.VERSION.SDK_INT>=31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT),98);BikeDataStore.status("Allow Nearby devices, then connect again.",false);return
+        val required=if(android.os.Build.VERSION.SDK_INT>=31) arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_SCAN)
+            else arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        val missing=required.filter { checkSelfPermission(it)!=android.content.pm.PackageManager.PERMISSION_GRANTED }
+        if(missing.isNotEmpty()) {
+            requestPermissions(missing.toTypedArray(),98);BikeDataStore.status("Allow bike discovery permission, then connect again.",false);return
         }
         if(BikeDataStore.state.active) { BikeDataStore.status("Stop the current bike-data connection before starting another.",BikeDataStore.state.authenticated);return }
         val devices=runCatching { getSystemService(BluetoothManager::class.java).adapter.bondedDevices.filter {

@@ -2,6 +2,10 @@ package com.axelsarassamit.gx12
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.os.Handler
@@ -39,6 +43,8 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     val isAuthenticated get() = authenticated
     @Volatile private var socket: BluetoothSocket? = null
     private var gatt: BluetoothGatt? = null
+    private var scanner: BluetoothLeScanner? = null
+    private var scanCallback: ScanCallback? = null
     private var service: BluetoothGattService? = null
     private var credentials = byteArrayOf()
     private var authenticated = false
@@ -73,6 +79,10 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     }
     fun start(device: BluetoothDevice) {
         check(!closed && gatt == null && socket == null)
+        if (Build.VERSION.SDK_INT >= 31 &&
+            context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            fail("Open Bike data and fuel range and allow Nearby devices before connecting."); return
+        }
         report("Getting accessory connection details from the paired Yamaha…")
         main.postDelayed(setupTimeout, 30000)
         worker.execute {
@@ -112,13 +122,53 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 if (closed) { result.getOrNull()?.fill(0); return@post }
                 result.onSuccess { bytes ->
                     credentials = bytes
-                    setupStep("connecting to the bike-data service")
-                    report("Connection details available. Connecting to the Yamaha data service…")
-                    gatt = runCatching { device.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE) }.getOrNull()
-                    if (gatt == null) fail("Could not open the Yamaha data service.")
+                    discoverBike(device)
                 }.onFailure { fail("Accessory connection details unavailable. Close Y-Connect / nRF Connect and check the paired Yamaha. Existing pairing is preserved.") }
             }
         }
+    }
+    private fun stopDiscovery() {
+        val active = scanner
+        val callback = scanCallback
+        scanner = null; scanCallback = null
+        if (active != null && callback != null) runCatching { active.stopScan(callback) }
+    }
+    private fun discoverBike(paired: BluetoothDevice) {
+        if (closed) return
+        setupStep("looking for the paired bike's live data signal")
+        main.removeCallbacks(setupTimeout); main.postDelayed(setupTimeout, 30000)
+        val active = runCatching { context.getSystemService(BluetoothManager::class.java).adapter.bluetoothLeScanner }.getOrNull()
+            ?: run { fail("Bluetooth scanning is unavailable. Turn Bluetooth on and reconnect while parked."); return }
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                main.post {
+                    if (closed || scanCallback !== this || scanner !== active) return@post
+                    // Resolve the selected bond through a current advertisement. Do not select
+                    // an arbitrary Yamaha nearby or recreate a device from its Classic address.
+                    val matches = runCatching { result.device.address.equals(paired.address, true) }.getOrElse {
+                        fail("Nearby devices permission is unavailable. Open Bike data and fuel range to allow it again."); return@post
+                    }
+                    if (!matches) return@post
+                    stopDiscovery()
+                    BikeDiagnostics.record(context, "CCU paired live data signal found")
+                    setupStep("connecting to the bike-data service")
+                    main.removeCallbacks(setupTimeout); main.postDelayed(setupTimeout, 30000)
+                    gatt = runCatching { result.device.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE) }.getOrNull()
+                    if (gatt == null) fail("Could not open the Yamaha data service.")
+                }
+            }
+            override fun onBatchScanResults(results: MutableList<ScanResult>) {
+                for (result in results) onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, result)
+            }
+            override fun onScanFailed(errorCode: Int) {
+                main.post { if (!closed && scanCallback === this) fail("Android could not discover the bike-data signal (scan status $errorCode). Stop and reconnect while parked.") }
+            }
+        }
+        scanner = active; scanCallback = callback
+        val started = runCatching {
+            active.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
+        }.isSuccess
+        if (!started) fail("Allow Nearby devices so RideDeck can find the paired Yamaha's live data signal.")
     }
     private fun post(client: BluetoothGatt, block: () -> Unit) { main.post { if (!closed && client === gatt) block() } }
     private fun queue(kind: String, uuid: UUID, start: () -> Boolean, done: () -> Unit = {}) {
@@ -324,6 +374,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     fun close() {
         if (closed) return
         closed = true; main.removeCallbacksAndMessages(null); authenticated = false
+        stopDiscovery()
         credentials.fill(0); transfer.fill(0); operations.clear(); pending = null; assembly.clear(); notifications.clear()
         runCatching { socket?.close() }; socket = null
         runCatching { gatt?.disconnect(); gatt?.close() }; gatt = null; service = null
