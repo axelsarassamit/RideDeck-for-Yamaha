@@ -165,10 +165,12 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         if (!started) fail("Allow Nearby devices so RideDeck can find the paired Yamaha's live data signal.")
     }
     private fun post(client: BluetoothGatt, block: () -> Unit) { main.post { if (!closed && client === gatt) block() } }
-    private fun queue(kind: String, uuid: UUID, start: () -> Boolean, done: () -> Unit = {}) {
+    private fun queue(kind: String, uuid: UUID, start: () -> Boolean, priority: Boolean = false, done: () -> Unit = {}) {
         if (closed) return
         check(operations.size < 128)
-        operations.add(Operation(kind, uuid, start, done)); pump()
+        val operation = Operation(kind, uuid, start, done)
+        if (priority) operations.addFirst(operation) else operations.addLast(operation)
+        pump()
     }
     private fun pump() {
         if (closed || pending != null || operations.isEmpty()) return
@@ -185,17 +187,17 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         if (value != null) notify(uuid, value)
         if (!closed) { active.done(); pump() }
     }
-    @Suppress("DEPRECATION") private fun write(uuid: UUID, value: ByteArray, done: () -> Unit = {}) {
+    @Suppress("DEPRECATION") private fun write(uuid: UUID, value: ByteArray, priority: Boolean = false, done: () -> Unit = {}) {
         val client = gatt ?: return
         val characteristic = service?.getCharacteristic(uuid) ?: run { fail("Expected Yamaha data characteristic missing."); return }
         queue("write", uuid, {
             if (Build.VERSION.SDK_INT >= 33) client.writeCharacteristic(characteristic, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
             else { characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT; characteristic.value = value; client.writeCharacteristic(characteristic) }
-        }, done)
+        }, priority, done)
     }
     private fun readStatus(done: () -> Unit = {}) {
         val client = gatt ?: return; val characteristic = service?.getCharacteristic(STATUS) ?: return
-        queue("read", STATUS, { client.readCharacteristic(characteristic) }, done)
+        queue("read", STATUS, { client.readCharacteristic(characteristic) }, done = done)
     }
     @Suppress("DEPRECATION") private fun subscribe(uuid: UUID) {
         val client = gatt ?: return
@@ -266,6 +268,15 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                     }
                 }
                 REPLY -> {
+                    val aliveReply = CcuProtocol.aliveCheckResponse(value)
+                    if (aliveReply != null) {
+                        // The CCU initiates this exchange, including during startup. Keep
+                        // the reply serialized, ahead of queued bulk-data operations.
+                        write(CONTROL, aliveReply, priority = true) {
+                            BikeDiagnostics.record(context, "CCU alive-check reply written")
+                        }
+                        return
+                    }
                     if (value.size == 3 && CcuProtocol.u(value, 0, 2) == 0x102) {
                         if (value[2] != 1.toByte()) {
                             fail("Yamaha authentication was rejected. Reconnect to request fresh connection details; pairing is preserved."); return

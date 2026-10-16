@@ -8,6 +8,24 @@ import java.io.InputStream
 class CcuProtocolTest {
     private fun bytes(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     private fun rejects(action: () -> Unit) { try { action(); fail("Malformed data accepted") } catch (_: IllegalArgumentException) { } }
+    @Test fun aliveCheckEchoesEveryChallengeByteWithoutAnEnvelopeOrMutatingTheRequest() {
+        for (token in 0..255) {
+            val request = byteArrayOf(1, 0x35, token.toByte())
+            val original = request.copyOf()
+            assertArrayEquals(byteArrayOf(1, 0x36, token.toByte()), CcuProtocol.aliveCheckResponse(request))
+            assertArrayEquals(original, request)
+        }
+    }
+    @Test fun malformedAliveChecksCannotGenerateAReply() {
+        for (request in listOf(bytes("0135"), bytes("01350000"), bytes("013500000000"))) {
+            rejects { CcuProtocol.aliveCheckResponse(request) }
+        }
+    }
+    @Test fun unrelatedOrEmptyControlFramesCannotGenerateAnAliveReply() {
+        for (request in listOf(byteArrayOf(), bytes("01"), bytes("013600"), bytes("010201"), bytes("004c01"), bytes("0101") + ByteArray(20))) {
+            assertNull(CcuProtocol.aliveCheckResponse(request))
+        }
+    }
     @Test fun directNotifyFragmentsReassembleOutOfOrderAndRejectContradictingDuplicates() {
         val frame=bytes("01040000041a02e009");val n=CcuProtocol.Notifications()
         val one=bytes("00010102")+frame.copyOfRange(0,5)

@@ -11,6 +11,19 @@ class CcuReadPlanTest {
         assertTrue(plan.accepts(message(0x127,"18e009220401030948")));plan.advance()
     }
     private fun live()=message(0x10f,"18e0092208084812040001e240")
+    @Test fun keepaliveTrafficCannotCompleteOrAdvanceStartupReads() {
+        val plan=CcuReadPlan()
+        for (command in listOf(0x135,0x136)) {
+            assertFalse(plan.accepts(message(command,"ff")))
+            assertEquals(CcuReadPlan.Phase.SERVER,plan.phase)
+        }
+        readyForLive(plan)
+        for (command in listOf(0x135,0x136)) {
+            assertFalse(plan.accepts(message(command,"00")))
+            assertEquals(CcuReadPlan.Phase.LIVE,plan.phase)
+        }
+        assertTrue(plan.accepts(live()))
+    }
     @Test fun startupFollowsCapturedSequenceAndNeverRequestsActuators() {
         val plan=CcuReadPlan(1000)
         val commands=mutableListOf<Int>()

@@ -87,6 +87,12 @@ object CcuProtocol {
         require(command in setOf(0x103, 0x126, 0x11f, 0x137)) { "Not a supported read command" }
         return be(command, 2) + payload
     }
+    /** Observed fixed-format liveness exchange, not a protobuf/data request. */
+    fun aliveCheckResponse(request: ByteArray): ByteArray? {
+        if (request.size < 2 || request[0] != 1.toByte() || request[1] != 0x35.toByte()) return null
+        require(request.size == 3) { "Invalid Yamaha alive-check request" }
+        return byteArrayOf(1, 0x36, request[2])
+    }
     fun supportedRequest(server: Int): ByteArray {
         require(server in 0..65535)
         return control(0x126, be(server, 2))
