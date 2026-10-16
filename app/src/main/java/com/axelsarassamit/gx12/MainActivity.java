@@ -133,7 +133,7 @@ public class MainActivity extends android.app.Activity {
     };
 
     @Override protected void onCreate(Bundle state) {
-        super.onCreate(state);
+        RideAppearance.prepare(this); super.onCreate(state);
         headsetMic = new HeadsetMicRoute(this);
         if(state!=null) {
             voiceDashResume=state.getBoolean("voice_dash_resume",false);
@@ -301,7 +301,7 @@ public class MainActivity extends android.app.Activity {
         header.addView(back, new LinearLayout.LayoutParams(dp(88), dp(56))); root.addView(header);
         LinearLayout sections = new LinearLayout(this); sections.setOrientation(LinearLayout.VERTICAL);
         sections.addView(text("RideDeck for Yamaha", 16, RideTheme.accent(this), true));
-        TextView parked = text("Make changes while parked", 14, 0xffaab4c0, false);
+        TextView parked = text("Make changes while parked", 14, RideStyle.MUTED, false);
         parked.setPadding(0, dp(4), 0, dp(16)); sections.addView(parked);
         LinearLayout page = setupGroup(sections, "Navigation", "Maps, destinations and display panels", false);
         Button personalize = button("CUSTOMIZATION"); personalize.setOnClickListener(v -> showPersonalization());
@@ -319,7 +319,7 @@ public class MainActivity extends android.app.Activity {
         page = setupGroup(sections, "Cockpit appearance", "Music player, colours, messages and control placement", false);
         page.addView(personalize, buttonParams());
         page = setupGroup(sections, "Keep running", "Screen awake and navigation in the background", false);
-        page.addView(text("RideDeck keeps the screen on while open. Navigation and the bike connection continue when you use another app or remove RideDeck from Recent apps. Use their Stop buttons to end the session.", 14, 0xffaab4c0, false));
+        page.addView(text("RideDeck keeps the screen on while open. Navigation and the bike connection continue when you use another app or remove RideDeck from Recent apps. Use their Stop buttons to end the session.", 14, RideStyle.MUTED, false));
         android.os.PowerManager ridePower = getSystemService(android.os.PowerManager.class);
         boolean backgroundAllowed = ridePower.isIgnoringBatteryOptimizations(getPackageName());
         Button battery = button(backgroundAllowed ? "BACKGROUND BATTERY ACCESS ALLOWED" : "ALLOW BACKGROUND BATTERY ACCESS");
@@ -330,7 +330,7 @@ public class MainActivity extends android.app.Activity {
             } catch (Exception error) { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
         });
         page.addView(battery, buttonParams());
-        page.addView(text("If your phone still limits background use, choose No restrictions or Unrestricted in its app battery settings. On Xiaomi phones, also allow Background autostart.", 14, 0xffaab4c0, false));
+        page.addView(text("If your phone still limits background use, choose No restrictions or Unrestricted in its app battery settings. On Xiaomi phones, also allow Background autostart.", 14, RideStyle.MUTED, false));
         Button appBackground = button("PHONE APP SETTINGS");
         appBackground.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
         page.addView(appBackground, buttonParams());
@@ -401,7 +401,7 @@ public class MainActivity extends android.app.Activity {
         updateStatus = text("Installed " + appVersion(), 14, RideStyle.TEXT, false);
         addCockpitCard(page, "APP UPDATES", updateStatus);
         Button update = button("CHECK FOR UPDATES"); update.setOnClickListener(v -> checkForUpdate()); page.addView(update, buttonParams());
-        page.addView(text("Install updates while parked. Android may show an installation confirmation and a Google Play Protect scan. These screens are controlled by Android.", 14, 0xffaab4c0, false));
+        page.addView(text("Install updates while parked. Android may show an installation confirmation and a Google Play Protect scan. These screens are controlled by Android.", 14, RideStyle.MUTED, false));
         Button about = button("ABOUT"); about.setOnClickListener(v -> showAbout()); page.addView(about, buttonParams());
         styleSetupActions(sections);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.addView(sections);
@@ -572,8 +572,8 @@ public class MainActivity extends android.app.Activity {
         messagePreview = null; messageSource = null; albumArt = null;
         trackArtist = null; musicSource = null; playbackTimeline = null;
         phoneGuidance = null; phoneSpeedLimit = null;
-        deviceStatus = text("", 12, 0xffaab4c0, false);
-        updateStatus = text("", 12, 0xffaab4c0, false);
+        deviceStatus = text("", 12, RideStyle.MUTED, false);
+        updateStatus = text("", 12, RideStyle.MUTED, false);
         boolean portrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
         boolean compact = isInMultiWindowMode();
         boolean stacked = compact || portrait;
@@ -729,7 +729,7 @@ public class MainActivity extends android.app.Activity {
         messageSource = text("LATEST MESSAGE", compact ? 13 : 20, RideTheme.accent(this), true);
         messageSource.setMaxLines(1); messageSource.setEllipsize(android.text.TextUtils.TruncateAt.END);
         messages.addView(messageSource);
-        messagePreview = text("No new messages", compact ? 14 : 16, 0xffc8d3df, false);
+        messagePreview = text("No new messages", compact ? 14 : 16, RideStyle.MUTED, false);
         messagePreview.setTextSize(compact ? 16 : portrait ? 20 : 18);
         messagePreview.setMaxLines(portrait ? 7 : 4); messagePreview.setEllipsize(android.text.TextUtils.TruncateAt.END);
         messagePreview.setOnClickListener(v -> showFullMessage());
@@ -819,7 +819,7 @@ public class MainActivity extends android.app.Activity {
             recording == DashRecordingStatus.State.STARTING,active && recording != DashRecordingStatus.State.IDLE,DashRecordingConnection.connected(),
             DashRecordingConnection.STATUS.fresh(android.os.SystemClock.elapsedRealtime()));
         dashRideButton.setText(label);
-        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : 0xfff4f6fa);
+        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : RideStyle.TEXT);
         dashRideButton.setContentDescription(available ? "RideDeck Dash. " + DashRecordingConnection.STATUS.label(android.os.SystemClock.elapsedRealtime()) + ". Open ride controls." : "Ride session");
     }
 
@@ -841,7 +841,7 @@ public class MainActivity extends android.app.Activity {
         action.setTypeface(Typeface.DEFAULT, Typeface.BOLD); action.setMinWidth(0); action.setMinimumWidth(0);
         action.setMinHeight(dp(56)); action.setMinimumHeight(dp(56));
         action.setPadding(dp(4), dp(4), dp(4), dp(4)); action.setMaxLines(1);
-        action.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}}, new int[]{0xff8191a1, primary ? RideStyle.BACKGROUND : RideStyle.TEXT}));
+        action.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}}, new int[]{0xff8191a1, primary ? AppearancePalette.onAccent(RideAppearance.isDark(this)) : RideStyle.TEXT}));
         action.setBackgroundTintList(null);
         android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
         states.addState(new int[]{-android.R.attr.state_enabled}, RideStyle.surface(this, RideStyle.PANEL, 8, true));
@@ -850,7 +850,7 @@ public class MainActivity extends android.app.Activity {
         action.setBackground(states);
         if (label.equals("Read aloud") || label.equals("Seen / next")) {
             android.graphics.drawable.Drawable mark = getDrawable(label.equals("Read aloud") ? R.drawable.control_speaker : R.drawable.control_seen);
-            mark.setTint(primary ? 0xff101510 : RideTheme.accent(this));
+            mark.setTint(primary ? AppearancePalette.onAccent(RideAppearance.isDark(this)) : RideTheme.accent(this));
             mark.setBounds(0, 0, dp(22), dp(22));
             action.setCompoundDrawables(mark, null, null, null); action.setCompoundDrawablePadding(dp(6));
             action.setPadding(dp(10), dp(4), dp(10), dp(4));
@@ -1127,8 +1127,9 @@ public class MainActivity extends android.app.Activity {
     }
 
     private void showPersonalization() {
-        showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Reply method", "Phone panel placement", "Color theme", "Music player", "Home and Work destinations", "Favorites", "Nearby fuel stations", "Bike position icon"}, (dialog, which) -> {
-                if (which == 0) new android.app.AlertDialog.Builder(this).setTitle("Phone mount position")
+        showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Reply method", "Phone panel placement", "Color theme", "Music player", "Home and Work destinations", "Favorites", "Nearby fuel stations", "Bike position icon", "Appearance"}, (dialog, which) -> {
+                if (which == 10) RideAppearance.show(this);
+            else if (which == 0) new android.app.AlertDialog.Builder(this).setTitle("Phone mount position")
                     .setSingleChoiceItems(new String[]{"Left: music controls on left", "Centre: controls on left", "Right: music controls on right"}, RidePreferences.prefs(this).getInt("mount", 1), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("mount", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
                     }).setNegativeButton("Cancel", null).show();
@@ -1136,7 +1137,7 @@ public class MainActivity extends android.app.Activity {
                 else if (which == 3) showLayoutChoice();
                 else if (which == 4) new android.app.AlertDialog.Builder(this).setTitle("Color theme")
                     .setSingleChoiceItems(RideTheme.NAMES, RidePreferences.prefs(this).getInt("color_theme", 4), (d, selected) -> {
-                        RidePreferences.prefs(this).edit().putInt("color_theme", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();
+                        RidePreferences.prefs(this).edit().putInt("color_theme", selected).apply(); d.dismiss(); AppearanceSync.send(this); RideAppearance.refresh();
                     }).setNegativeButton("Cancel", null).show();
                 else if (which == 5) chooseMusicPlayer();
                 else if (which == 7) showBikeFavorites();
@@ -1229,7 +1230,7 @@ public class MainActivity extends android.app.Activity {
             row.setBackground(RideStyle.row(this));
             LinearLayout words = new LinearLayout(this); words.setOrientation(LinearLayout.VERTICAL);
             words.addView(text(labels[i], 18, RideStyle.TEXT, true));
-            String detail = i == 9 ? YamahaPositionMarker.description(this) : i == 8 ? "OpenStreetMap fuel search; location required" : i == 7 ? "Save up to 20 destinations for the bike" : i == 6 ? "Set places for the bike Home and Work commands" : i == 4 ? RideTheme.NAMES[Math.max(0, Math.min(RideTheme.NAMES.length - 1, RidePreferences.prefs(this).getInt("color_theme", 4)))]
+            String detail = labels[i].equals("Appearance") ? RideAppearance.description(this) : i == 9 ? YamahaPositionMarker.description(this) : i == 8 ? "OpenStreetMap fuel search; location required" : i == 7 ? "Save up to 20 destinations for the bike" : i == 6 ? "Set places for the bike Home and Work commands" : i == 4 ? RideTheme.NAMES[Math.max(0, Math.min(RideTheme.NAMES.length - 1, RidePreferences.prefs(this).getInt("color_theme", 4)))]
                 : i == 5 ? RidePreferences.musicName(this)
                 : i == 0 ? new String[]{"Left", "Centre", "Right"}[Math.max(0, Math.min(2, RidePreferences.prefs(this).getInt("mount", 1)))]
                 : i == 1 ? "Choose which apps appear in Messages" : i == 2 ? (RidePreferences.prefs(this).getInt("reply_mode", 0) == 1 ? "Voice message in original app" : "Voice to text with send confirmation") : (RidePreferences.prefs(this).getInt("controls_side", 0) == 1 ? "Map / music left, messages right" : RidePreferences.prefs(this).getInt("controls_side", 0) == 2 ? "Messages left, map / music right" : "Automatic based on phone mount");
@@ -1340,7 +1341,7 @@ public class MainActivity extends android.app.Activity {
 
     private void addCockpitCard(LinearLayout parent, String heading, View content) {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setPadding(dp(14), dp(12), dp(14), dp(12));
-        card.setBackgroundColor(0xff1a212a);
+        card.setBackgroundColor(RideStyle.PANEL);
         TextView label = text(heading, 11, RideTheme.accent(this), true); card.addView(label);
         LinearLayout.LayoutParams cp = params(); cp.topMargin = dp(5); card.addView(content, cp);
         LinearLayout.LayoutParams p = params(); p.topMargin = dp(10); parent.addView(card, p);

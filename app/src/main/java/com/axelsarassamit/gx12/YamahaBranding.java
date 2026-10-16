@@ -22,7 +22,7 @@ public final class YamahaBranding {
         }
         BitmapDrawable drawable = new BitmapDrawable(context.getResources(), emblem);
         drawable.setFilterBitmap(true);
-        drawable.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+        drawable.setColorFilter(RideTheme.accent(context), PorterDuff.Mode.SRC_IN);
         return drawable;
     }
 }

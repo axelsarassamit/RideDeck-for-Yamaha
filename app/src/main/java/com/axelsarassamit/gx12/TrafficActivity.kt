@@ -7,7 +7,7 @@ class TrafficActivity:RiderPage() {
     companion object { @JvmStatic fun open(a:Activity) { a.startActivity(Intent(a,TrafficActivity::class.java)) } }
     private var lastRequest=0L
     override fun onCreate(saved:Bundle?) {
-        super.onCreate(saved);build("Traffic nearby")
+        RideAppearance.prepare(this); super.onCreate(saved);build("Traffic nearby")
         state.text="TomTom reports near your current position. Coverage may be incomplete. This is a nearby list, not a claim that every incident affects your route."
         row(button("Check traffic") { load() })
         row(text(NativeNavigation.trafficAlertSummary()))

@@ -119,10 +119,10 @@ object NavigationUi {
         dialog.show()
     }
     @JvmStatic fun panel(activity: Activity): View {
-        val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff151c17.toInt()) }
+        val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(RideStyle.BACKGROUND) }
         val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Map; tap for navigation menu"; setOnClickListener { mapMenu(activity) } }
         val state=TextView(activity).apply {
-            setTextColor(0xfff4f6fa.toInt()); gravity=Gravity.CENTER_VERTICAL; textSize=11f; setPadding(8,4,8,4)
+            setTextColor(RideStyle.TEXT); gravity=Gravity.CENTER_VERTICAL; textSize=11f; setPadding(8,4,8,4)
             val logo = activity.getDrawable(R.drawable.maptiler_logo)!!
             val density = activity.resources.displayMetrics.density
             logo.setBounds(0, 0, (48 * density).toInt(), (16 * density).toInt())
@@ -136,8 +136,8 @@ object NavigationUi {
             }
         }
         val directions=TextView(activity).apply {
-            textSize=22f;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;setTextColor(android.graphics.Color.WHITE)
-            setPadding(12,6,12,6);setBackgroundColor(0xff101c2b.toInt());contentDescription="Next navigation instruction"
+            textSize=22f;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;setTextColor(RideStyle.TEXT)
+            setPadding(12,6,12,6);setBackgroundColor(RideStyle.PANEL);contentDescription="Next navigation instruction"
         }
         page.addView(directions,LinearLayout.LayoutParams(-1,-2))
         val body=LinearLayout(activity)
@@ -147,7 +147,7 @@ object NavigationUi {
         body.addView(mapArea,LinearLayout.LayoutParams(0,-1,1f))
         val density=activity.resources.displayMetrics.density
         fun dp(value:Int)=(value*density).toInt()
-        val zoom=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setBackgroundColor(0xff101c2b.toInt()) }
+        val zoom=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setBackgroundColor(RideStyle.PANEL) }
         listOf("+","−").forEachIndexed { index,label ->
             zoom.addView(Button(activity).apply {
                 text=label;textSize=30f;isAllCaps=false;minWidth=0;minimumWidth=0
@@ -157,7 +157,7 @@ object NavigationUi {
         }
         body.addView(zoom,LinearLayout.LayoutParams(dp(64),-1))
         page.addView(body,LinearLayout.LayoutParams(-1,0,1f))
-        val gps=TextView(activity).apply { textSize=13f;setTextColor(0xffc2d7eb.toInt());setPadding(12,2,12,2) }
+        val gps=TextView(activity).apply { textSize=13f;setTextColor(RideStyle.MUTED);setPadding(12,2,12,2) }
         page.addView(gps)
         page.addView(state)
         val refresh=object: Runnable { override fun run() {

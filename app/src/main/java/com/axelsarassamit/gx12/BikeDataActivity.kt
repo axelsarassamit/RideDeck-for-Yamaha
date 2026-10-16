@@ -21,7 +21,7 @@ class BikeDataActivity : RiderPage() {
     private lateinit var raw: TextView
     private var exporting: File? = null
     override fun onCreate(saved: Bundle?) {
-        super.onCreate(saved); build("Bike data and fuel range")
+        RideAppearance.prepare(this); super.onCreate(saved); build("Bike data and fuel range")
         row(button("Connect to parked Yamaha") { choose() })
         row(button("Stop bike data") { BikeDataService.stop(this) })
         row(button("Read bike snapshot") { BikeDataService.readSnapshot() })

@@ -65,12 +65,12 @@ class RoutePreviewActivity : Activity() {
     private fun dp(value: Int)=(resources.displayMetrics.density*value).toInt()
     private fun button(label: String, primary: Boolean=false)=Button(this).apply {
         text=label; isAllCaps=false; textSize=22f; minHeight=dp(80)
-        setTextColor(Color.WHITE)
-        background=GradientDrawable().apply { setColor(if(primary) blue else 0xff242f40.toInt()); cornerRadius=dp(14).toFloat() }
+        setTextColor(if(primary) Color.WHITE else RideStyle.TEXT)
+        background=GradientDrawable().apply { setColor(if(primary) blue else RideStyle.RAISED); cornerRadius=dp(14).toFloat() }
         setPadding(dp(12),dp(8),dp(12),dp(8))
     }
     override fun onCreate(saved: Bundle?) {
-        super.onCreate(saved)
+        RideAppearance.prepare(this); super.onCreate(saved)
         val lat=intent.getDoubleExtra("lat",Double.NaN); val lon=intent.getDoubleExtra("lon",Double.NaN)
         if(lat !in -90.0..90.0 || lon !in -180.0..180.0) { finish(); return }
         target=NavigationPlace(intent.getStringExtra("label") ?: "Destination",lat,lon)
@@ -79,8 +79,8 @@ class RoutePreviewActivity : Activity() {
         MapLibre.getInstance(this)
         NativeNavigation.start(this)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.statusBarColor=0xff101722.toInt(); window.navigationBarColor=0xff101722.toInt()
-        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(0xff101722.toInt()); setPadding(dp(12),dp(8),dp(12),dp(8)) }
+        window.statusBarColor=RideStyle.BACKGROUND; window.navigationBarColor=RideStyle.BACKGROUND
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(RideStyle.BACKGROUND); setPadding(dp(12),dp(8),dp(12),dp(8)) }
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(page) { v,insets ->
             val bars=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
             v.setPadding(bars.left+dp(12),bars.top+dp(8),bars.right+dp(12),bars.bottom+dp(8)); insets
@@ -88,9 +88,9 @@ class RoutePreviewActivity : Activity() {
         val header=LinearLayout(this)
         val titles=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         header.addView(titles,LinearLayout.LayoutParams(0,-2,1f))
-        val heading=TextView(this).apply { text="Choose your route"; textSize=24f; setTextColor(Color.WHITE) }
+        val heading=TextView(this).apply { text="Choose your route"; textSize=24f; setTextColor(RideStyle.TEXT) }
         titles.addView(heading)
-        destinationLabel=TextView(this).apply { text=target.label; textSize=18f; maxLines=2; setTextColor(0xffb9c5d6.toInt()) }
+        destinationLabel=TextView(this).apply { text=target.label; textSize=18f; maxLines=2; setTextColor(RideStyle.MUTED) }
         titles.addView(destinationLabel)
         parking=button("Parking\nSearching").apply {
             minHeight=dp(72);textSize=16f;setOnClickListener { showParking() }
@@ -105,7 +105,7 @@ class RoutePreviewActivity : Activity() {
         val mapArea=FrameLayout(this)
         mapColumn.addView(mapArea,LinearLayout.LayoutParams(-1,0,1f))
         mapView=MapView(this); mapView.onCreate(saved); mapArea.addView(mapView,FrameLayout.LayoutParams(-1,-1))
-        mapStatus=TextView(this).apply { text="Loading map..."; textSize=18f; setTextColor(Color.WHITE); setBackgroundColor(0xee101722.toInt()); setPadding(dp(12),dp(12),dp(12),dp(12)); gravity=Gravity.CENTER }
+        mapStatus=TextView(this).apply { text="Loading map..."; textSize=18f; setTextColor(RideStyle.TEXT); setBackgroundColor(RideStyle.PANEL); setPadding(dp(12),dp(12),dp(12),dp(12)); gravity=Gravity.CENTER }
         mapArea.addView(mapStatus,FrameLayout.LayoutParams(-1,-2,Gravity.CENTER))
         val tools=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         listOf("−","Overview","+").forEachIndexed { index,label ->
@@ -118,12 +118,12 @@ class RoutePreviewActivity : Activity() {
         mapColumn.addView(tools,LinearLayout.LayoutParams(-1,dp(60)))
         mapArea.addView(TextView(this).apply {
             text=android.text.Html.fromHtml("© <a href='https://www.maptiler.com/copyright/'>MapTiler</a> © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",0)
-            textSize=12f; setTextColor(Color.WHITE); setBackgroundColor(0xdd101722.toInt()); setPadding(dp(8),dp(4),dp(8),dp(4))
+            textSize=12f; setTextColor(RideStyle.TEXT); setBackgroundColor(RideStyle.PANEL); setPadding(dp(8),dp(4),dp(8),dp(4))
             movementMethod=android.text.method.LinkMovementMethod.getInstance()
         },FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
         val controls=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(if(wide) dp(12) else 0,dp(8),0,0) }
         body.addView(controls,if(wide) LinearLayout.LayoutParams(dp(300),-1) else LinearLayout.LayoutParams(-1,-2))
-        status=TextView(this).apply { textSize=18f; setTextColor(Color.WHITE); setPadding(0,0,0,dp(8)) }
+        status=TextView(this).apply { textSize=18f; setTextColor(RideStyle.TEXT); setPadding(0,0,0,dp(8)) }
         controls.addView(status)
         choices=LinearLayout(this).apply { orientation=if(wide) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
         choiceScroll=ScrollView(this).apply { addView(choices) }

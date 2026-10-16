@@ -19,7 +19,7 @@ class DestinationSearchActivity:Activity() {
         text=label;isAllCaps=false;textSize=20f;minHeight=dp(72);setTextColor(RideStyle.TEXT);background=RideStyle.row(this@DestinationSearchActivity);setOnClickListener { action() }
     }
     override fun onCreate(saved:Bundle?) {
-        super.onCreate(saved);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        RideAppearance.prepare(this); super.onCreate(saved);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(16),dp(16),dp(8));setBackgroundColor(RideStyle.BACKGROUND) }
         page.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())

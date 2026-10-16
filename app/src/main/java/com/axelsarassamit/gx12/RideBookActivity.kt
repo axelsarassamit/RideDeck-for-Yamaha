@@ -15,7 +15,7 @@ class RideBookActivity:RiderPage() {
         "accel"->String.format(Locale.US,"Peak GPS acceleration · %.2f m/s² (%.2f g)",value,value/9.80665)
         else->String.format(Locale.US,"Peak GPS deceleration · %.2f m/s² (%.2f g)",value,value/9.80665)
     }
-    override fun onCreate(saved:Bundle?) { super.onCreate(saved);build("Ride book");refresh() }
+    override fun onCreate(saved:Bundle?) { RideAppearance.prepare(this); super.onCreate(saved);build("Ride book");refresh() }
     private fun refresh() {
         state.text="Phone GPS and mounted-phone estimates are recorded separately from Yamaha CCU readings. Connect Bike data before starting a ride to include source-decoded engine readings and raw bike fields."
         rows.removeAllViews()

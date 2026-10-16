@@ -8,6 +8,7 @@ import android.view.WindowManager
 class RideDeckApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        RideAppearance.install(this)
         registerActivityLifecycleCallbacks(object: ActivityLifecycleCallbacks {
             private fun awake(activity: Activity) { activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             override fun onActivityCreated(activity: Activity,state: Bundle?) { awake(activity) }

@@ -6,7 +6,7 @@ import java.util.Locale
 
 class FuelStationsActivity:RiderPage() {
     companion object { @JvmStatic fun open(a:Activity) { a.startActivity(Intent(a,FuelStationsActivity::class.java)) } }
-    override fun onCreate(saved:Bundle?) { super.onCreate(saved);build("Nearby fuel stations");show() }
+    override fun onCreate(saved:Bundle?) { RideAppearance.prepare(this); super.onCreate(saved);build("Nearby fuel stations");show() }
     private fun show() {
         rows.removeAllViews()
         state.text="Within 10 km. Distances are straight-line. Results also appear in the bike's Nearby Gas Stations menu."
