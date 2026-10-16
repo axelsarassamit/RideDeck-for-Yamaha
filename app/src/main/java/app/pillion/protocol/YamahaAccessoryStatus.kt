@@ -4,8 +4,8 @@ package app.pillion.protocol
  * Small Yamaha BLE control messages, independently implemented from verified
  * Y-Connect 3.9.0 wire layouts. These are NOT NaviLite frames.
  *
- * No runtime transport calls this codec yet. Accessory discovery/authentication
- * and exact CCU compatibility must be verified before enabling status writes.
+ * Published by the authenticated CCU session using real Android phone state.
+ * Native display appearance still requires parked-bike verification.
  * See docs/YAMAHA_STATUS_ICONS.md for the evidence and remaining work.
  */
 object YamahaAccessoryStatus {

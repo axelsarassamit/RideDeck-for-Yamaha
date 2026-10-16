@@ -9,7 +9,8 @@ import java.io.File
 
 data class BikeDataState(val active: Boolean = false, val authenticated: Boolean = false,
     val status: String = "Connect to your parked Yamaha to read bike data.", val packets: Long = 0,
-    val lastPacket: Long = 0, val values: Map<BikeMetric, BikeValue> = emptyMap(),
+    val lastPacket: Long = 0, val connectedAt:Long=0, val aliveRequests:Long=0, val aliveReplies:Long=0,
+    val supportedIds:List<Int> = emptyList(), val values: Map<BikeMetric, BikeValue> = emptyMap(),
     val raw: Map<String, Pair<String, Long>> = emptyMap(), val faults: List<CcuTelemetry.Fault>? = null,
     val faultsAt: Long = 0, val injection: Long? = null, val injectionAt: Long = 0, val ignition: Boolean? = null)
 
@@ -24,8 +25,12 @@ object BikeDataStore {
         append(c, JSONObject().put("event", "session_start").put("version", BuildConfig.VERSION_NAME).put("decoder", "xmax-1248-v1"))
     }
     @Synchronized fun status(text: String, authenticated: Boolean) {
-        state = state.copy(status = text, authenticated = authenticated)
+        state = state.copy(status = text, authenticated = authenticated, connectedAt=if(authenticated && state.connectedAt==0L) SystemClock.elapsedRealtime() else state.connectedAt)
         logContext?.let { append(it,JSONObject().put("event","connection_status").put("status",text.take(500)).put("authenticated",authenticated)) }
+    }
+    @Synchronized fun alive(reply:Boolean) {
+        if(!state.active)return
+        state=if(reply)state.copy(aliveReplies=state.aliveReplies+1) else state.copy(aliveRequests=state.aliveRequests+1)
     }
     @Synchronized fun stop(c: Context, text: String) {
         if (state.active) append(c, JSONObject().put("event", "session_stop").put("status",text.take(500)))
@@ -56,6 +61,7 @@ object BikeDataStore {
             safeItems.forEach { raw["$name ID ${it.id}"] = hex(it.bytes).take(512) to wall }
             while (raw.size > 64) raw.remove(raw.keys.first())
             var updated = state.copy(values = values.toMap(), raw = raw.toMap())
+            if(message.command==0x127) updated=updated.copy(supportedIds=CcuProtocol.supportedIds(message,1248).sorted())
             when (message.command) {
                 0x106 -> updated = updated.copy(faults = CcuTelemetry.faults(message), faultsAt = now)
                 0x120 -> updated = updated.copy(injection = CcuTelemetry.injectionCount(message), injectionAt = now)

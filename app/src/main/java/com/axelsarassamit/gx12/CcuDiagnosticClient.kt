@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.SystemClock
 import app.pillion.core.CcuProtocol
 import app.pillion.core.CcuReadPlan
+import app.pillion.protocol.YamahaStatusUpdates
 import java.util.UUID
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
@@ -47,6 +48,9 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private var service: BluetoothGattService? = null
     private var credentials = byteArrayOf()
     private var authenticated = false
+    private var pairedAddress = ""
+    private var phoneStatus: YamahaPhoneStatusMonitor? = null
+    private val statusUpdates = YamahaStatusUpdates()
     @Volatile private var setupStep = "requesting accessory connection details"
     private fun setupStep(value: String) {
         setupStep=value
@@ -77,6 +81,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     }
     fun start(device: BluetoothDevice) {
         check(!closed && gatt == null && socket == null)
+        pairedAddress = device.address
         if (Build.VERSION.SDK_INT >= 31 &&
             context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             fail("Open Bike data and fuel range and allow Nearby devices before connecting."); return
@@ -270,12 +275,20 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 REPLY -> {
                     val aliveReply = CcuProtocol.aliveCheckResponse(value)
                     if (aliveReply != null) {
+                        BikeDataStore.alive(false)
                         // The CCU initiates this exchange, including during startup. Keep
                         // the reply serialized, ahead of queued bulk-data operations.
                         write(CONTROL, aliveReply, priority = true) {
+                            BikeDataStore.alive(true)
                             BikeDiagnostics.record(context, "CCU alive-check reply written")
                         }
                         return
+                    }
+                    if (authenticated && value.size == 2) {
+                        when (CcuProtocol.u(value, 0, 2)) {
+                            0x11b -> { phoneStatus?.refresh(setOf(YamahaStatusUpdates.Kind.HEADSET)); return }
+                            0x132 -> { phoneStatus?.refresh(setOf(YamahaStatusUpdates.Kind.SIGNAL)); return }
+                        }
                     }
                     if (value.size == 3 && CcuProtocol.u(value, 0, 2) == 0x102) {
                         if (value[2] != 1.toByte()) {
@@ -284,6 +297,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                         authenticated = true; credentials.fill(0); main.removeCallbacks(setupTimeout)
                         report("Accessory authentication accepted. Reading the bike's capabilities…")
                         BikeDiagnostics.record(context, "CCU authentication accepted")
+                        startPhoneStatus()
                         startup()
                     }
                     else if (value.size == 6 && CcuProtocol.u(value, 0, 2) == 0x120)
@@ -311,6 +325,19 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
             // A bad telemetry frame cannot change a reading or satisfy a pending request.
             // Essential startup still times out rather than accepting an invalid capability/authentication reply.
         }
+    }
+    private fun startPhoneStatus() {
+        phoneStatus?.close()
+        statusUpdates.start()
+        phoneStatus = YamahaPhoneStatusMonitor(context, pairedAddress) { status, force ->
+            if (!closed && authenticated) {
+                for (update in statusUpdates.updates(status, force)) {
+                    write(CONTROL, update.bytes) {
+                        BikeDiagnostics.record(context, "CCU phone status written kind=${update.kind}")
+                    }
+                }
+            }
+        }.also { it.start() }
     }
     private fun decoded(message: CcuProtocol.Message) {
         if (!authenticated) return
@@ -378,6 +405,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     fun close() {
         if (closed) return
         closed = true; main.removeCallbacksAndMessages(null); authenticated = false
+        statusUpdates.stop(); phoneStatus?.close(); phoneStatus = null
         stopDiscovery()
         credentials.fill(0); transfer.fill(0); operations.clear(); pending = null; assembly.clear(); notifications.clear()
         runCatching { socket?.close() }; socket = null

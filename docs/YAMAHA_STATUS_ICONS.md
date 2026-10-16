@@ -2,7 +2,7 @@
 
 Requested 2026-10-09 from Axel's photo: message bubble, cellular signal, phone battery, App connection and headset. Restore these in the bike's native status bar. The outdoor temperature is bike-owned and is not replaced with phone weather.
 
-Status: unfinished. Local packet groundwork is implemented; native icons are not restored. Axel has lifted the release hold for the implemented 0.12.15 features. These native icons remain pending accessory connection and bike verification.
+Status in 0.12.48: real phone battery/charging, cellular signal and Bluetooth headset state are connected to the authenticated MotoCons session. Local compilation and codec tests pass. Native rendering remains pending a parked-bike test. Message/call/weather status is not enabled by this change.
 
 ## Message icon follows RideDeck
 
@@ -36,15 +36,19 @@ Read-only analysis of the phone's previously exported Y-Connect 3.9.0 executable
 
 Additional static inspection: `McNotificationDataV2` has notification ID, category, date/time, title, subtitle and detail fields. It is not a simple unread boolean. Do not pass RideDeck preview text to that API or assume an empty notification toggles the header icon. A matching indicator/clear sequence must be verified first.
 
-`YamahaAccessoryStatus` encodes only the three confirmed status messages. Missing, malformed or unavailable readings are omitted. It is deliberately not wired to the Bluetooth transport until a matching authenticated accessory session is verified.
+`YamahaAccessoryStatus` encodes only the three confirmed status messages. Missing, malformed or unavailable readings are omitted. `YamahaPhoneStatusMonitor` reads real Android battery, the default data SIM and Bluetooth audio profiles. It excludes the CCU itself from headphones. `YamahaStatusUpdates` sends initial and changed known values only after authentication, resends on a new authenticated session and responds to verified headset/signal requests. Stop/disconnect shuts down the monitor. Serialized status writes do not overtake keepalive responses.
 
-## Remaining work before this item is complete
+No READ_PHONE_STATE or extra location permission is introduced. Signal callbacks request no location data on Android 13+. If the OS cannot provide a reading it stays unavailable; this is not a fabricated zero value. Android 8+ uses the legacy signal/service listeners. Headset proxies and callbacks are closed with their owner.
 
-1. Identify the bike's actual accessory BLE endpoint and exposed characteristics while parked. Confirm whether it is distinct from the selected Garmin navigation device. Keep existing bonds and phone settings.
-2. Verify accessory authentication and status notification behavior. The multi-model SDK also contains SPP-assisted BLE connection information, CCU identity and pass-key based AuthenticationV2; their presence alone does not establish the handshake this XMAX uses. Do not invent credentials or send guessed authentication messages.
-3. Implement the matching accessory session with serialized GATT operations, acknowledgements, disconnect clearing, retry and explicit Stop. Preserve the existing navigation connection.
-4. Feed real Android battery/charging, cellular signal and Bluetooth audio profile state. Missing phone permission and a disconnected headset must remain distinguishable from an unknown reading. Determine the required signal permission against Android's actual API behavior before adding it.
-5. Verify the message-indicator protocol and native clearing behavior using selected notification apps. Preserve the current notification privacy policy, which keeps previews on the phone.
-6. Test all five icons on the bike, including charging, headset disconnect, signal loss, dismissed messages and accessory reconnect. App connection must reflect the accessory session independently from map streaming.
+## Check indoors, then at the bike
 
-No bike write, new pairing, phone permission change, app installation or remote release was performed during this groundwork.
+Open Bike data and fuel range > Check phone status. Compare battery, charging, cellular bars and headset with Android. These readings do not prove the bike received or displayed the packets.
+
+Open Yamaha test panel from Bike data or Setup > Help & diagnostics. Follow Phone icons checks after the five-minute connection check. Verify native battery/charging, cellular and headphone changes, and App connection independent of navigation streaming. Unknown/disconnected states, default-SIM changes and reconnect need physical testing. The projected map stays unchanged.
+
+Messages still require a verified notification/category/clear sequence. RideDeck's pending queue is available locally, but it is not transmitted as a guessed unread boolean. Calls, weather and other model-dependent indicators remain research checks, not implemented status claims.
+
+Primary Android API references:
+- https://developer.android.com/reference/android/telephony/TelephonyCallback.SignalStrengthsListener
+- https://developer.android.com/reference/android/telephony/TelephonyCallback.ServiceStateListener
+- https://developer.android.com/reference/android/telephony/PhoneStateListener

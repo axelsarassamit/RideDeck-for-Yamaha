@@ -20,11 +20,15 @@ class BikeDataActivity : RiderPage() {
     private lateinit var notices: TextView
     private lateinit var raw: TextView
     private var exporting: File? = null
+    private var phonePreview: YamahaPhoneStatusMonitor? = null
+    private var phoneDialog: android.app.AlertDialog? = null
     override fun onCreate(saved: Bundle?) {
         RideAppearance.prepare(this); super.onCreate(saved); build("Bike data and fuel range")
         row(button("Connect to parked Yamaha") { choose() })
         row(button("Stop bike data") { BikeDataService.stop(this) })
         row(button("Read bike snapshot") { BikeDataService.readSnapshot() })
+        row(button("Yamaha test panel") { YamahaTestPanelActivity.open(this) })
+        row(button("Check phone status") { previewPhoneStatus() })
         val continuous = CheckBox(this).apply {
             text="Keep bike data connected during a ride";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
             isChecked=RidePreferences.prefs(this@BikeDataActivity).getBoolean("bike_data_during_ride",false)
@@ -64,6 +68,32 @@ class BikeDataActivity : RiderPage() {
         })
         refresh()
     }
+    private fun previewPhoneStatus() {
+        if(android.os.Build.VERSION.SDK_INT>=31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT),98)
+            Toast.makeText(this,"Allow Nearby devices, then check phone status again.",Toast.LENGTH_LONG).show();return
+        }
+        phoneDialog?.dismiss()
+        val dialog=android.app.AlertDialog.Builder(this).setTitle("Phone status")
+            .setMessage("Reading phone battery, signal and headset…\n\nThese are phone readings. Native Yamaha icons need a bike connection.")
+            .setPositiveButton("Close",null).create()
+        phoneDialog=dialog
+        dialog.setOnDismissListener { phonePreview?.close();phonePreview=null;phoneDialog=null }
+        dialog.show()
+        phonePreview=YamahaPhoneStatusMonitor(applicationContext, "") { status,_ ->
+            if(dialog.isShowing) {
+                val signal=when(status.signal) {
+                    app.pillion.protocol.YamahaAccessoryStatus.CellSignal.NO_CONNECTION->"No cellular connection"
+                    app.pillion.protocol.YamahaAccessoryStatus.CellSignal.NO_SIGNAL->"No cellular signal"
+                    null->"Unavailable"
+                    else->"${status.signal.wireValue-1} of 4 bars"
+                }
+                fun yesNo(value:Boolean?)=when(value) { true->"Yes";false->"No";null->"Unavailable" }
+                dialog.setMessage("Phone battery: ${status.batteryPercent?.let { "$it%" } ?: "Unavailable"}\nCharging: ${yesNo(status.charging)}\nCellular signal: $signal\nHeadset connected: ${yesNo(status.headset)}\n\nThese are phone readings. Native Yamaha icons need a bike connection.")
+            }
+        }.also { it.start() }
+    }
+    override fun onStop() { phoneDialog?.dismiss();super.onStop() }
     private fun choose() {
         val required=if(android.os.Build.VERSION.SDK_INT>=31) arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_SCAN)
             else arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)

@@ -82,6 +82,7 @@
         <activity android:name=".AppearanceActivity" android:exported="false" />
         <activity android:name=".FuelStationsActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".TrafficActivity" android:exported="false" android:screenOrientation="user" />
+        <activity android:name=".YamahaTestPanelActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".BikeDataActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".RideBookActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".DestinationSearchActivity" android:exported="false" android:screenOrientation="user" />
