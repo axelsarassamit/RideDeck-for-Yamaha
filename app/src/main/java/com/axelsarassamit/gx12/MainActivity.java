@@ -639,7 +639,7 @@ public class MainActivity extends android.app.Activity {
         boolean compactMusic = compact || shortMusic;
         LinearLayout music = rideCard("NOW PLAYING");
         if (compactMusic) {
-            music.removeAllViews(); music.setOrientation(LinearLayout.HORIZONTAL);
+            music.removeAllViews(); music.setOrientation(compact ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
             music.setGravity(Gravity.CENTER_VERTICAL); music.setPadding(dp(8), dp(4), dp(8), dp(4));
         }
         LinearLayout details = new LinearLayout(this); details.setGravity(Gravity.CENTER_VERTICAL);
@@ -672,7 +672,7 @@ public class MainActivity extends android.app.Activity {
         details.setOnClickListener(v -> openPreferredMusic());
         music.setOnClickListener(v -> openPreferredMusic());
         details.addView(metadataColumn, new LinearLayout.LayoutParams(0, -2, 1));
-        music.addView(details, compactMusic ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1));
+        music.addView(details, compact ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1));
         if (!compactMusic) {
             playbackTimeline = new PlaybackTimelineView(this);
             LinearLayout.LayoutParams timelineParams = new LinearLayout.LayoutParams(-1, dp(26));
@@ -697,7 +697,7 @@ public class MainActivity extends android.app.Activity {
         transport.addView(playPauseButton, playParams);
         LinearLayout.LayoutParams nextParams = rideWeight(compactMusic ? 56 : 64);
         nextParams.topMargin = 0;
-        transport.addView(nextButton, nextParams); music.addView(transport, compactMusic ? new LinearLayout.LayoutParams(dp(186), -2) : new LinearLayout.LayoutParams(-1, -2));
+        transport.addView(nextButton, nextParams); music.addView(transport, compact ? new LinearLayout.LayoutParams(dp(186), -2) : new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams musicParams = compact
             ? new LinearLayout.LayoutParams(-1, dp(72))
             : portrait ? new LinearLayout.LayoutParams(-1, 0, 0.9f)
@@ -762,9 +762,8 @@ public class MainActivity extends android.app.Activity {
         settings.setOnClickListener(v -> buildSetupScreen());
         if (!compact) header.addView(settings, new LinearLayout.LayoutParams(dp(80), dp(56)));
         String[] labels = new String[]{"Yamaha", "Camera", "Voice", "Ride"};
-        if (controlsRight) java.util.Collections.reverse(java.util.Arrays.asList(labels));
         for (String label : labels) {
-            if (label.equals("Ride")) { addDashRideDock(dock,compact,controlsRight);continue; }
+            if (label.equals("Ride")) { addDashRideDock(dock,compact,false);continue; }
             Button action = rideAction(label, false);
             if (label.equals("Yamaha")) {
                 action.setContentDescription("Yamaha bike connection and screen options");
@@ -784,6 +783,7 @@ public class MainActivity extends android.app.Activity {
             gear.setMargins(dp(3), dp(4), dp(3), 0);
             dock.addView(settings, gear);
         }
+        RideStyle.mirrorActions(dock,controlsRight);
         LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2); dp.topMargin = dp(8);
         root.addView(dock, dp);
         setContentView(root);
@@ -819,7 +819,7 @@ public class MainActivity extends android.app.Activity {
             recording == DashRecordingStatus.State.STARTING,active && recording != DashRecordingStatus.State.IDLE,DashRecordingConnection.connected(),
             DashRecordingConnection.STATUS.fresh(android.os.SystemClock.elapsedRealtime()));
         dashRideButton.setText(label);
-        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? 0xffff4c4c : RideStyle.TEXT);
+        dashRideButton.setTextColor(available && recording == DashRecordingStatus.State.RECORDING ? RideStyle.DANGER : RideStyle.TEXT);
         dashRideButton.setContentDescription(available ? "RideDeck Dash. " + DashRecordingConnection.STATUS.label(android.os.SystemClock.elapsedRealtime()) + ". Open ride controls." : "Ride session");
     }
 
@@ -1128,7 +1128,7 @@ public class MainActivity extends android.app.Activity {
 
     private void showPersonalization() {
         showCustomizationMenu(new String[]{"Phone mount: Left / Centre / Right", "Messaging apps (choose several)", "Reply method", "Phone panel placement", "Color theme", "Music player", "Home and Work destinations", "Favorites", "Nearby fuel stations", "Bike position icon", "Appearance"}, (dialog, which) -> {
-                if (which == 10) RideAppearance.show(this);
+                if (which == 10 || which == 4) RideAppearance.show(this);
             else if (which == 0) new android.app.AlertDialog.Builder(this).setTitle("Phone mount position")
                     .setSingleChoiceItems(new String[]{"Left: music controls on left", "Centre: controls on left", "Right: music controls on right"}, RidePreferences.prefs(this).getInt("mount", 1), (d, selected) -> {
                         RidePreferences.prefs(this).edit().putInt("mount", selected).apply(); d.dismiss(); buildSetupScreen(); showPersonalization();

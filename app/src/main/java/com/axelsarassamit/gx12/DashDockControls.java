@@ -25,10 +25,10 @@ final class DashDockControls {
         tile.addView(toggle,new LinearLayout.LayoutParams(-1,0,1));return tile;
     }
     static Button dashButton(Context context) {
-        Button button = new Button(context);button.setText("Dash");button.setAllCaps(false);button.setTextSize(16);
+        Button button = new Button(context);button.setText("Dash");button.setAllCaps(false);button.setTextSize(13);
         button.setTypeface(Typeface.DEFAULT,Typeface.BOLD);button.setMinWidth(0);button.setMinimumWidth(0);
         button.setMinHeight(dp(context,56));button.setMinimumHeight(dp(context,56));button.setPadding(dp(context,4),dp(context,4),dp(context,4),dp(context,4));
-        button.setMaxLines(1);button.setBackgroundTintList(null);
+        button.setMaxLines(2);button.setBackgroundTintList(null);
         button.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{}},new int[]{0xff8191a1,RideStyle.TEXT}));
         StateListDrawable states = new StateListDrawable();states.addState(new int[]{-android.R.attr.state_enabled},background(context,RideStyle.PANEL,8));
         states.addState(new int[]{android.R.attr.state_pressed},background(context,RideStyle.LINE,8));states.addState(new int[]{},background(context,RideStyle.RAISED,8));

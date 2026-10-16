@@ -54,7 +54,7 @@ public final class AppearanceTest {
             for(int mode:new int[]{1,2}) for(int accent=0;accent<5;accent++) {
                 p.edit().putBoolean("follow_host",false).putInt("appearance_mode",mode).putInt("color_theme",accent).commit();
                 boolean dark=mode==2;int expectedAccent=AppearancePalette.accent(accent,dark);
-                Intent intent=new Intent(c,SetupActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                Intent intent=new Intent(c,AppearanceActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 try(ActivityScenario<Activity> scenario=ActivityScenario.launch(intent)) {
                     for(int orientation:new int[]{ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE}) {
                         scenario.onActivity(a->a.setRequestedOrientation(orientation));
