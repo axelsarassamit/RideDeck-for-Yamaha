@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.43").removePrefix("v")
+        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.44").removePrefix("v")
         val parts = releaseVersion.split(".")
         require(parts.size >= 2 && parts.take(3).all { it.all(Char::isDigit) }) {
             "GX12_VERSION_NAME must use numeric semver such as 0.1.0"
@@ -79,6 +79,7 @@ dependencies {
     implementation("androidx.core:core:1.16.0")
     implementation("org.maplibre.gl:android-sdk:13.4.1")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
