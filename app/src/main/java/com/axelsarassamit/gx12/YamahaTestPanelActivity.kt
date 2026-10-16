@@ -45,7 +45,7 @@ class YamahaTestPanelActivity:RiderPage() {
         currentTest=null;draft=null
         rows.removeAllViews()
         val all=YamahaTestCatalog.items
-        state.text="$version\n${all.count { result(it.id)=="Passed" }} / ${all.size} passed · ${all.count { result(it.id)=="Failed" }} problems\nParked use only. Results are your observations, saved for this build."
+        state.text="$version\n${all.count { result(it.id)=="Passed" }} / ${all.count { it.available }} available passed · ${all.count { !it.available }} future checks · ${all.count { result(it.id)=="Failed" }} problems\nParked use only. Results are your observations, saved for this build."
         liveRow()
         row(button("Bike data and phone status") { BikeDataActivity.open(this) })
         row(button("Group: ${group?:"All checks"}") {
@@ -54,8 +54,9 @@ class YamahaTestPanelActivity:RiderPage() {
         })
         row(button(if(pendingOnly) "Showing unfinished · show all" else "Show unfinished checks") { pendingOnly=!pendingOnly;render() })
         row(button("Next unfinished check") {
-            val next=all.firstOrNull { (group==null || it.group==group) && result(it.id)!="Passed" }
-            if(next!=null) detail(next) else Toast.makeText(this,"No unfinished checks in this group.",Toast.LENGTH_SHORT).show()
+            val candidates=all.filter { it.available && (group==null || it.group==group) }
+            val next=candidates.firstOrNull { result(it.id)=="Not tested" }?:candidates.firstOrNull { result(it.id)=="Failed" }
+            if(next!=null) detail(next) else Toast.makeText(this,"No available checks waiting. Review blocked items in their group.",Toast.LENGTH_SHORT).show()
         })
         row(button("Save test report") {
             export=report()
@@ -79,7 +80,7 @@ class YamahaTestPanelActivity:RiderPage() {
             records.edit().putString(key(test.id)+"/result",value).putString(key(test.id)+"/note",note.text.toString().take(2000))
                 .putLong(key(test.id)+"/at",System.currentTimeMillis()).apply();render()
         }
-        row(button("Pass · checked on this build") { save("Passed") })
+        row(button(if(test.available) "Pass · checked on this build" else "Not available in this build") { save("Passed") }.apply { isEnabled=test.available;alpha=if(test.available)1f else 0.5f })
         row(button("Problem · needs fixing") { save("Failed") })
         row(button("Blocked / not supported") { save("Blocked") })
         row(button("Save notes · test later") { save("Not tested") })
@@ -94,7 +95,7 @@ class YamahaTestPanelActivity:RiderPage() {
                 YamahaTestCatalog.items.forEach { test->
                     val prefix="$build/${test.id}"
                     put(JSONObject().put("id",test.id).put("title",test.title).put("group",test.group).put("stage",test.stage)
-                        .put("result",records.getString("$prefix/result","Not tested")).put("note",records.getString("$prefix/note",""))
+                        .put("availableInCurrentBuild",if(build==version)test.available else JSONObject.NULL).put("result",records.getString("$prefix/result","Not tested")).put("note",records.getString("$prefix/note",""))
                         .put("observedAt",records.getLong("$prefix/at",0)))
                 }
             })) } }).toString(2)

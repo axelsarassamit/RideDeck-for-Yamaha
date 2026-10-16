@@ -6,7 +6,7 @@ Scope: RideDeck for Yamaha, 2024 XMAX 300. Standard and Dash development and Das
 
 Open Setup > Help & diagnostics > Yamaha test panel, or Navigation > Bike data and fuel range > Yamaha test panel.
 
-29 checks contain steps and pass criteria. Choose a group, show unfinished checks or open Next unfinished check. Mark Pass, Problem, Blocked / not supported, or Save notes / test later. A blocked check is never a pass. Notes and results persist locally for the exact version name and version code; a new build starts untested while old observations remain available in the exported report. Reopening a passed check allows correcting it. Unsaved draft notes survive rotation. Export uses Android's Save document picker, never an automatic upload. Notes are user-entered and may contain personal information: review before sharing.
+42 checks contain steps and pass criteria. Choose a group, show unfinished checks or open Next unfinished check. Mark Pass, Problem, Blocked / not supported, or Save notes / test later. A blocked check is never a pass. Notes and results persist locally for the exact version name and version code; a new build starts untested while old observations remain available in the exported report. Reopening a passed check allows correcting it. Unsaved draft notes survive rotation. Export uses Android's Save document picker, never an automatic upload. Notes are user-entered and may contain personal information: review before sharing.
 
 Connection metadata shows authentication, elapsed session time, received packet count/age, supported vehicle IDs and keepalive requests versus successful reply writes. A write completion is not proof the bike accepted the reply. Counts never automatically pass a test. The phone-status preview is a separate real Android readout, not synthetic bike telemetry.
 
@@ -53,3 +53,9 @@ The supplied roadmap is research input, not a verified specification for every m
 ## Completion and next move
 
 Release readiness requires correct signed identity, passing automated checks, the five-minute physical connection gate and the relevant phone/native UI checks. Unsupported research stays explicitly blocked with evidence; it does not inflate the pass count. Use exported failed/blocked check IDs and private logs to choose the next feature, rather than adding broad speculative commands.
+
+## Second suggestion sheet review
+
+The 2026-10-16 suggestion sheet adds session-window research, private fixtures, a capability cache, mechanic fields, battery health/crank trends, thermal graphs, fuel calibration, a DTC journal, maintenance reports, lap timing, audio scheduling, ride-event tagging, an experiment runner and sync history. These now have checklist entries or are covered by the existing fuel/control checks. Future features explicitly say Not available in this build; Pass is disabled for those entries. They can be recorded as blocked with notes. This is a testing backlog, not a claim these features are implemented.
+
+No all-frame ring logger is added: a denylist of authentication commands alone cannot exclude credentials or identifying message content elsewhere. Positive allowlisting and sanitized fixtures are required. No automatic resync policy is added, no crank/battery-failure diagnosis is inferred, and fuel-consumption drift cannot establish injector clogging. Firmware/factory/actuator writes stay absent, rather than adding a developer switch.

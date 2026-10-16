@@ -58,6 +58,9 @@ class YamahaTestPanelTest {
                     val current=(0 until builds.length()).map { builds.getJSONObject(it) }.first { it.getString("build")==version }
                     assertEquals("Blocked",current.getJSONArray("checks").getJSONObject(0).getString("result"))
                     assertEquals("Passed",prefs.getString("older-build/connection/result",null))
+                    tap(a,"Not tested · Battery and crank")
+                    assertFalse(views(a.window.decorView).filterIsInstance<Button>().first { it.text.toString()=="Not available in this build" }.isEnabled)
+                    tap(a,"Back to checks")
 
                 }
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync()
