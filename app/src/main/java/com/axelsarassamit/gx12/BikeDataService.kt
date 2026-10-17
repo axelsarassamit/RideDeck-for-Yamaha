@@ -11,26 +11,31 @@ import android.os.*
 class BikeDataService : Service() {
     companion object {
         private var current: BikeDataService? = null
-        fun start(c: Context, address: String, duringRide: Boolean) {
+        fun start(c: Context, address: String, duringRide: Boolean, automatic: Boolean = false) {
             try { c.startForegroundService(Intent(c, BikeDataService::class.java).setAction("START")
-                .putExtra("device", address).putExtra("during_ride", duringRide)) }
+                .putExtra("device", address).putExtra("during_ride", duringRide).putExtra("automatic", automatic)) }
             catch (_: RuntimeException) { BikeDataStore.status("Open RideDeck and try the bike-data connection again.", false) }
         }
-        fun stop(c: Context) { c.stopService(Intent(c, BikeDataService::class.java)) }
+        fun stop(c: Context) { YamahaBikeAutoConnect.pause(); c.stopService(Intent(c, BikeDataService::class.java)) }
+        fun stopAutomatic(c: Context) { if (current?.automatic == true) c.stopService(Intent(c, BikeDataService::class.java)) }
+        fun selectedAddress(): String = current?.client?.bikeAddress ?: YamahaCastService.connectedAddress
+        fun checkAdditionalFields() { current?.client?.checkAdditionalFields() ?: BikeDataStore.status("Connect to the parked Yamaha first.", false) }
         fun readSnapshot() { current?.client?.readSnapshot() ?: BikeDataStore.status("Connect to the parked Yamaha first.", false) }
     }
     private val main = Handler(Looper.getMainLooper())
     private var client: CcuDiagnosticClient? = null
     private var wake: RideSessionWakeLock? = null
     private var closing = false
+    private var automatic = false
     private val endTest = Runnable {
         BikeDataStore.stop(this, "Parked test finished after 10 minutes. Reconnect to start another session."); stopSelf()
     }
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "STOP") { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == "STOP") { YamahaBikeAutoConnect.pause(); stopSelf(); return START_NOT_STICKY }
         if (intent?.action != "START") { stopSelf(); return START_NOT_STICKY }
         if (client != null) { BikeDataStore.status("Bike data is already connecting or connected. Stop it before choosing another bike.", client?.isAuthenticated == true); return START_NOT_STICKY }
+        automatic = intent.getBooleanExtra("automatic", false)
         val device = runCatching {
             val manager = getSystemService(BluetoothManager::class.java)
             manager.adapter.bondedDevices.firstOrNull { it.address == intent.getStringExtra("device") &&
@@ -77,5 +82,6 @@ class BikeDataService : Service() {
         wake?.close(); wake = null; if (current === this) current = null
         if (BikeDataStore.state.active) BikeDataStore.stop(this, "Bike-data connection stopped. Last readings are retained as history.")
         stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()
+        if (automatic) YamahaBikeAutoConnect.dataEnded(this)
     }
 }

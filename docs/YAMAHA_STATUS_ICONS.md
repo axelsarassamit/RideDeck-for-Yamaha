@@ -2,7 +2,7 @@
 
 Requested 2026-10-09 from Axel's photo: message bubble, cellular signal, phone battery, App connection and headset. Restore these in the bike's native status bar. The outdoor temperature is bike-owned and is not replaced with phone weather.
 
-Status in 0.12.48: real phone battery/charging, cellular signal and Bluetooth headset state are connected to the authenticated MotoCons session. Local compilation and codec tests pass. Native rendering remains pending a parked-bike test. Message/call/weather status is not enabled by this change.
+Status in 0.12.49: real phone battery/charging, cellular signal and Bluetooth headset state use the authenticated MotoCons session. On 0.12.48 the owner observed native signal/battery/App/headset icons, and headset off/on transitions; private wire captures corroborated the corresponding status writes. Charging flag transitions were captured but the owner saw no battery-graphic change. The new build adds successful-write diagnostics and selected-peer exclusion in the phone preview. New auto-connect behavior and native charging rendering require physical checks. Message/call/weather status remains unavailable.
 
 ## Message icon follows RideDeck
 

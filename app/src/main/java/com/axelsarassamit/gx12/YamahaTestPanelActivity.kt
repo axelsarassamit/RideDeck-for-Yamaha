@@ -28,7 +28,7 @@ class YamahaTestPanelActivity:RiderPage() {
             "Authenticated: ${if(s.active && s.authenticated) "Yes" else "No"} · session ${if(s.connectedAt==0L) "not started" else if(!s.active) "ended" else "${(now-s.connectedAt)/1000} s"}\n"+
             "Keepalive: ${s.aliveRequests} requests / ${s.aliveReplies} replies written\n"+
             "Packets: ${s.packets} · last ${if(s.lastPacket==0L) "not received" else "${(now-s.lastPacket)/1000} s ago"}\n"+
-            "Supported vehicle IDs: ${s.supportedIds.joinToString().ifEmpty { "not received" }}\nCounters are evidence only; checks are never passed automatically."
+            "Supported vehicle IDs: ${s.supportedIds.joinToString().ifEmpty { "not received" }}\n${BikeDataStatusText.format(s,now)}\nCounters are evidence only; checks are never passed automatically."
     }
     override fun onResume() { super.onResume();updates.post(tick) }
     override fun onPause() { updates.removeCallbacks(tick);super.onPause() }

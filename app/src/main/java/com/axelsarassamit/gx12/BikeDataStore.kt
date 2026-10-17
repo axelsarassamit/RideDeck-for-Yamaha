@@ -3,14 +3,21 @@ package com.axelsarassamit.gx12
 import android.content.Context
 import android.os.SystemClock
 import app.pillion.core.*
+import app.pillion.protocol.YamahaPhoneStatus
+import app.pillion.protocol.YamahaStatusUpdates
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
+data class PhoneStatusWrite(val battery: Int? = null, val charging: Boolean? = null, val signal: Int? = null,
+    val headset: Boolean? = null, val count: Long = 0, val at: Long = 0)
+
 data class BikeDataState(val active: Boolean = false, val authenticated: Boolean = false,
     val status: String = "Connect to your parked Yamaha to read bike data.", val packets: Long = 0,
     val lastPacket: Long = 0, val connectedAt:Long=0, val aliveRequests:Long=0, val aliveReplies:Long=0,
-    val supportedIds:List<Int> = emptyList(), val values: Map<BikeMetric, BikeValue> = emptyMap(),
+    val supportedIds:List<Int> = emptyList(),
+    val additionalFields:List<CcuAdditionalFields.Observation> = emptyList(),
+    val phoneWrites:Map<YamahaStatusUpdates.Kind,PhoneStatusWrite> = emptyMap(), val values: Map<BikeMetric, BikeValue> = emptyMap(),
     val raw: Map<String, Pair<String, Long>> = emptyMap(), val faults: List<CcuTelemetry.Fault>? = null,
     val faultsAt: Long = 0, val injection: Long? = null, val injectionAt: Long = 0, val ignition: Boolean? = null)
 
@@ -51,7 +58,7 @@ object BikeDataStore {
             decoded.forEach { values[it.metric] = it }
             val raw = state.raw.toMutableMap()
             val permitted = when (message.command) {
-                0x10f -> setOf(1, 3, 9, 72)
+                0x10f -> setOf(1, 72)
                 0x114 -> setOf(521, 570, 682, 683, 698, 558, 574, 1028, 689)
                 0x10b -> setOf(61857, 61858, 63233)
                 else -> emptySet()
@@ -82,6 +89,27 @@ object BikeDataStore {
             append(c, event)
             if (decoded.isNotEmpty() || safeItems.isNotEmpty()) RideBookStore.recordBike(c, decoded, name, safeItems, wall, now)
         } catch (error: Exception) { BikeDiagnostics.record(c, "CCU telemetry rejected command=${message.command} exception=${error.javaClass.simpleName}") }
+    }
+    @Synchronized fun additional(c: Context, observations: List<CcuAdditionalFields.Observation>) {
+        if (state.additionalFields == observations) return
+        state = state.copy(additionalFields = observations.toList())
+        append(c, JSONObject().put("event", "additional_fields").put("results", JSONArray().apply {
+            observations.forEach { put(JSONObject().put("id", it.id).put("result", it.result.name).put("bytes", it.bytes)) }
+        }))
+    }
+    @Synchronized fun phoneStatusWritten(c: Context, phone: YamahaPhoneStatus, kind: YamahaStatusUpdates.Kind) {
+        if (!state.active || !state.authenticated) return
+        val old = state.phoneWrites[kind]
+        val write = PhoneStatusWrite(
+            battery = if (kind == YamahaStatusUpdates.Kind.BATTERY) phone.batteryPercent else null,
+            charging = if (kind == YamahaStatusUpdates.Kind.BATTERY) phone.charging else null,
+            signal = if (kind == YamahaStatusUpdates.Kind.SIGNAL) phone.signal?.wireValue else null,
+            headset = if (kind == YamahaStatusUpdates.Kind.HEADSET) phone.headset else null,
+            count = (old?.count ?: 0) + 1, at = SystemClock.elapsedRealtime())
+        state = state.copy(phoneWrites = state.phoneWrites + (kind to write))
+        append(c, JSONObject().put("event", "phone_status_written").put("kind", kind.name)
+            .put("battery_percent", write.battery).put("charging", write.charging)
+            .put("signal", write.signal).put("headset", write.headset).put("count", write.count))
     }
     @Synchronized fun mark(c: Context, value: String): Boolean {
         if (!state.active) return false

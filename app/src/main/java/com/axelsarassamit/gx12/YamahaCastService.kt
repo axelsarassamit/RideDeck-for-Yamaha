@@ -24,6 +24,7 @@ class YamahaCastService : Service() {
         @JvmField @Volatile var sessionId = ""
         @JvmField @Volatile var automaticFallbackPending = false
         @JvmField @Volatile var autoReconnectPaused = false
+        @JvmField @Volatile var connectedAddress = ""
         const val STOP = "ridebridge.STOP_CAST"
     }
     private val main = Handler(Looper.getMainLooper())
@@ -164,6 +165,8 @@ class YamahaCastService : Service() {
                 link.write(NaviLiteCodec.build(6, service, 0, byteArrayOf(if (available) 1 else 0, 0)))
             }
             if(size.width != 480 || size.height !in listOf(234,240)) { running=false; RideBackgroundSession.castStopped(this); status="Unsupported NaviLite display size"; error(status) }
+            connectedAddress = address
+            YamahaBikeAutoConnect.connected(applicationContext, address)
             status = "Bike connected. Starting selected map on the bike display..."
             deadline = SystemClock.elapsedRealtime() + 30000
             NativeNavigation.resize(size.width, size.height)
@@ -366,6 +369,8 @@ class YamahaCastService : Service() {
             receiver?.interrupt()
             receiver?.join(1500)
             if(receiver?.isAlive == true) { running=false; RideBackgroundSession.castStopped(this); diagnostic("Receiver did not stop; reconnect paused") }
+            connectedAddress = ""
+            YamahaBikeAutoConnect.disconnected(applicationContext, address)
             receiver=null; socket=null
         }
     }
@@ -373,6 +378,8 @@ class YamahaCastService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) { diagnostic("Bike connection continues after Recent apps removal"); super.onTaskRemoved(rootIntent) }
 
     override fun onDestroy() {
+        val oldPeer = connectedAddress; connectedAddress = ""
+        if (oldPeer.isNotBlank()) YamahaBikeAutoConnect.disconnected(applicationContext, oldPeer)
         running = false; active = false
         if (status.startsWith("Bike-only map") || status.startsWith("Connecting")) status = "Casting stopped."
         watchdog.shutdownNow()

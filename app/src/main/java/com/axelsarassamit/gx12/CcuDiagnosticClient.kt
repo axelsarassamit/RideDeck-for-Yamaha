@@ -49,6 +49,12 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private var credentials = byteArrayOf()
     private var authenticated = false
     private var pairedAddress = ""
+    val bikeAddress get() = pairedAddress
+    private val additional = app.pillion.core.CcuAdditionalFields()
+    private var checkingAdditional = false
+    private val additionalTimeout = Runnable {
+        additional.timeout(); publishAdditional(); continueAdditional()
+    }
     private var phoneStatus: YamahaPhoneStatusMonitor? = null
     private val statusUpdates = YamahaStatusUpdates()
     @Volatile private var setupStep = "requesting accessory connection details"
@@ -64,6 +70,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private var transfer = byteArrayOf()
     private var stage = ""
     private var lastRead = -10000L
+    private var lastAdditional = -30000L
     private val assembly = CcuProtocol.Assembly()
     private val notifications = CcuProtocol.Notifications()
     private data class Operation(val kind: String, val uuid: UUID, val start: () -> Boolean, val done: () -> Unit)
@@ -225,16 +232,47 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         if (!authenticated || closed) { report("Authenticate the Yamaha data connection first."); return }
         if (plan.phase != CcuReadPlan.Phase.READY) { report("Bike data setup is still running. Live values appear as they arrive."); return }
         val now = SystemClock.elapsedRealtime()
-        if (now - lastRead < 5000 || stage.isNotEmpty()) { report("Wait for the current request before reading again."); return }
+        if (now - lastRead < 5000 || stage.isNotEmpty() || additional.active) { report("Wait for the current request before reading again."); return }
         lastRead = now
         // IDs and server observed on the owner's XMAX. This is a snapshot, not a settings or actuator write.
         report("Reading ${plan.supported.size} vehicle fields confirmed by the bike…")
         begin(CcuProtocol.vehicleRequest(1248, plan.supported))
     }
+    fun checkAdditionalFields() {
+        if (!authenticated || closed) { report("Connect bike data before checking additional fields."); return }
+        if (plan.phase != CcuReadPlan.Phase.READY || stage.isNotEmpty() || additional.active) {
+            report("Wait for the current bike-data request to finish."); return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAdditional < 30000 || now - lastRead < 5000) {
+            report("Wait 30 seconds between additional-field checks, and finish the current snapshot first."); return
+        }
+        lastAdditional = now
+        checkingAdditional = true
+        additional.start(plan.supported)
+        publishAdditional(); nextAdditional()
+    }
+    private fun publishAdditional() { BikeDataStore.additional(context, additional.observations) }
+    private fun nextAdditional() {
+        if (closed || !authenticated) return
+        val request = additional.next()
+        publishAdditional()
+        if (request == null) { checkingAdditional = false; report("Additional field check finished. Live bike data remains connected. Review the check results below."); return }
+        report("Checking bike-declared field ${additional.waiting}. Live data continues…")
+        main.postDelayed(additionalTimeout, 10000)
+        begin(request)
+    }
+    private fun continueAdditional() {
+        if (!checkingAdditional || additional.waiting != null || stage.isNotEmpty()) return
+        if (additional.active) nextAdditional()
+        else { checkingAdditional = false; report("Additional field check finished. Live bike data remains connected. Review the check results below.") }
+    }
     private fun startup() {
         if (!authenticated || stage.isNotEmpty() || waitingPhase != null || closed) return
         val request = plan.request()
         if (request == null) {
+            continueAdditional()
+            if (additional.active) return
             report("Bike data connected. Live readings are source-decoded; verify them against the dashboard. " +
                 if (plan.unavailable.isEmpty()) "" else "Some optional fields did not reply.")
             return
@@ -334,6 +372,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                 for (update in statusUpdates.updates(status, force)) {
                     write(CONTROL, update.bytes) {
                         BikeDiagnostics.record(context, "CCU phone status written kind=${update.kind}")
+                        BikeDataStore.phoneStatusWritten(context, status, update.kind)
                     }
                 }
             }
@@ -342,6 +381,9 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private fun decoded(message: CcuProtocol.Message) {
         if (!authenticated) return
         if (message.command in setOf(0x10b, 0x10d, 0x10f, 0x127) && CcuProtocol.server(message) != 1248) return
+        if (additional.accept(message)) {
+            main.removeCallbacks(additionalTimeout); publishAdditional(); continueAdditional()
+        }
         if (waitingPhase == plan.phase && plan.accepts(message)) {
             main.removeCallbacks(responseTimeout); waitingPhase = null
             BikeDiagnostics.record(context, "CCU read verified phase=${plan.phase}")
@@ -405,6 +447,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     fun close() {
         if (closed) return
         closed = true; main.removeCallbacksAndMessages(null); authenticated = false
+        checkingAdditional = false; additional.cancel(); publishAdditional()
         statusUpdates.stop(); phoneStatus?.close(); phoneStatus = null
         stopDiscovery()
         credentials.fill(0); transfer.fill(0); operations.clear(); pending = null; assembly.clear(); notifications.clear()

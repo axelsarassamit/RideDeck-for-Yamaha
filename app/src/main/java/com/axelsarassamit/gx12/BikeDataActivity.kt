@@ -19,6 +19,7 @@ class BikeDataActivity : RiderPage() {
     private lateinit var fuel: TextView
     private lateinit var notices: TextView
     private lateinit var raw: TextView
+    private lateinit var checks: TextView
     private var exporting: File? = null
     private var phonePreview: YamahaPhoneStatusMonitor? = null
     private var phoneDialog: android.app.AlertDialog? = null
@@ -27,6 +28,22 @@ class BikeDataActivity : RiderPage() {
         row(button("Connect to parked Yamaha") { choose() })
         row(button("Stop bike data") { BikeDataService.stop(this) })
         row(button("Read bike snapshot") { BikeDataService.readSnapshot() })
+        val auto = CheckBox(this).apply {
+            text="Auto-connect bike data with the map";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
+            isChecked=YamahaBikeAutoConnect.enabled(this@BikeDataActivity)
+            setOnCheckedChangeListener { _,checked->
+                RidePreferences.prefs(this@BikeDataActivity).edit().putBoolean("bike_data_auto",checked).apply()
+                YamahaBikeAutoConnect.changed(this@BikeDataActivity)
+            }
+        };row(auto)
+        row(text("Uses the same paired CCU after the map connects. Stop bike data pauses automatic starts until the next map connection. Up to three attempts per map connection."))
+        row(button("Check additional bike fields · parked only") {
+            android.app.AlertDialog.Builder(this).setTitle("Parked bike check")
+                .setMessage("Keep the bike parked, ignition on and engine off. Check declared fields 3 and 9 once each. Live data continues; unknown payloads are not saved.")
+                .setPositiveButton("Start check") { _,_->BikeDataService.checkAdditionalFields() }.setNegativeButton("Cancel",null).show()
+        })
+        checks=text("");row(checks)
+        row(button("Save private test log") { exportLog() })
         row(button("Yamaha test panel") { YamahaTestPanelActivity.open(this) })
         row(button("Check phone status") { previewPhoneStatus() })
         val continuous = CheckBox(this).apply {
@@ -61,12 +78,12 @@ class BikeDataActivity : RiderPage() {
         })
         raw=text("");raw.visibility=android.view.View.GONE;row(raw)
         row(button("Show / hide raw diagnostic fields") { raw.visibility=if(raw.visibility==android.view.View.VISIBLE) android.view.View.GONE else android.view.View.VISIBLE;refresh() })
-        row(button("Save private test log") {
-            exporting=BikeDataStore.export(this)
-            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
-                .putExtra(Intent.EXTRA_TITLE,"yamaha-private-test-${System.currentTimeMillis()}.jsonl"),99)
-        })
         refresh()
+    }
+    private fun exportLog() {
+        exporting=BikeDataStore.export(this)
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
+            .putExtra(Intent.EXTRA_TITLE,"yamaha-private-test-${System.currentTimeMillis()}.jsonl"),99)
     }
     private fun previewPhoneStatus() {
         if(android.os.Build.VERSION.SDK_INT>=31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -80,7 +97,7 @@ class BikeDataActivity : RiderPage() {
         phoneDialog=dialog
         dialog.setOnDismissListener { phonePreview?.close();phonePreview=null;phoneDialog=null }
         dialog.show()
-        phonePreview=YamahaPhoneStatusMonitor(applicationContext, "") { status,_ ->
+        phonePreview=YamahaPhoneStatusMonitor(applicationContext, BikeDataService.selectedAddress()) { status,_ ->
             if(dialog.isShowing) {
                 val signal=when(status.signal) {
                     app.pillion.protocol.YamahaAccessoryStatus.CellSignal.NO_CONNECTION->"No cellular connection"
@@ -89,7 +106,7 @@ class BikeDataActivity : RiderPage() {
                     else->"${status.signal.wireValue-1} of 4 bars"
                 }
                 fun yesNo(value:Boolean?)=when(value) { true->"Yes";false->"No";null->"Unavailable" }
-                dialog.setMessage("Phone battery: ${status.batteryPercent?.let { "$it%" } ?: "Unavailable"}\nCharging: ${yesNo(status.charging)}\nCellular signal: $signal\nHeadset connected: ${yesNo(status.headset)}\n\nThese are phone readings. Native Yamaha icons need a bike connection.")
+                dialog.setMessage("Phone battery: ${status.batteryPercent?.let { "$it%" } ?: "Unavailable"}\nCharging: ${yesNo(status.charging)}\nCellular signal: $signal\nHeadset connected: ${yesNo(status.headset)}\n\n" + BikeDataStatusText.phoneWrites(BikeDataStore.state,SystemClock.elapsedRealtime()))
             }
         }.also { it.start() }
     }
@@ -118,6 +135,7 @@ class BikeDataActivity : RiderPage() {
             label.text=if(value==null) "Waiting" else String.format(Locale.US,if(metric==BikeMetric.RPM || metric==BikeMetric.SPEED) "%.0f %s" else "%.1f %s",value.value,metric.unit) + if(fresh) "" else "\nLast known"
             label.setTextColor(if(fresh) RideStyle.TEXT else RideStyle.MUTED)
         }
+        checks.text=BikeDataStatusText.format(s,now)
         history.text="${s.packets} bike-data packets received\n" + if(s.lastPacket==0L) "Waiting for bike data." else "Last packet ${(now-s.lastPacket)/1000} seconds ago."
         fuel.text="Fuel remaining and range: awaiting confirmed litres and consumption units.\n" +
             if(s.injection==null) "Fuel-injection counter: waiting for a supported reply." else "Fuel-injection counter: ${s.injection} raw units.\nThis is not remaining fuel. Received ${(now-s.injectionAt)/1000} seconds ago."
