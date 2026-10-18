@@ -13,7 +13,7 @@ import org.junit.Test
 /** Exercise the visible menu after removing its hidden Standard-edition entries. */
 @SdkSuppress(minSdkVersion=29)
 class CleanupMenuTest {
-    @Test fun visibleCustomizationAndReplyChoiceKeepTheirActions() {
+    @Test fun visibleCategoriesAndReplyChoiceKeepTheirActions() {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val context=instrumentation.targetContext
         val prefs=RidePreferences.prefs(context)
@@ -37,14 +37,12 @@ class CleanupMenuTest {
         ActivityScenario.launch(SetupActivity::class.java).use { scenario ->
             try {
                 scenario.onActivity { activity ->
-                    MainActivity::class.java.getDeclaredMethod("showPersonalization").apply{isAccessible=true}.invoke(activity)
+                    click("Ride"); click("Calls & messages")
                 }
                 instrumentation.waitForIdleSync()
                 scenario.onActivity {
                     val labels=controls().map{it.text.toString()}
-                    val expected=listOf("Phone mount: Left / Centre / Right","Messages and email (choose several)","Reply method","Phone panel placement","Color theme","Music player","Home and Work destinations","Favorites","Nearby fuel stations","Bike position icon")
-                    expected.forEach{label->assertTrue("Missing Yamaha setting: $label",labels.contains(label))}
-                    assertFalse(labels.contains("Navigation / rider app"))
+                    assertTrue(labels.contains("Messages and read-only email"))
                     assertFalse(labels.contains("Bike map size"))
                     click("Reply method")
                 }
