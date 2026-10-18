@@ -2,7 +2,7 @@
 
 Requested 2026-10-09 from Axel's photo: message bubble, cellular signal, phone battery, App connection and headset. Restore these in the bike's native status bar. The outdoor temperature is bike-owned and is not replaced with phone weather.
 
-Status in 0.12.49: real phone battery/charging, cellular signal and Bluetooth headset state use the authenticated MotoCons session. On 0.12.48 the owner observed native signal/battery/App/headset icons, and headset off/on transitions; private wire captures corroborated the corresponding status writes. Charging flag transitions were captured but the owner saw no battery-graphic change. The new build adds successful-write diagnostics and selected-peer exclusion in the phone preview. New auto-connect behavior and native charging rendering require physical checks. Message/call/weather status remains unavailable.
+Previous status in 0.12.49: real phone battery/charging, cellular signal and Bluetooth headset state use the authenticated MotoCons session. On 0.12.48 the owner observed native signal/battery/App/headset icons, and headset off/on transitions; private wire captures corroborated the corresponding status writes. Charging flag transitions were captured but the owner saw no battery-graphic change. The new build adds successful-write diagnostics and selected-peer exclusion in the phone preview. New auto-connect behavior and native charging rendering require physical checks. Message/call/weather status remains unavailable.
 
 ## Message icon follows RideDeck
 
@@ -36,7 +36,7 @@ Read-only analysis of the phone's previously exported Y-Connect 3.9.0 executable
 
 Additional static inspection: `McNotificationDataV2` has notification ID, category, date/time, title, subtitle and detail fields. It is not a simple unread boolean. Do not pass RideDeck preview text to that API or assume an empty notification toggles the header icon. A matching indicator/clear sequence must be verified first.
 
-`YamahaAccessoryStatus` encodes only the three confirmed status messages. Missing, malformed or unavailable readings are omitted. `YamahaPhoneStatusMonitor` reads real Android battery, the default data SIM and Bluetooth audio profiles. It excludes the CCU itself from headphones. `YamahaStatusUpdates` sends initial and changed known values only after authentication, resends on a new authenticated session and responds to verified headset/signal requests. Stop/disconnect shuts down the monitor. Serialized status writes do not overtake keepalive responses.
+`YamahaAccessoryStatus` encodes the three separate status messages and the SDK combined status command316. Missing, malformed or unavailable readings are omitted. `YamahaPhoneStatusMonitor` reads real Android battery, the default data SIM and Bluetooth audio profiles. It excludes the CCU itself from headphones. `YamahaStatusUpdates` sends initial and changed known values only after authentication, resends on a new authenticated session and responds to verified headset/signal requests. Stop/disconnect shuts down the monitor. Serialized status writes do not overtake keepalive responses.
 
 No READ_PHONE_STATE or extra location permission is introduced. Signal callbacks request no location data on Android 13+. If the OS cannot provide a reading it stays unavailable; this is not a fabricated zero value. Android 8+ uses the legacy signal/service listeners. Headset proxies and callbacks are closed with their owner.
 
@@ -52,3 +52,15 @@ Primary Android API references:
 - https://developer.android.com/reference/android/telephony/TelephonyCallback.SignalStrengthsListener
 - https://developer.android.com/reference/android/telephony/TelephonyCallback.ServiceStateListener
 - https://developer.android.com/reference/android/telephony/PhoneStateListener
+
+## 0.12.50 combined status test
+
+The authenticated session now also publishes command316 (0x013c), a two-byte command plus four payload bytes. Battery uses bit7 for charging; phone/media volume bytes have capability flags; the final byte combines signal, thermal and headset. Real Android readings are required for all fields, otherwise this packet is omitted while separate known status updates remain available. Android29+ thermal status maps0/1/2 to low,3 to middle,4/5/6 to high, matching the reference application. Older Android versions retain separate publication when thermal state is unavailable. The reference source and three saved official-app captures support this wire format; this does not establish native charging appearance.
+
+Unsupported phone/media volume and on-hook capability flags remain off. Reading volume does not change it, route audio, or start SCO. The status dialog distinguishes completed combined writes from observed dashboard graphics. Phone values are polled every five seconds and deduplicated; reconnect publishes known values again. Keepalive replies retain queue priority.
+
+## Optional native music test
+
+Bike data now includes Native bike music · test, off by default. With explicit enablement and existing notification access, the selected music application's active Android media session supplies track metadata for command278 through the existing serialized bulk transfer. Initial setup, additional-field checks and current transfers take precedence; only the latest pending metadata is retried. Titles are capped on valid UTF8 codepoint boundaries. Native command279 is accepted only from the authenticated control notification characteristic, exactly three bytes with actions1next/2previous/3play/4pause. Unsupported actions and malformed frames do nothing. Android advertised playback actions are checked before dispatch. The bridge closes with its data session; no headset/audio mode is changed and no projected music page is added.
+
+The original source uses the shared LC42/LC5/LB2 path, but this is not proof every firmware supports native music. Keep the option off until a parked test. No message contents, calls, thermal warnings, fuel gauge or brake-pressure meanings are added by this work. A stalled metadata transfer stops only native music publication and blocks further bulk requests until reconnect. It preserves the authenticated live notifications and keepalive path, without sending a guessed remote abort. Disable the option and reconnect before another snapshot or music test. A GATT operation failure still uses the normal connection failure handling. Same-track seeks update progress while natural playback progression is deduplicated.

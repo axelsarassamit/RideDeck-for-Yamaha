@@ -29,7 +29,8 @@ object BikeDataStatusText {
         return "Phone status sent to bike${if(s.active && s.authenticated) "" else " (last session)"}\n" +
             line(Kind.BATTERY,"Battery") { "${it.battery}% · charging ${yesNo(it.charging)}" } + "\n" +
             line(Kind.SIGNAL,"Cellular") { when(it.signal) { 0 -> "No connection"; 1 -> "No signal"; else -> "${(it.signal ?: 1)-1} of 4 bars" } } + "\n" +
-            line(Kind.HEADSET,"Headset") { yesNo(it.headset) } +
+            line(Kind.HEADSET,"Headset") { yesNo(it.headset) } + "\n" +
+            line(Kind.COMBINED,"Combined phone status") { "${it.battery}% · charging ${yesNo(it.charging)} · headset ${yesNo(it.headset)}" } +
             "\nWrites confirm Bluetooth delivery, not the bike's icon appearance."
     }
 }

@@ -101,10 +101,10 @@ object BikeDataStore {
         if (!state.active || !state.authenticated) return
         val old = state.phoneWrites[kind]
         val write = PhoneStatusWrite(
-            battery = if (kind == YamahaStatusUpdates.Kind.BATTERY) phone.batteryPercent else null,
-            charging = if (kind == YamahaStatusUpdates.Kind.BATTERY) phone.charging else null,
-            signal = if (kind == YamahaStatusUpdates.Kind.SIGNAL) phone.signal?.wireValue else null,
-            headset = if (kind == YamahaStatusUpdates.Kind.HEADSET) phone.headset else null,
+            battery = if (kind in setOf(YamahaStatusUpdates.Kind.BATTERY, YamahaStatusUpdates.Kind.COMBINED)) phone.batteryPercent else null,
+            charging = if (kind in setOf(YamahaStatusUpdates.Kind.BATTERY, YamahaStatusUpdates.Kind.COMBINED)) phone.charging else null,
+            signal = if (kind in setOf(YamahaStatusUpdates.Kind.SIGNAL, YamahaStatusUpdates.Kind.COMBINED)) phone.signal?.wireValue else null,
+            headset = if (kind in setOf(YamahaStatusUpdates.Kind.HEADSET, YamahaStatusUpdates.Kind.COMBINED)) phone.headset else null,
             count = (old?.count ?: 0) + 1, at = SystemClock.elapsedRealtime())
         state = state.copy(phoneWrites = state.phoneWrites + (kind to write))
         append(c, JSONObject().put("event", "phone_status_written").put("kind", kind.name)

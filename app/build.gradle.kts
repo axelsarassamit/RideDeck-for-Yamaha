@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.49").removePrefix("v")
+        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.50").removePrefix("v")
         val parts = releaseVersion.split(".")
         require(parts.size >= 2 && parts.take(3).all { it.all(Char::isDigit) }) {
             "GX12_VERSION_NAME must use numeric semver such as 0.1.0"

@@ -32,4 +32,19 @@ object YamahaAccessoryStatus {
     fun headset(connected: Boolean?): ByteArray? = connected?.let {
         byteArrayOf(0x01, 0x1c, if (it) 1 else 0)
     }
+    /** SDK command 316. Capability bits stay off until their incoming controls are supported. */
+    fun combined(status: YamahaPhoneStatus): ByteArray? {
+        val battery = status.batteryPercent ?: return null
+        val charging = status.charging ?: return null
+        val signal = status.signal ?: return null
+        val headset = status.headset ?: return null
+        val phone = status.phoneVolume ?: return null
+        val media = status.mediaVolume ?: return null
+        val thermal = status.thermal ?: return null
+        if (battery !in 0..100 || phone !in 0..100 || media !in 0..100 || thermal !in 0..2) return null
+        return byteArrayOf(1, 0x3c, (battery or if (charging) 0x80 else 0).toByte(),
+            phone.toByte(), media.toByte(),
+            ((signal.wireValue shl 4) or (thermal shl 2) or if (headset) 2 else 0).toByte())
+    }
+
 }

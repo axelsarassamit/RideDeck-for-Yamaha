@@ -1,7 +1,8 @@
 package app.pillion.protocol
 
 data class YamahaPhoneStatus(val batteryPercent: Int? = null, val charging: Boolean? = null,
-                             val signal: YamahaAccessoryStatus.CellSignal? = null, val headset: Boolean? = null) {
+                             val signal: YamahaAccessoryStatus.CellSignal? = null, val headset: Boolean? = null,
+                             val phoneVolume: Int? = null, val mediaVolume: Int? = null, val thermal: Int? = null) {
     enum class Network { IN_SERVICE, OUT_OF_SERVICE, EMERGENCY_ONLY, POWER_OFF, UNKNOWN }
     companion object {
         fun percent(level: Int, scale: Int): Int? =
@@ -32,7 +33,7 @@ data class YamahaPhoneStatus(val batteryPercent: Int? = null, val charging: Bool
 
 /** A session-local change filter. Only an authenticated owner starts publication. */
 class YamahaStatusUpdates {
-    enum class Kind { BATTERY, SIGNAL, HEADSET }
+    enum class Kind { BATTERY, SIGNAL, HEADSET, COMBINED }
     data class Update(val kind: Kind, val bytes: ByteArray)
     private var active = false
     private val previous = mutableMapOf<Kind, List<Byte>>()
@@ -43,7 +44,8 @@ class YamahaStatusUpdates {
         val packets = listOf(
             Kind.BATTERY to YamahaAccessoryStatus.battery(status.batteryPercent, status.charging),
             Kind.SIGNAL to YamahaAccessoryStatus.signal(status.signal),
-            Kind.HEADSET to YamahaAccessoryStatus.headset(status.headset))
+            Kind.HEADSET to YamahaAccessoryStatus.headset(status.headset),
+            Kind.COMBINED to YamahaAccessoryStatus.combined(status))
         return packets.mapNotNull { (kind, bytes) ->
             if (bytes == null) { previous.remove(kind); return@mapNotNull null }
             val value = bytes.toList()

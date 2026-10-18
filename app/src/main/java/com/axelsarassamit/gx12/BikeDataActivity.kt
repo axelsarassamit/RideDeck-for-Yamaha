@@ -46,6 +46,14 @@ class BikeDataActivity : RiderPage() {
         row(button("Save private test log") { exportLog() })
         row(button("Yamaha test panel") { YamahaTestPanelActivity.open(this) })
         row(button("Check phone status") { previewPhoneStatus() })
+        row(CheckBox(this).apply {
+            text="Native bike music · test";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
+            isChecked=RidePreferences.prefs(this@BikeDataActivity).getBoolean("yamaha_native_music_test",false)
+            setOnCheckedChangeListener { _,checked ->
+                RidePreferences.prefs(this@BikeDataActivity).edit().putBoolean("yamaha_native_music_test",checked).apply()
+            }
+        })
+        row(text("Optional parked test: send the selected player's track to Yamaha's built-in music screen and accept its music buttons. Requires music notification access. Phone playback controls remain available."))
         val continuous = CheckBox(this).apply {
             text="Keep bike data connected during a ride";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
             isChecked=RidePreferences.prefs(this@BikeDataActivity).getBoolean("bike_data_during_ride",false)

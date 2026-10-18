@@ -18,7 +18,7 @@ import java.util.UUID
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
 
-/** User-started parked diagnostic session. Only observed authentication and data-read commands. */
+/** Authenticated parked data session with observed reads and optional native phone integration. */
 @SuppressLint("MissingPermission")
 class CcuDiagnosticClient(private val context: Context, private val report: (String) -> Unit,
                           private val received: (CcuProtocol.Message) -> Unit, private val ended: () -> Unit = {}) {
@@ -57,6 +57,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     }
     private var phoneStatus: YamahaPhoneStatusMonitor? = null
     private val statusUpdates = YamahaStatusUpdates()
+    private var nativeMusic: YamahaNativeMusicBridge? = null
     @Volatile private var setupStep = "requesting accessory connection details"
     private fun setupStep(value: String) {
         setupStep=value
@@ -69,6 +70,8 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private var transferId = 0
     private var transfer = byteArrayOf()
     private var stage = ""
+    private var optionalMusicTransfer = false
+    private var bulkBlocked = false
     private var lastRead = -10000L
     private var lastAdditional = -30000L
     private val assembly = CcuProtocol.Assembly()
@@ -77,7 +80,18 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
     private val operations = ArrayDeque<Operation>()
     private var pending: Operation? = null
     private val operationTimeout = Runnable { fail("Bike did not finish a Bluetooth operation. Stop and reconnect while parked.") }
-    private val transferTimeout = Runnable { fail("Bike data transfer timed out. No reading was accepted.") }
+    private val transferTimeout = Runnable {
+        if (optionalMusicTransfer) {
+            // No guessed remote abort: retain live notifications/keepalive, and block
+            // further bulk requests until a clean reconnect resolves remote state.
+            optionalMusicTransfer = false; bulkBlocked = true; stage = ""
+            transfer.fill(0); transfer = byteArrayOf()
+            operations.removeAll { it.uuid in setOf(SEND_HEADER, SEND_DATA, STATUS) }
+            nativeMusic?.close(); nativeMusic = null
+            report("Native music transfer unavailable. Live bike data continues. Reconnect before another snapshot or music test.")
+            BikeDiagnostics.record(context, "CCU optional music transfer timed out; bulk requests paused, live data retained")
+        } else fail("Bike data transfer timed out. No reading was accepted.")
+    }
     private val setupTimeout = Runnable { fail("Yamaha data timed out while $setupStep. Close Y-Connect / nRF Connect and reconnect while parked. Pairing is preserved.") }
     private val responseTimeout = Runnable {
         val expected = waitingPhase
@@ -222,6 +236,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         })
     }
     private fun begin(payload: ByteArray) {
+        if (bulkBlocked) { report("Reconnect bike data before another bulk request."); return }
         if (stage.isNotEmpty()) { report("A bike data request is still running."); return }
         transferId = transferId % 255 + 1
         transfer = payload.copyOf(); stage = "inactive"
@@ -229,18 +244,20 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         readStatus()
     }
     fun readSnapshot() {
+        if (bulkBlocked) { report("Reconnect bike data before another snapshot; live readings continue."); return }
         if (!authenticated || closed) { report("Authenticate the Yamaha data connection first."); return }
         if (plan.phase != CcuReadPlan.Phase.READY) { report("Bike data setup is still running. Live values appear as they arrive."); return }
         val now = SystemClock.elapsedRealtime()
-        if (now - lastRead < 5000 || stage.isNotEmpty() || additional.active) { report("Wait for the current request before reading again."); return }
+        if (bulkBlocked || now - lastRead < 5000 || stage.isNotEmpty() || additional.active) { report("Wait for the current request before reading again."); return }
         lastRead = now
         // IDs and server observed on the owner's XMAX. This is a snapshot, not a settings or actuator write.
         report("Reading ${plan.supported.size} vehicle fields confirmed by the bike…")
         begin(CcuProtocol.vehicleRequest(1248, plan.supported))
     }
     fun checkAdditionalFields() {
+        if (bulkBlocked) { report("Reconnect bike data before checking additional fields; live readings continue."); return }
         if (!authenticated || closed) { report("Connect bike data before checking additional fields."); return }
-        if (plan.phase != CcuReadPlan.Phase.READY || stage.isNotEmpty() || additional.active) {
+        if (bulkBlocked || plan.phase != CcuReadPlan.Phase.READY || stage.isNotEmpty() || additional.active) {
             report("Wait for the current bike-data request to finish."); return
         }
         val now = SystemClock.elapsedRealtime()
@@ -300,12 +317,13 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                             for (offset in transfer.indices step width) {
                                 val end = minOf(offset + width, transfer.size)
                                 write(SEND_DATA, CcuProtocol.fragment(transferId, offset, transfer.copyOfRange(offset, end))) {
-                                    if (end == transfer.size) { stage = "complete"; readStatus() }
+                                    if (stage == "sending" && end == transfer.size) { stage = "complete"; readStatus() }
                                 }
                             }
                         }
                         "complete" -> if (inactive) {
-                            transfer.fill(0); transfer = byteArrayOf(); stage = ""; main.removeCallbacks(transferTimeout)
+                            if (optionalMusicTransfer) BikeDiagnostics.record(context, "CCU native music metadata transfer completed")
+                            transfer.fill(0); transfer = byteArrayOf(); stage = ""; optionalMusicTransfer = false; main.removeCallbacks(transferTimeout)
                             startup()
                         }
                     }
@@ -322,6 +340,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                         }
                         return
                     }
+                    if (authenticated && nativeMusic?.control(value) == true) return
                     if (authenticated && value.size == 2) {
                         when (CcuProtocol.u(value, 0, 2)) {
                             0x11b -> { phoneStatus?.refresh(setOf(YamahaStatusUpdates.Kind.HEADSET)); return }
@@ -336,6 +355,11 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
                         report("Accessory authentication accepted. Reading the bike's capabilities…")
                         BikeDiagnostics.record(context, "CCU authentication accepted")
                         startPhoneStatus()
+                        nativeMusic = YamahaNativeMusicBridge(context) { bytes ->
+                            if (closed || !authenticated || bulkBlocked || plan.phase != CcuReadPlan.Phase.READY ||
+                                stage.isNotEmpty() || waitingPhase != null || additional.active || checkingAdditional) false
+                            else { optionalMusicTransfer = true; begin(bytes); true }
+                        }.also { it.start() }
                         startup()
                     }
                     else if (value.size == 6 && CcuProtocol.u(value, 0, 2) == 0x120)
@@ -449,6 +473,7 @@ class CcuDiagnosticClient(private val context: Context, private val report: (Str
         closed = true; main.removeCallbacksAndMessages(null); authenticated = false
         checkingAdditional = false; additional.cancel(); publishAdditional()
         statusUpdates.stop(); phoneStatus?.close(); phoneStatus = null
+        nativeMusic?.close(); nativeMusic = null
         stopDiscovery()
         credentials.fill(0); transfer.fill(0); operations.clear(); pending = null; assembly.clear(); notifications.clear()
         runCatching { socket?.close() }; socket = null

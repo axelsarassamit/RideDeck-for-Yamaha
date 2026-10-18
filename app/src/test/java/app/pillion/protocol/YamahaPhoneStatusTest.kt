@@ -60,4 +60,25 @@ class YamahaPhoneStatusTest {
         assertEquals(3,updates.updates(status()).size)
         assertTrue(updates.updates(YamahaPhoneStatus(101,false,null,null)).isEmpty())
     }
+    @Test fun combinedStatusMatchesSdkPackingWithoutAdvertisingUnsupportedControls() {
+        val value=status().copy(phoneVolume=25,mediaVolume=75,thermal=2,headset=true)
+        assertArrayEquals(byteArrayOf(1,0x3c,0xbf.toByte(),25,75,0x4a),YamahaAccessoryStatus.combined(value))
+        assertArrayEquals(byteArrayOf(1,0x3c,63,25,75,0x40),
+            YamahaAccessoryStatus.combined(value.copy(charging=false,headset=false,thermal=0)))
+        assertNull(YamahaAccessoryStatus.combined(status()))
+        for (invalid in listOf(value.copy(phoneVolume=null),value.copy(mediaVolume=101),
+            value.copy(thermal=3),value.copy(signal=null),value.copy(headset=null)))
+            assertNull(YamahaAccessoryStatus.combined(invalid))
+    }
+    @Test fun combinedPublicationTracksChargingThermalAndVolumeAndReconnect() {
+        val updates=YamahaStatusUpdates();updates.start()
+        val value=status().copy(phoneVolume=0,mediaVolume=100,thermal=0)
+        assertEquals(4,updates.updates(value).size)
+        assertTrue(updates.updates(value).isEmpty())
+        assertEquals(listOf(Kind.COMBINED),updates.updates(value.copy(mediaVolume=50)).map { it.kind })
+        assertEquals(listOf(Kind.COMBINED),updates.updates(value.copy(mediaVolume=50,thermal=1)).map { it.kind })
+        updates.stop();assertTrue(updates.updates(value).isEmpty())
+        updates.start();assertEquals(4,updates.updates(value).size)
+    }
+
 }

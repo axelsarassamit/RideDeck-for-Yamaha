@@ -67,4 +67,59 @@ class BikeDataDiagnosticsTest {
             prefs.edit().apply { if(existed)putBoolean("bike_data_auto",old) else remove("bike_data_auto") }.commit()
         }
     }
+    @Test fun combinedStatusExportAndMonitorUseRealPhoneReadings() {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val c=instrumentation.targetContext
+        val latch=java.util.concurrent.CountDownLatch(1)
+        var snapshot: YamahaPhoneStatus?=null
+        var monitor: YamahaPhoneStatusMonitor?=null
+        instrumentation.runOnMainSync {
+            monitor=YamahaPhoneStatusMonitor(c,"") { value,_ -> snapshot=value;latch.countDown() }.also { it.start() }
+        }
+        try {
+            assertTrue(latch.await(12,java.util.concurrent.TimeUnit.SECONDS))
+            val value=snapshot!!
+            assertTrue(value.batteryPercent in 0..100)
+            assertNotNull(value.charging)
+            assertTrue(value.phoneVolume in 0..100)
+            assertTrue(value.mediaVolume in 0..100)
+            if(android.os.Build.VERSION.SDK_INT>=29) assertTrue(value.thermal in 0..2)
+            BikeDataStore.start(c);BikeDataStore.status("Preview-only combined status",true)
+            BikeDataStore.phoneStatusWritten(c,value,YamahaStatusUpdates.Kind.COMBINED)
+            val text=BikeDataStatusText.phoneWrites(BikeDataStore.state,android.os.SystemClock.elapsedRealtime())
+            assertTrue(text.contains("Combined phone status: ${value.batteryPercent}%"))
+            assertEquals(value.charging,BikeDataStore.state.phoneWrites[YamahaStatusUpdates.Kind.COMBINED]?.charging)
+        } finally {
+            instrumentation.runOnMainSync { monitor?.close() }
+            BikeDataStore.stop(c,"Preview test finished")
+        }
+    }
+
+    @Test fun optionalMusicTimeoutKeepsAuthenticationAndBlocksUncertainBulkState() {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val reports=mutableListOf<String>();var ended=false
+            val client=CcuDiagnosticClient(instrumentation.targetContext,{ reports.add(it) },{}, { ended=true })
+            fun field(name:String)=CcuDiagnosticClient::class.java.getDeclaredField(name).apply { isAccessible=true }
+            try {
+                field("authenticated").setBoolean(client,true)
+                field("optionalMusicTransfer").setBoolean(client,true)
+                field("stage").set(client,"active")
+                field("transfer").set(client,byteArrayOf(1,0x16,0,0,0))
+                (field("transferTimeout").get(client) as Runnable).run()
+                assertFalse(ended)
+                assertFalse(field("closed").getBoolean(client))
+                assertTrue(field("authenticated").getBoolean(client))
+                assertTrue(field("bulkBlocked").getBoolean(client))
+                assertEquals("",field("stage").get(client))
+                assertEquals(0,(field("transfer").get(client) as ByteArray).size)
+                val begin=CcuDiagnosticClient::class.java.getDeclaredMethod("begin",ByteArray::class.java).apply { isAccessible=true }
+                begin.invoke(client,byteArrayOf(1,0x16,0,0,0))
+                assertEquals("",field("stage").get(client))
+                assertTrue(reports.any { it.contains("Live bike data continues") })
+                assertTrue(reports.last().contains("Reconnect"))
+            } finally { client.close() }
+        }
+    }
+
 }

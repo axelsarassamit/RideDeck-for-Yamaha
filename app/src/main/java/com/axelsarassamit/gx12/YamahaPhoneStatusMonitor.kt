@@ -102,9 +102,28 @@ class YamahaPhoneStatusMonitor(private val context: Context, private val bikeAdd
         }
         val absent = runCatching { telephony?.simState == TelephonyManager.SIM_STATE_ABSENT }.getOrDefault(false)
         val snapshot = YamahaPhoneStatus(YamahaPhoneStatus.percent(level, scale), charging,
-            YamahaPhoneStatus.cellSignal(absent, network, signalLevel), headset())
+            YamahaPhoneStatus.cellSignal(absent, network, signalLevel), headset(),
+            volume(AudioManager.STREAM_VOICE_CALL), volume(AudioManager.STREAM_MUSIC), thermal())
         main.post { if (running && generation == current) { latest = snapshot; changed(snapshot, force) } }
     }
+
+    private fun volume(stream: Int): Int? = runCatching {
+        val audio = context.getSystemService(AudioManager::class.java) ?: return@runCatching null
+        val maximum = audio.getStreamMaxVolume(stream)
+        val current = audio.getStreamVolume(stream)
+        if (maximum <= 0 || current !in 0..maximum) null else current * 100 / maximum
+    }.getOrNull()
+
+    private fun thermal(): Int? = if (Build.VERSION.SDK_INT >= 29) runCatching {
+        when (context.getSystemService(PowerManager::class.java)?.currentThermalStatus) {
+            PowerManager.THERMAL_STATUS_NONE, PowerManager.THERMAL_STATUS_LIGHT,
+            PowerManager.THERMAL_STATUS_MODERATE -> 0
+            PowerManager.THERMAL_STATUS_SEVERE -> 1
+            PowerManager.THERMAL_STATUS_CRITICAL, PowerManager.THERMAL_STATUS_EMERGENCY,
+            PowerManager.THERMAL_STATUS_SHUTDOWN -> 2
+            else -> null
+        }
+    }.getOrNull() else null
 
     private fun headset(): Boolean? {
         val enabled = runCatching { adapter?.isEnabled }.getOrNull() ?: return null
