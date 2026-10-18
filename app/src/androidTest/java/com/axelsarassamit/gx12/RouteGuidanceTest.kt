@@ -17,6 +17,7 @@ class RouteGuidanceTest {
         assertEquals(listOf(-2),valhalla[1].valid)
         val bad=LaneData.valhalla(JSONArray("[{\"directions\":2,\"active\":8}]"))
         assertTrue(bad.single().preferred.isEmpty())
+        assertTrue(LaneData.valhalla(JSONArray("[{\"directions\":8,\"active\":8},null,{\"directions\":2}]")).isEmpty())
         val sections=LaneData.tomTom(JSONArray("[{\"sectionType\":\"LANES\",\"startPointIndex\":1,\"endPointIndex\":2,\"lanes\":[{\"directions\":[\"LEFT\"],\"follow\":\"LEFT\"},{\"directions\":[\"STRAIGHT\"]}]}]"),3)
         assertEquals(1,sections.size)
         assertEquals("Use the left lane.",sections.single().spoken())
