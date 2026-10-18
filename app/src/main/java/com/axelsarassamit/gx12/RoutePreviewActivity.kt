@@ -108,11 +108,11 @@ class RoutePreviewActivity : Activity() {
         mapStatus=TextView(this).apply { text="Loading map..."; textSize=18f; setTextColor(RideStyle.TEXT); setBackgroundColor(RideStyle.PANEL); setPadding(dp(12),dp(12),dp(12),dp(12)); gravity=Gravity.CENTER }
         mapArea.addView(mapStatus,FrameLayout.LayoutParams(-1,-2,Gravity.CENTER))
         val tools=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        listOf("−","Overview","+").forEachIndexed { index,label ->
+        listOf("−","Overview","Roads","+").forEachIndexed { index,label ->
             tools.addView(button(label).apply {
                 minHeight=dp(56);textSize=20f
-                contentDescription=when(index){0->"Zoom out";2->"Zoom in";else->"Show all routes"}
-                setOnClickListener { when(index){0->map?.animateCamera(CameraUpdateFactory.zoomOut());2->map?.animateCamera(CameraUpdateFactory.zoomIn());else->overview()} }
+                contentDescription=when(index){0->"Zoom out";2->"Road preferences";3->"Zoom in";else->"Show all routes"}
+                setOnClickListener { when(index){0->map?.animateCamera(CameraUpdateFactory.zoomOut());2->RoutePreferencesUi.show(this@RoutePreviewActivity){loadRoutes()};3->map?.animateCamera(CameraUpdateFactory.zoomIn());else->overview()} }
             },LinearLayout.LayoutParams(if(index==1) 0 else dp(72),dp(56),if(index==1) 1f else 0f).apply { leftMargin=dp(4);rightMargin=dp(4) })
         }
         mapColumn.addView(tools,LinearLayout.LayoutParams(-1,dp(60)))

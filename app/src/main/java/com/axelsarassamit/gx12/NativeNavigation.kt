@@ -78,6 +78,7 @@ object NativeNavigation {
     private var lastReroute = 0L
     private var offRouteSamples = 0
     private val announcements = NavigationAnnouncements()
+    private var spokenLaneKey=""
     private val trafficAnnouncements = TrafficAnnouncements()
     private val incidentAnnouncements = IncidentAnnouncements()
     private var incidentBusy=false
@@ -345,7 +346,8 @@ object NativeNavigation {
         val fresh=SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L
         speedLimit=if(remaining > 10 && RoadSpeedLimits.visible(fresh,routeBusy,fix.accuracy,bestDistance,headingDifference)) speedWindow?.at(segment) else null
         if(!routeBusy) refreshSpeedLimits(r)
-        val next = r.turns.firstOrNull { it.start > bestIndex } ?: r.turns.lastOrNull()
+        val nextIndex = NavigationTurnSelection.next(r.turns.map { NavigationTurnSelection.Turn(r.cumulative[it.start],it.sign) },travelled)
+        val next = r.turns.getOrNull(nextIndex)
         maneuver = next?.sign ?: 0
         val meters = if (next == null) remaining else max(0.0, r.cumulative[next.start] - travelled)
         val turns = dashRoute?.takeIf { it.revision == dashRouteRevision }?.turns ?: r.turns.mapIndexed { index,it ->
@@ -353,9 +355,8 @@ object NativeNavigation {
             DashTurn(it.sign, max(0.0,r.cumulative[it.start]-r.cumulative[previous]), it.text, it.road)
         }
         val duration = if(routeBusy) null else RouteTimeEstimator.remainingMillis(r.cumulative.last(),r.millis,travelled,r.timeLegs)
-        dashRoute = DashRoute(dashRouteRevision,turns,r.turns.indexOf(next).coerceAtLeast(0),meters,duration)
+        dashRoute = DashRoute(dashRouteRevision,turns,nextIndex.coerceAtLeast(0),meters,duration)
         guidance = if (remaining < 25 && bestIndex >= r.points.size - 4) "Arriving at destination" else "${distance(meters)}  ${next?.text ?: "Continue"}"
-        val nextIndex = r.turns.indexOf(next)
         val following = r.turns.getOrNull(nextIndex + 1)?.takeIf {
             next != null && it.start > next.start && r.cumulative[it.start] - r.cumulative[next.start] <= 120 && meters <= 120
         }?.let { NavigationSpeech.following(it.sign,it.road) }.orEmpty()
@@ -365,7 +366,7 @@ object NativeNavigation {
                 remaining < 25 && bestIndex >= r.points.size - 4,SystemClock.elapsedRealtime(),following)
             announce(cue)
             // Direction prompts take priority. Delay reports wait for room before the next turn.
-            if(cue==null && meters>max(150.0,speed*15) && !announceIncident()) announceTraffic()
+            if(cue==null && !announceLanes() && meters>max(150.0,speed*15) && !announceIncident()) announceTraffic()
         }
     }
     private fun announce(cue: NavigationAnnouncements.Cue?) {
@@ -374,6 +375,25 @@ object NativeNavigation {
         if(speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice) != true) return
         if(speaker?.speak(cue.text,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:${cue.id}") == TextToSpeech.SUCCESS)
             announcements.accepted(cue,SystemClock.elapsedRealtime())
+    }
+    private fun currentLanes():app.pillion.core.LaneSection? {
+        val c=context?:return null;val r=route?:return null;val fix=location?:return null
+        if(routeBusy||offRouteSamples>0||!RoutePreferencesUi.read(c).laneGuidance||
+            SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos !in 0..10_000_000_000L)return null
+        val lookAhead=((reliableSpeed(fix)?:0.0)*25).coerceIn(250.0,650.0)
+        return app.pillion.core.LaneGuidance.select(r.lanes,r.cumulative,travelledMeters,lookAhead)
+    }
+    private fun announceLanes():Boolean {
+        val lane=currentLanes()?:return false
+        val key="$dashRouteRevision:${lane.start}:${lane.end}"
+        if(key==spokenLaneKey||!speechReady||speaker?.isSpeaking!=false||
+            context?.let{RidePreferences.prefs(it).getBoolean("navigation_voice",true)}!=true)return false
+        if(speaker?.voice?.locale?.language?.let(NavigationSpeech::acceptsVoice)!=true)return false
+        val text=lane.spoken();if(text.isBlank())return false
+        if(speaker?.speak(text,TextToSpeech.QUEUE_FLUSH,null,"$routeGeneration:lane-$key")==TextToSpeech.SUCCESS) {
+            spokenLaneKey=key;return true
+        }
+        return false
     }
     private fun announceTraffic() {
         val now=SystemClock.elapsedRealtime()
@@ -589,6 +609,8 @@ object NativeNavigation {
                 if (phone) {
                     if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
                     currentTrafficAlert()?.let { TrafficAlertRenderer.draw(canvas,it,84f,38f,388f) }
+                    currentLanes()?.let { LaneGuidanceRenderer.draw(canvas,it,104f,if(currentTrafficAlert()==null)6f else 82f,368f) }
+                    LaneGuidanceRenderer.fuel(canvas,FuelEstimateStore.mapLabel(c),renderHeight)
                     phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false
                 } else {
                     val output=Bitmap.createBitmap(480,renderHeight,Bitmap.Config.ARGB_8888)
@@ -608,7 +630,7 @@ object NativeNavigation {
         val currentRoad=route?.turns?.lastOrNull { it.start <= progressIndex && it.road.isNotBlank() }?.road.orEmpty()
         val arrival=cockpitTrip()?.arrivalMillis?.let { java.text.SimpleDateFormat("HH:mm",java.util.Locale.US).format(java.util.Date(it)) }
         val notice=when { !fresh -> "Waiting for GPS"; routeBusy || offRouteSamples > 0 -> "Recalculating"; route == null -> "Choose destination"; else -> "" }
-        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice,currentTrafficAlert())
+        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice,currentTrafficAlert(),currentLanes(),context?.let{FuelEstimateStore.mapLabel(it)})
     }
     private fun banner(canvas: Canvas, paint: Paint, text: String, top: Int, bottom: Int, size: Float, dark: Boolean = isNightMap()) {
         paint.style=Paint.Style.FILL; paint.color=if(dark) 0xff14251c.toInt() else 0xfff4f6fa.toInt(); canvas.drawRect(0f,top.toFloat(),480f,bottom.toFloat(),paint)
@@ -635,7 +657,7 @@ object NativeNavigation {
         if(mode=="arrows" && route!=null) {
             banner(canvas,paint,guidance,0,40,20f)
             paint.color=if(night) 0xffb5ff76.toInt() else 0xff14251c.toInt(); paint.textSize=112f; paint.typeface=Typeface.DEFAULT_BOLD
-            val arrow=when { maneuver == -8 -> "↶"; maneuver == 8 -> "↷"; maneuver==6 -> "↻"; maneuver==5 -> "●"; maneuver<0 -> "←"; maneuver in 1..3 || maneuver==7 -> "→"; else -> "↑" }
+            val arrow=NavigationManeuver.glyph(maneuver)
             canvas.drawText(arrow,205f,167f,paint)
             if(!phone) banner(canvas,paint,"${distance(remaining)}  |  ${phoneTripSummary()}",height-34,height,18f)
             currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }

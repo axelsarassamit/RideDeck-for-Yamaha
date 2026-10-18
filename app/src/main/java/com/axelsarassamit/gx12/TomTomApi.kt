@@ -8,6 +8,7 @@ import org.maplibre.android.geometry.LatLng
 
 /** REST services use a phone-stored key. SDK trial entitlements are independent. */
 object TomTomApi {
+    @Volatile private var extendedLanesUnavailable=false
     fun configured(c:Context)=NavigationSecrets.read(c,"tomtom").isNotBlank()
     private fun endpoint(c:Context,path:String):Uri.Builder {
         val key=NavigationSecrets.read(c,"tomtom")
@@ -35,24 +36,43 @@ object TomTomApi {
         return all.distinctBy { "${it.latitude},${it.longitude}" }.take(10)
     }
     fun routes(c:Context,origin:Location,target:NavigationPlace,alternatives:Boolean):List<NavigationRoute> {
+        val preferences=RoutePreferencesUi.read(c)
         val url=endpoint(c,"routing/1/calculateRoute/${origin.latitude},${origin.longitude}:${target.latitude},${target.longitude}/json")
             .appendQueryParameter("travelMode","motorcycle").appendQueryParameter("traffic","true").appendQueryParameter("departAt","now")
-            .appendQueryParameter("avoid","motorways").appendQueryParameter("avoid","tollRoads").appendQueryParameter("avoid","unpavedRoads")
-            .appendQueryParameter("routeType","fastest").appendQueryParameter("alternativeType","anyRoute")
+
+            .appendQueryParameter("routeType",if(preferences.shortest) "shortest" else "fastest").appendQueryParameter("alternativeType","anyRoute")
             .appendQueryParameter("maxAlternatives",if(alternatives) "2" else "0")
             .appendQueryParameter("instructionsType","text").appendQueryParameter("language","en-GB")
         NativeNavigation.reliableHeading(origin)?.takeIf { android.os.SystemClock.elapsedRealtimeNanos()-origin.elapsedRealtimeNanos in 0..5_000_000_000L }?.let {
             url.appendQueryParameter("vehicleHeading","${kotlin.math.round(it).toInt()%360}")
         }
-        for(section in listOf("speedLimit","traffic","motorway","toll","tollVignette","travelMode")) url.appendQueryParameter("sectionType",section)
-        return RouteChoices.ranked(parseRoutes(NavigationApi.request(url.build(),"TomTom"),target))
+        for(avoid in preferences.tomTomAvoids())url.appendQueryParameter("avoid",avoid)
+        for(section in listOf("speedLimit","traffic","motorway","toll","tollVignette","travelMode","ferry","unpaved")) url.appendQueryParameter("sectionType",section)
+        val base=url.build()
+        val lanes=preferences.laneGuidance && !extendedLanesUnavailable
+        val request=if(lanes)base.buildUpon().appendQueryParameter("sectionType","lanes").build() else base
+        val response=try { NavigationApi.request(request,"TomTom") } catch(e:IllegalStateException) {
+            if(!lanes || ("HTTP 400" !in e.message.orEmpty() && "HTTP 403" !in e.message.orEmpty()))throw e
+            extendedLanesUnavailable=true
+            BikeDiagnostics.record(c,"TomTom extended lane data unavailable; retrying standard motorcycle route")
+            NavigationApi.request(base,"TomTom")
+        }
+        return RoutePreferencesUi.ranked(parseRoutes(response,target,preferences),preferences)
     }
-    internal fun parseRoutes(json:JSONObject,target:NavigationPlace):List<NavigationRoute> {
+    internal fun parseRoutes(json:JSONObject,target:NavigationPlace,preferences:app.pillion.core.RoadPreferences=app.pillion.core.RoadPreferences()):List<NavigationRoute> {
         val result=mutableListOf<NavigationRoute>();val raw=json.getJSONArray("routes")
         for(i in 0 until minOf(raw.length(),3)) {
             val r=raw.getJSONObject(i);val sections=r.optJSONArray("sections")
             // Avoid is a routing preference. Reject a returned motorway/toll route rather than treating it as a guarantee.
-            if((0 until (sections?.length() ?: 0)).any { sections!!.getJSONObject(it).optString("sectionType") in listOf("MOTORWAY","TOLL_ROAD","TOLL","TOLL_VIGNETTE") }) continue
+            if((0 until (sections?.length() ?: 0)).any {
+                when(sections!!.getJSONObject(it).optString("sectionType")) {
+                    "MOTORWAY"->preferences.avoidMotorways
+                    "TOLL_ROAD","TOLL","TOLL_VIGNETTE"->preferences.avoidTolls
+                    "FERRY"->preferences.avoidFerries
+                    "UNPAVED"->preferences.avoidDirt
+                    else->false
+                }
+            }) continue
             val legs=r.getJSONArray("legs");require(legs.length()==1) { "Unexpected motorcycle route." }
             val geometry=legs.getJSONObject(0).getJSONArray("points");require(geometry.length() in 2..100000)
             val points=(0 until geometry.length()).map { n->geometry.getJSONObject(n).let {
@@ -66,7 +86,7 @@ object TomTomApi {
                 val start=row.getInt("pointIndex");val end=rows.getOrNull(n+1)?.getInt("pointIndex") ?: points.lastIndex
                 require(start in points.indices && end in start..points.lastIndex)
                 val begin=row.optLong("travelTimeInSeconds",0);val finish=rows.getOrNull(n+1)?.optLong("travelTimeInSeconds",seconds) ?: seconds
-                NavigationTurn(row.optString("message","Continue"),sign(row.optString("maneuver")),start,end,row.optString("street"),(finish-begin).coerceAtLeast(0)*1000)
+                NavigationTurn(row.optString("message","Continue"),NavigationManeuver.tomTom(row.optString("maneuver"), row.optString("modifier")),start,end,row.optString("street"),(finish-begin).coerceAtLeast(0)*1000)
             }
             val limits=IntArray(points.size-1);val seen=BooleanArray(limits.size)
             for(n in 0 until (sections?.length() ?: 0)) {
@@ -76,16 +96,10 @@ object TomTomApi {
                 val limit=app.pillion.core.RoadSpeedLimits.numeric((s.opt("maxSpeedLimitInKmh") as? Number)?.toDouble()) ?: 0
                 for(edge in a until b) { limits[edge]=if(seen[edge]) 0 else limit;seen[edge]=true }
             }
-            result.add(NavigationRoute(target,points,turns,meters,seconds*1000,"TomTom",limits,summary.optLong("trafficDelayInSeconds",0).coerceAtLeast(0)*1000))
+            result.add(NavigationRoute(target,points,turns,meters,seconds*1000,"TomTom",limits,summary.optLong("trafficDelayInSeconds",0).coerceAtLeast(0)*1000,LaneData.tomTom(sections,points.size)))
         }
-        check(result.isNotEmpty()) { "No motorcycle route avoiding motorways and toll roads was found." }
+        check(result.isNotEmpty()) { "No motorcycle route matching the selected road preferences was found. Try changing Road preferences." }
         return result
-    }
-    private fun sign(m:String)=when(m) {
-        "TURN_LEFT"->-2;"TURN_RIGHT"->2;"BEAR_LEFT","KEEP_LEFT"->-1;"BEAR_RIGHT","KEEP_RIGHT"->1
-        "SHARP_LEFT"->-3;"MAKE_U_TURN"->-8;"SHARP_RIGHT"->3;"ARRIVE","ARRIVE_LEFT","ARRIVE_RIGHT"->5
-        "ENTER_ROUNDABOUT","ROUNDABOUT_CROSS","ROUNDABOUT_LEFT","ROUNDABOUT_RIGHT","ROUNDABOUT_BACK"->6
-        "EXIT_ROUNDABOUT"->7;else->0
     }
     fun stations(c:Context,lat:Double,lon:Double):List<BikePlace> {
         val json=NavigationApi.request(endpoint(c,"search/2/nearbySearch/.json").appendQueryParameter("lat","$lat")

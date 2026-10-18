@@ -8,7 +8,8 @@ import android.text.Layout
 import java.util.Locale
 
 data class BikeNavigationState(val sign: Int, val meters: Double?, val nextRoad: String,
-    val currentRoad: String, val arrival: String?, val speedLimit: Int?, val notice: String = "",val alert:TrafficAlert?=null)
+    val currentRoad: String, val arrival: String?, val speedLimit: Int?, val notice: String = "",val alert:TrafficAlert?=null,
+    val lanes:app.pillion.core.LaneSection?=null,val fuelRange:String?=null)
 
 /** One compositor for the 480-pixel bike image and its diagnostic preview. */
 object BikeNavigationRenderer {
@@ -40,6 +41,8 @@ object BikeNavigationRenderer {
         val shown=TextUtils.ellipsize(road,TextPaint(p),(layout.mapWidth-20).toFloat(),TextUtils.TruncateAt.END).toString()
         canvas.drawText(shown,10f,layout.mapHeight+19f,p)
         state.alert?.let { TrafficAlertRenderer.draw(canvas,it,52f,4f,layout.mapWidth-56f) }
+        state.lanes?.let { LaneGuidanceRenderer.draw(canvas,it,54f,if(state.alert==null)6f else 52f,layout.mapWidth-62f) }
+        LaneGuidanceRenderer.fuel(canvas,state.fuelRange,layout.mapHeight)
         p.color=0xff101724.toInt(); canvas.drawRect(0f,(layout.height-layout.creditHeight).toFloat(),480f,layout.height.toFloat(),p)
         p.color=Color.WHITE; p.typeface=Typeface.DEFAULT; p.textSize=10f
         canvas.drawText("© MapTiler  © OpenStreetMap contributors",7f,layout.height-3f,p)
@@ -50,7 +53,7 @@ object BikeNavigationRenderer {
             .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).build()
         canvas.save(); canvas.translate(x,y); textLayout.draw(canvas); canvas.restore()
     }
-    private fun arrow(canvas: Canvas, p: Paint, sign: Int, x: Float, y: Float) {
+    internal fun arrow(canvas: Canvas, p: Paint, sign: Int, x: Float, y: Float) {
         canvas.save(); canvas.translate(x,y)
         if (sign == 5) {
             p.style=Paint.Style.STROKE; p.strokeWidth=4f; canvas.drawLine(-18f,24f,-18f,-23f,p)

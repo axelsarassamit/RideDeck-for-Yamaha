@@ -17,7 +17,7 @@ import java.net.URL
 
 data class NavigationPlace(val label: String, val latitude: Double, val longitude: Double, val kind: String = "", val relevance: Double = 1.0, val provider: String = "")
 data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int, val road: String = "", val millis: Long = 0)
-data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long, val provider: String = "Valhalla", val speedLimits: IntArray? = null, val trafficDelayMillis: Long = 0) {
+data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long, val provider: String = "Valhalla", val speedLimits: IntArray? = null, val trafficDelayMillis: Long = 0, val lanes: List<app.pillion.core.LaneSection> = emptyList()) {
     val cumulative = DoubleArray(points.size).also { distances ->
         val result = FloatArray(1)
         for (i in 1 until points.size) {
@@ -158,14 +158,16 @@ object NavigationApi {
     fun routes(context: Context, origin: Location, target: NavigationPlace, alternatives: Boolean = true): List<NavigationRoute> {
         if(TomTomApi.configured(context) && RidePreferences.prefs(context).getBoolean("tomtom_routing",true))
             return TomTomApi.routes(context,origin,target,alternatives)
+        val preferences=RoutePreferencesUi.read(context)
         val locations = JSONArray()
             .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude))
             .put(JSONObject().put("lat", target.latitude).put("lon", target.longitude))
         val payload = JSONObject().put("locations", locations).put("costing", "motorcycle")
             .put("units", "kilometers").put("language", "en-US").put("alternates", if(alternatives) 2 else 0)
-            .put("costing_options",JSONObject().put("motorcycle",JSONObject().put("use_highways",0.0).put("use_tolls",0.0)))
+            .put("turn_lanes",preferences.laneGuidance)
+            .put("costing_options",JSONObject().put("motorcycle",JSONObject(preferences.valhallaOptions())))
         val response = request(Uri.parse("https://valhalla1.openstreetmap.de/route"), "Valhalla", payload)
-        return RouteChoices.ranked(parseRoutes(response, target))
+        return RoutePreferencesUi.ranked(parseRoutes(response, target),preferences)
     }
 
     internal fun parseRoutes(response: JSONObject, target: NavigationPlace): List<NavigationRoute> {
@@ -201,15 +203,14 @@ object NavigationApi {
         require(seconds.isFinite() && seconds >= 0 && seconds <= Long.MAX_VALUE/1000.0) { "Route duration unavailable." }
         val meters = summary.getDouble("length") * 1000.0
         require(meters.isFinite() && meters >= 0) { "Route distance unavailable." }
-        return NavigationRoute(target, points, turns, meters, (seconds*1000).toLong())
+        val lanes=(0 until raw.length()).mapNotNull { i->
+            val list=LaneData.valhalla(raw.getJSONObject(i).optJSONArray("lanes"))
+            app.pillion.core.LaneSection(turns[i].start,turns[i].end,list).takeIf{it.usable()}
+        }
+        return NavigationRoute(target, points, turns, meters, (seconds*1000).toLong(),lanes=lanes)
     }
 
-    private fun valhallaTurnSign(type: Int): Int = when (type) {
-        9 -> 1; 10, 18, 20, 23 -> 2; 11 -> 3; 12 -> 8
-        14 -> -3; 13 -> -8; 15, 19, 21, 24 -> -2; 16 -> -1
-        4, 5, 6 -> 5; 26 -> 6; 27 -> 7
-        else -> 0
-    }
+    private fun valhallaTurnSign(type: Int): Int = NavigationManeuver.valhalla(type)
 
     private fun decodePolyline(encoded: String): List<LatLng> {
         require(encoded.length <= 2_000_000) { "Route geometry is too large." }

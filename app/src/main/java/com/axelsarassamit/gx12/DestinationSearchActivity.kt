@@ -42,17 +42,18 @@ class DestinationSearchActivity:Activity() {
         status=TextView(this).apply { text="Search by name, or paste latitude, longitude.";textSize=16f;setTextColor(RideStyle.MUTED);setPadding(0,dp(8),0,dp(8)) };page.addView(status)
         results=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         page.addView(ScrollView(this).apply { addView(results) },LinearLayout.LayoutParams(-1,0,1f))
+        page.addView(button("Manage favorites") { FavoritePlacesActivity.open(this) });
         page.addView(button("Close") { finish() });setContentView(page);page.requestApplyInsets();showSaved("")
     }
     private fun share(text:String) { startActivity(Intent(this,SharedLocationActivity::class.java).setAction(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT,text)) }
     private fun showSaved(query:String) {
-        for(p in BikePlaces.favorites(this).filter { query.isBlank() || it.name.contains(query,true) })
-            NavigationApi.coordinate(p.destination)?.let { add(it.copy(label=p.name,kind="saved")) }
+        for(p in BikePlaces.favorites(this).filter { query.isBlank() || (it.name.contains(query,true) || it.category.contains(query,true)) })
+            runCatching { NavigationApi.coordinate(p.destination) }.getOrNull()?.let { add(it.copy(label=p.name,kind="saved",provider=p.category)) }
         val prefs=RidePreferences.prefs(this)
         for((name,key) in listOf("Home" to "bike_home","Work" to "bike_work")) {
             val label=prefs.getString(key+"_label",name).orEmpty()
             if(query.isBlank() || label.contains(query,true) || name.contains(query,true))
-                prefs.getString(key,"")?.let { NavigationApi.coordinate(it)?.let { p -> add(p.copy(label=label,kind="saved")) } }
+                prefs.getString(key,"")?.let { runCatching { NavigationApi.coordinate(it) }.getOrNull()?.let { p -> add(p.copy(label=label,kind="saved")) } }
         }
     }
     private fun search() {
@@ -76,23 +77,39 @@ class DestinationSearchActivity:Activity() {
     private fun choose(place:NavigationPlace) {
         AlertDialog.Builder(this).setTitle(place.label).setMessage("Check the map pin and route overview before starting.")
             .setNegativeButton("Cancel",null).setNeutralButton("Save place") { _,_ ->
-                val name=EditText(this).apply { setText(place.label);textSize=22f }
-                AlertDialog.Builder(this).setTitle("Name this place").setView(name).setPositiveButton("Next") { _,_ ->
-                    val label=name.text.toString().trim().take(120).ifBlank { place.label }
-                    AlertDialog.Builder(this).setTitle("Save as").setItems(arrayOf("Favorite","Home","Work")) { _,slot ->
-                        val pin="${place.latitude},${place.longitude}"
-                        if(slot==0) BikePlaces.add(this,label.take(80),pin)
-                        else RidePreferences.prefs(this).edit().putString(if(slot==1) "bike_home" else "bike_work",pin)
-                            .putString(if(slot==1) "bike_home_label" else "bike_work_label",label).apply()
-                        Toast.makeText(this,"Saved. Search this name next time.",Toast.LENGTH_LONG).show()
-                    }.show()
-                }.setNegativeButton("Cancel",null).show()
+                savePlace(place)
             }.setPositiveButton("Choose route") { _,_ ->
                 if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION),95)
                     Toast.makeText(this,"Allow precise location, then choose the destination again.",Toast.LENGTH_LONG).show()
                 } else { NativeNavigation.start(this);RoutePreviewActivity.open(this,place) }
-            }.show()
+            }.show().also(::largeButtons)
+    }
+    private fun savePlace(place:NavigationPlace) {
+        val pin="${place.latitude},${place.longitude}"
+        val options=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        val dialog=AlertDialog.Builder(this).setTitle("Save place").setView(options).setNegativeButton("Cancel",null).create()
+        options.addView(button("Favorite · name and category") {
+            dialog.dismiss()
+            FavoritePlacesActivity.savePlace(this,place.label,pin) { results.removeAllViews();showSaved("") }
+        })
+        for((title,key) in listOf("Home" to "bike_home","Work" to "bike_work")) options.addView(button(title) {
+            dialog.dismiss()
+            val name=EditText(this).apply { setText(place.label);textSize=22f;minHeight=dp(72) }
+            val labelDialog=AlertDialog.Builder(this).setTitle("Name for $title").setView(name).setNegativeButton("Cancel",null)
+                .setPositiveButton("Save") { _,_ ->
+                    val label=name.text.toString().trim().take(120).ifBlank { place.label }
+                    RidePreferences.prefs(this).edit().putString(key,pin).putString(key+"_label",label).apply()
+                    results.removeAllViews();showSaved("")
+                    Toast.makeText(this,"$title saved",Toast.LENGTH_SHORT).show()
+                }.show()
+            largeButtons(labelDialog)
+        })
+        dialog.show();largeButtons(dialog)
+    }
+    private fun largeButtons(dialog:AlertDialog) {
+        for(which in listOf(AlertDialog.BUTTON_POSITIVE,AlertDialog.BUTTON_NEUTRAL,AlertDialog.BUTTON_NEGATIVE))
+            dialog.getButton(which)?.apply { minHeight=dp(72);textSize=20f;isAllCaps=false }
     }
     override fun onDestroy() { generation++;worker.shutdownNow();super.onDestroy() }
 }

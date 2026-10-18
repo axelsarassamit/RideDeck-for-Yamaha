@@ -1187,37 +1187,7 @@ public class MainActivity extends android.app.Activity {
             });
     }
 
-    private void showBikeFavorites() {
-        java.util.List<BikePlace> places = BikePlaces.favorites(this);
-        String[] names = new String[places.size() + 1];
-        for (int i = 0; i < places.size(); i++) names[i] = places.get(i).getName();
-        names[places.size()] = "Add favorite";
-        new android.app.AlertDialog.Builder(this).setTitle("Bike favorites")
-            .setItems(names, (dialog, which) -> {
-                if (which < places.size()) {
-                    new android.app.AlertDialog.Builder(this).setTitle(places.get(which).getName())
-                        .setMessage(places.get(which).getDestination()).setNegativeButton("Close", null)
-                        .setPositiveButton("Remove", (d, w) -> { BikePlaces.remove(this, which); showBikeFavorites(); }).show();
-                    return;
-                }
-                LinearLayout fields = new LinearLayout(this); fields.setOrientation(LinearLayout.VERTICAL); fields.setPadding(dp(24), dp(12), dp(24), 0);
-                EditText name = new EditText(this); name.setHint("Name");
-                EditText destination = new EditText(this); destination.setHint("Latitude,longitude (or save a search result)");
-                fields.addView(name); fields.addView(destination);
-                android.app.AlertDialog favorite = new android.app.AlertDialog.Builder(this).setTitle("Add bike favorite").setView(fields)
-                    .setNegativeButton("Cancel", null).setPositiveButton("Save", null).create();
-                favorite.setOnShowListener(d -> favorite.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                        if (name.getText().toString().trim().isEmpty()) { name.setError("Enter a name"); return; }
-                        if (!validBikeCoordinate(destination.getText().toString().trim())) {
-                            destination.setError("Enter latitude,longitude or save a destination search result"); return;
-                        }
-                        try {
-                            BikePlaces.add(this, name.getText().toString().trim(), destination.getText().toString().trim()); favorite.dismiss(); showBikeFavorites();
-                        }
-                        catch (Exception e) { displayError(safeMessage(e)); }
-                    })); favorite.show();
-            }).setNegativeButton("Close", null).show();
-    }
+    private void showBikeFavorites() { FavoritePlacesActivity.open(this); }
     private boolean validBikeCoordinate(String coordinate) {
         try { return NavigationApi.INSTANCE.coordinate(coordinate) != null; }
         catch (IllegalArgumentException invalid) { return false; }

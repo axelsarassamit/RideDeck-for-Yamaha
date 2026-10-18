@@ -75,6 +75,7 @@ class BikeDataActivity : RiderPage() {
             };row(line)
         }
         history=text("");row(history);fuel=text("");row(fuel);notices=text("");row(notices)
+        row(button("Estimated fuel range and refills") { FuelRangeActivity.open(this) })
         row(button("Find a fuel station") { FuelStationsActivity.open(this) })
         row(button("Ride book") { RideBookActivity.open(this) })
         row(text("Close Y-Connect and disconnect nRF Connect before testing RideDeck independently. Keep existing pairing. These readings use the source-confirmed XMAX layout and still need a dashboard check. Fuel-counter units, brake and indicator meanings remain unverified. Raw byte changes are not decoded controls."))

@@ -10,28 +10,60 @@ import java.net.URLEncoder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-data class BikePlace(val name: String, val destination: String, val metres: Float = 0f, val source: String = "OpenStreetMap", val fuelPriceId: String = "")
+data class BikePlace(val name: String, val destination: String, val metres: Float = 0f, val source: String = "OpenStreetMap", val fuelPriceId: String = "", val category: String = "Unsorted", val id: String = "")
 object BikePlaces {
     @Volatile private var stationTime = 0L
     @Volatile private var lastSearch = 0L
     @JvmField @Volatile var stations: List<BikePlace> = emptyList()
     fun freshStations(): List<BikePlace> = if (android.os.SystemClock.elapsedRealtime() - stationTime < 900000) stations else emptyList()
+    val presetCategories = listOf("Unsorted", "Food & drink", "Shopping", "Fuel", "Service & repair", "Scenic stops", "Friends & family")
     @JvmStatic fun favorites(context: Context): List<BikePlace> = runCatching {
         val array = JSONArray(RidePreferences.prefs(context).getString("bike_favorites", "[]"))
-        (0 until array.length()).map { array.getJSONObject(it) }.map {
-            BikePlace(it.getString("name"), it.getString("destination"))
-        }.take(20)
+        (0 until array.length()).mapNotNull { index -> runCatching {
+            val item = array.getJSONObject(index)
+            val destination = item.getString("destination")
+            BikePlace(item.getString("name"), destination,
+                category = item.optString("category", "Unsorted").ifBlank { "Unsorted" },
+                id = item.optString("id").ifBlank {
+                    java.util.UUID.nameUUIDFromBytes("$index:$destination".toByteArray(Charsets.UTF_8)).toString()
+                })
+        }.getOrNull() }
     }.getOrDefault(emptyList())
-    @JvmStatic fun add(context: Context, name: String, destination: String) {
+    @JvmStatic fun categories(context: Context): List<String> {
+        val custom = runCatching {
+            val array = JSONArray(RidePreferences.prefs(context).getString("bike_favorite_categories", "[]"))
+            (0 until array.length()).map { array.getString(it) }
+        }.getOrDefault(emptyList())
+        return (presetCategories + custom + favorites(context).map { it.category }).distinct()
+    }
+    @JvmStatic fun addCategory(context: Context, value: String): String {
+        val name = value.trim()
+        require(name.isNotEmpty() && name.length <= 40) { "Use a category name of 1 to 40 characters" }
+        val existing = categories(context).firstOrNull { it.equals(name, true) }
+        if (existing != null) return existing
+        val array = JSONArray()
+        (categories(context).filterNot { it in presetCategories } + name).forEach(array::put)
+        RidePreferences.prefs(context).edit().putString("bike_favorite_categories", array.toString()).apply()
+        return name
+    }
+    @JvmStatic fun add(context: Context, name: String, destination: String) = add(context, name, destination, "Unsorted")
+    @JvmStatic fun add(context: Context, name: String, destination: String, category: String) {
         require(name.isNotBlank() && destination.isNotBlank()) { "Enter a name and destination" }
         val places = favorites(context)
         require(places.size < 20) { "Up to 20 favorites are supported" }
-        save(context, places + BikePlace(name.take(60), destination.take(500)))
+        val group = addCategory(context, category)
+        save(context, places + BikePlace(name.trim().take(120), destination, category=group, id=java.util.UUID.randomUUID().toString()))
     }
+    @JvmStatic fun update(context: Context, id: String, name: String, category: String) {
+        require(name.isNotBlank()) { "Enter a name" }
+        val group = addCategory(context, category)
+        save(context, favorites(context).map { if (it.id == id) it.copy(name=name.trim().take(120),category=group) else it })
+    }
+    @JvmStatic fun removeById(context: Context, id: String) = save(context, favorites(context).filterNot { it.id == id })
     @JvmStatic fun remove(context: Context, index: Int) = save(context, favorites(context).filterIndexed { i, _ -> i != index })
     private fun save(context: Context, places: List<BikePlace>) {
         val array = JSONArray()
-        places.forEach { array.put(JSONObject().put("name", it.name).put("destination", it.destination)) }
+        places.forEach { array.put(JSONObject().put("id",it.id).put("name", it.name).put("destination", it.destination).put("category",it.category)) }
         RidePreferences.prefs(context).edit().putString("bike_favorites", array.toString()).apply()
     }
     /** Wire layout recovered from CRC-verified StreetCross services 98 and 99. */

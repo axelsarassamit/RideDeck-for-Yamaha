@@ -48,13 +48,14 @@ object RouteChoices {
     }).map{routes[it]}
     fun label(routes:List<NavigationRoute>,index:Int):String {
         val route=routes[index]
-        val label=when { index==0 -> "Fastest";route.meters+100<routes[0].meters && route.meters==routes.minOf{it.meters}->"Shorter";else->"Alternative" }
+        val label=when { index==0 && route.millis!=routes.minOf{it.millis} -> "Preferred";route.millis==routes.minOf{it.millis} -> "Fastest";route.meters==routes.minOf{it.meters}->"Shortest";else->"Alternative" }
         return "${index+1} · $label"
     }
     fun comparison(routes:List<NavigationRoute>,index:Int):String {
         val route=routes[index]
-        if(index==0) return if(route.trafficDelayMillis>=60000) "Traffic +${(route.trafficDelayMillis+59999)/60000} min" else "Best ETA"
-        val extra=((route.millis-routes[0].millis+59999)/60000).coerceAtLeast(0)
-        return if(extra==0L) "Similar time" else "+$extra min"
+        val extra=((route.millis-routes.minOf{it.millis}+59999)/60000).coerceAtLeast(0)
+        val time=if(extra==0L) "Best ETA" else "+$extra min"
+        val turns=route.turns.count{ kotlin.math.abs(it.sign)==8 }
+        return "$time · $turns U-turns" + if(route.trafficDelayMillis>=60000) " · traffic +${(route.trafficDelayMillis+59999)/60000} min" else ""
     }
 }
