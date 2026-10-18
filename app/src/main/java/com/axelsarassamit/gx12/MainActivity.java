@@ -313,13 +313,9 @@ public class MainActivity extends android.app.Activity {
         setupMenu.add("data", "Yamaha", "Bike data & ride book", "Live readings, ride history and fuel");
         setupMenu.add("tests", "Yamaha", "Yamaha tests & logs", "Parked tests, optional audio and connection logs");
         LinearLayout page = setupGroup(sections, "Navigation", "Maps, destinations and display panels", false);
-        page.addView(text("MapLibre navigation for compatible Yamaha displays", 16, RideStyle.TEXT, true));
-        Button navigation = button("MAP + PANEL SETTINGS");
-        navigation.setOnClickListener(v -> { NavigationUi.configure(this); });
-        page.addView(navigation, buttonParams());
+        page.addView(MapPanelSettings.create(this));
         setupAction(page, "Home and Work destinations", () -> choosePersonalization(6));
         setupAction(page, "Favourites", () -> showBikeFavorites());
-        setupAction(page, "Nearby fuel stations", () -> prepareFuelStations());
         page = setupGroup(sections, "Cockpit appearance", "Music player, colours, messages and control placement", false);
         setupAction(page, "Appearance and colour theme", () -> RideAppearance.show(this));
         setupAction(page, "Phone mount", () -> choosePersonalization(0));
@@ -470,8 +466,9 @@ public class MainActivity extends android.app.Activity {
                 choice.setButtonTintList(android.content.res.ColorStateList.valueOf(RideTheme.accent(this)));
             } else if (child instanceof Button) {
                 Button action = (Button) child; action.setAllCaps(false); action.setTextSize(16);
-                String label = action.getText().toString().toLowerCase(Locale.ROOT);
-                if (!label.isEmpty()) action.setText(Character.toUpperCase(label.charAt(0)) + label.substring(1));
+                String original = action.getText().toString();
+                String label = original.toLowerCase(Locale.ROOT);
+                if (!label.isEmpty() && original.equals(original.toUpperCase(Locale.ROOT))) action.setText(Character.toUpperCase(label.charAt(0)) + label.substring(1));
                 action.setMinimumHeight(dp(52)); action.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
                 action.setPadding(dp(16), dp(8), dp(16), dp(8)); action.setTextColor(RideStyle.TEXT);
                 android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
@@ -1554,6 +1551,7 @@ public class MainActivity extends android.app.Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 74) MapPanelSettings.refreshPermission(this);
         if (requestCode == 84) {
             Runnable next = pendingHeadsetVoice; pendingHeadsetVoice = null;
             boolean granted = results.length > 0;

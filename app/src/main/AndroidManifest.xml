@@ -97,6 +97,7 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <activity android:name=".MapPanelSettingsActivity" android:exported="false" android:screenOrientation="user" />
         <activity android:name=".SetupActivity" android:exported="true"
             android:screenOrientation="user" android:resizeableActivity="true"
             android:taskAffinity="${applicationId}.setup" android:excludeFromRecents="true">
