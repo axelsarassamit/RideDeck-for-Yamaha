@@ -25,3 +25,11 @@ Ordered remaining waypoints and style are saved locally with navigation resume s
 Limits: no automatic scenic-place discovery, weather scoring, road-condition assessment, booking, or fuel-stop guarantee. Motorcycle restrictions can be incomplete. No modifications to Yamaha authentication, bike packets, or CCU behavior.
 
 References: https://docs.tomtom.com/routing-api/documentation/tomtom-maps/v1/calculate-route and https://valhalla.github.io/valhalla/api/route/api-reference/
+
+## Direct riding controls
+
+Main cockpit: **Search | Fun ride | Ride tools**, always visible for map and music. Fun ride opens the planner directly, without Setup. Ride tools opens a flat grid: Search, Fun ride, Saved places, Home, Work, Fuel, Traffic, Ride book, Stop navigation. Home and Work validate the saved coordinates and open the route review map before navigation can start. Setup remains for configuration. The existing Camera, Voice, Yamaha and Dash controls remain.
+
+## Traffic-side U-turn correction
+
+Generic TomTom U-turn instructions use the instruction drivingSide: LEFT selects a right U-turn arrow; RIGHT selects a left U-turn arrow. Explicit maneuver direction takes priority. Valhalla explicit left/right types remain unchanged. English speech says make a U-turn. This source and fixture correction still needs normal-road verification in Thailand.

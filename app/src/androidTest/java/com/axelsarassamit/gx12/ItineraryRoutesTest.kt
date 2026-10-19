@@ -68,6 +68,19 @@ class ItineraryRoutesTest {
             assertEquals(lastIndex,r.turns.last().start);assertEquals(1,r.turns.count{it.sign==5})
         }
     }
+    @Test fun tomTomTrafficSideReachesTheDisplayedUturn() {
+        for ((side, sign) in listOf("LEFT" to 8, "RIGHT" to -8)) {
+            val points=org.json.JSONArray().put(org.json.JSONObject().put("latitude",13.0).put("longitude",100.0))
+                .put(org.json.JSONObject().put("latitude",13.001).put("longitude",100.0))
+            val instructions=org.json.JSONArray().put(org.json.JSONObject().put("pointIndex",0).put("maneuver","MAKE_UTURN").put("drivingSide",side))
+                .put(org.json.JSONObject().put("pointIndex",1).put("maneuver","ARRIVE"))
+            val route=org.json.JSONObject().put("legs",org.json.JSONArray().put(org.json.JSONObject().put("points",points)))
+                .put("guidance",org.json.JSONObject().put("instructions",instructions))
+                .put("summary",org.json.JSONObject().put("travelTimeInSeconds",20).put("lengthInMeters",100))
+            val parsed=TomTomApi.parseRoutes(org.json.JSONObject().put("routes",org.json.JSONArray().put(route)),c).single()
+            assertEquals(sign,parsed.turns.first().sign)
+        }
+    }
     @Test fun joinedSpeedLimitsKeepEdgePositionsAndUnknowns() {
         val first=part(a,b).copy(speedLimits=intArrayOf(50))
         val second=part(b,c).copy(speedLimits=intArrayOf(80))

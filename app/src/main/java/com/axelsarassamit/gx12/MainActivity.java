@@ -588,7 +588,8 @@ public class MainActivity extends android.app.Activity {
         boolean compact = isInMultiWindowMode();
         boolean stacked = compact || portrait;
         boolean shortMusic = !portrait && getResources().getConfiguration().screenHeightDp < 500 && "music".equals(renderedPanel);
-        int headerHeight = 64;
+        boolean shortHeight = !portrait && getResources().getConfiguration().screenHeightDp < 500;
+        int headerHeight = shortHeight ? 56 : 64;
         boolean controlsRight = controlsOnRight();
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -623,11 +624,14 @@ public class MainActivity extends android.app.Activity {
         if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(headerHeight)));
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
             phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, RideStyle.TEXT, true);
-            phoneGuidance.setMaxLines(portrait && !compact ? 3 : 2);
+            phoneGuidance.setMaxLines(shortHeight ? 1 : portrait && !compact ? 3 : 2);
+            if (shortHeight) phoneGuidance.setTextSize(22);
             phoneGuidance.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            phoneGuidance.setPadding(dp(12), dp(10), dp(12), dp(10));
+            phoneGuidance.setPadding(dp(12), dp(shortHeight ? 4 : 10), dp(12), dp(shortHeight ? 4 : 10));
             phoneGuidance.setBackground(RideStyle.surface(this, RideStyle.PANEL, 8, true));
-            phoneGuidance.setOnClickListener(v -> NavigationUi.mapMenu(this));
+            phoneGuidance.setTag("ride_navigation_instruction");
+            phoneGuidance.setOnClickListener(v -> new android.app.AlertDialog.Builder(this).setTitle("Navigation instruction")
+                .setMessage(NativeNavigation.phoneGuidance()).setPositiveButton("Close", null).show());
             phoneGuidance.setOnLongClickListener(v -> {
                 new android.app.AlertDialog.Builder(this).setTitle("Navigation instruction")
                     .setMessage(NativeNavigation.phoneGuidance()).setPositiveButton("Close", null).show();
@@ -637,11 +641,13 @@ public class MainActivity extends android.app.Activity {
             guidanceRow.addView(phoneGuidance, new LinearLayout.LayoutParams(0, -2, 1));
             phoneSpeedLimit = new SpeedLimitIcon(this);
             phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
-            LinearLayout.LayoutParams limitParams = new LinearLayout.LayoutParams(dp(compact ? 48 : 64), dp(compact ? 48 : 64));
+            LinearLayout.LayoutParams limitParams = new LinearLayout.LayoutParams(dp(compact || shortHeight ? 48 : 64), dp(compact || shortHeight ? 48 : 64));
             limitParams.leftMargin = dp(8); guidanceRow.addView(phoneSpeedLimit, limitParams);
             LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
             guidanceParams.topMargin = dp(8); root.addView(guidanceRow, guidanceParams);
         }
+
+        if (BuildConfig.YAMAHA) root.addView(NavigationUi.quickActions(this), new LinearLayout.LayoutParams(-1, dp(56)));
 
         LinearLayout workspace = new LinearLayout(this);
         workspace.setOrientation(LinearLayout.HORIZONTAL);
@@ -715,7 +721,7 @@ public class MainActivity extends android.app.Activity {
             : new LinearLayout.LayoutParams(0, -1, 0.8f);
         if (stacked) musicParams.bottomMargin = dp(8); else musicParams.rightMargin = dp(10);
         musicPanel = music;
-        android.widget.FrameLayout mediaSlot = new android.widget.FrameLayout(this);
+        android.widget.FrameLayout mediaSlot = new android.widget.FrameLayout(this); mediaSlot.setTag("ride_media_pane");
         mediaSlot.addView(music, new android.widget.FrameLayout.LayoutParams(-1, -1));
         callPanel = rideCard("");
         callPanel.removeAllViews();
@@ -755,7 +761,7 @@ public class MainActivity extends android.app.Activity {
         messageActions.addView(seenNext, rideWeight(56));
         messages.addView(messageActions);
         messagePanel = messages;
-        android.widget.FrameLayout messageSlot = new android.widget.FrameLayout(this);
+        android.widget.FrameLayout messageSlot = new android.widget.FrameLayout(this); messageSlot.setTag("ride_message_pane");
         messageSlot.addView(messages, new android.widget.FrameLayout.LayoutParams(-1, -1));
         messageSlot.addView(callPanel, new android.widget.FrameLayout.LayoutParams(-1, -1));
         controls.addView(messageSlot, stacked ? new LinearLayout.LayoutParams(-1, 0, 1)
@@ -786,7 +792,7 @@ public class MainActivity extends android.app.Activity {
                     case "Camera": showQuickCamera(); break;
                     case "Voice": startGoogleVoice(); break;
                 }
-            }); dock.addView(action, rideWeight(compact ? 56 : 64));
+            }); dock.addView(action, rideWeight(compact || shortHeight ? 56 : 64));
         }
         if (compact) {
             settings.setContentDescription("Setup - use while parked");

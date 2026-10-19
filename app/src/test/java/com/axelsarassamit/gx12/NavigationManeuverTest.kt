@@ -20,6 +20,17 @@ class NavigationManeuverTest {
         assertEquals(-2,NavigationManeuver.tomTom("turn_left"))
         assertEquals(0,NavigationManeuver.tomTom("not_a_real_uturn_type"))
     }
+    @Test fun genericUturnUsesTrafficSideButExplicitDirectionWins() {
+        for (type in listOf("MAKE_UTURN", "TRY_MAKE_UTURN", "MAKE_U_TURN")) {
+            assertEquals(8, NavigationManeuver.tomTom(type, drivingSide = "LEFT"))
+            assertEquals(-8, NavigationManeuver.tomTom(type, drivingSide = "RIGHT"))
+        }
+        assertEquals(-8, NavigationManeuver.tomTom("UTURN_LEFT", drivingSide = "LEFT"))
+        assertEquals(8, NavigationManeuver.tomTom("UTURN_RIGHT", drivingSide = "RIGHT"))
+        assertEquals(-8, NavigationManeuver.tomTom("MAKE_UTURN", "LEFT", "LEFT"))
+        assertEquals(8, NavigationManeuver.tomTom("MAKE_UTURN", "RIGHT", "RIGHT"))
+        assertEquals(-2, NavigationManeuver.tomTom("TURN_LEFT", drivingSide = "LEFT"))
+    }
     @Test fun uturnHasAdvanceAndImmediateSpeechRatherThanOrdinaryTurn() {
         val cues=NavigationAnnouncements()
         val advance=cues.next(3,-8,250.0,"Main Road",10.0,false,0)!!

@@ -18,6 +18,22 @@ import java.util.concurrent.Executors
 object NavigationUi {
     private val worker=Executors.newFixedThreadPool(2)
     private val main=Handler(Looper.getMainLooper())
+    /** Always visible on the riding cockpit; these are actions, not setup menus. */
+    @JvmStatic fun quickActions(activity:Activity):LinearLayout {
+        fun dp(value:Int)=(value*activity.resources.displayMetrics.density).toInt()
+        return LinearLayout(activity).apply {
+            tag="ride_quick_actions"
+            val actions=listOf<Pair<String,()->Unit>>(
+                "Search" to { search(activity,null) },
+                "Fun ride" to { activity.startActivity(Intent(activity,FunRideActivity::class.java)) },
+                "Ride tools" to { RideToolsActivity.open(activity) })
+            for((label,action) in actions) addView(Button(activity).apply {
+                text=label;contentDescription="Ride action: $label";isAllCaps=false;textSize=18f;maxLines=2;minHeight=dp(56)
+                gravity=Gravity.CENTER;setPadding(dp(3),dp(2),dp(3),dp(2));setTextColor(RideStyle.TEXT)
+                background=RideStyle.row(activity);setOnClickListener{action()}
+            },LinearLayout.LayoutParams(0,dp(56),1f).apply{leftMargin=dp(3);rightMargin=dp(3)})
+        }
+    }
     @JvmStatic fun configure(activity: Activity) { MapPanelSettingsActivity.open(activity) }
     internal fun bikePreview(activity: Activity) {
         val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Bike map preview" }

@@ -107,7 +107,7 @@ object TomTomApi {
                 require(start in points.indices && end in start..points.lastIndex)
                 val begin=row.optLong("travelTimeInSeconds",0);val finish=rows.getOrNull(n+1)?.optLong("travelTimeInSeconds",seconds) ?: seconds
                 val intermediateArrival=legs.length()>1 && n<rows.lastIndex && row.optString("maneuver").startsWith("ARRIVE")
-                NavigationTurn(if(intermediateArrival) "Continue on the planned ride" else row.optString("message","Continue"),if(intermediateArrival) 0 else NavigationManeuver.tomTom(row.optString("maneuver"), row.optString("modifier")),start,end,row.optString("street"),(finish-begin).coerceAtLeast(0)*1000)
+                NavigationTurn(if(intermediateArrival) "Continue on the planned ride" else row.optString("message","Continue"),if(intermediateArrival) 0 else NavigationManeuver.tomTom(row.optString("maneuver"), row.optString("modifier"), row.optString("drivingSide")),start,end,row.optString("street"),(finish-begin).coerceAtLeast(0)*1000)
             }
             val limits=IntArray(points.size-1);val seen=BooleanArray(limits.size)
             for(n in 0 until (sections?.length() ?: 0)) {

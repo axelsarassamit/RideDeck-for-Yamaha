@@ -5,11 +5,16 @@ import java.util.Locale
 /** Provider maneuver types, never inferred from localized instruction text. */
 object NavigationManeuver {
     private fun key(value: String) = value.trim().uppercase(Locale.ROOT).replace(Regex("[\\s_-]+"), "_")
-    fun tomTom(type: String, modifier: String = ""): Int {
+    fun tomTom(type: String, modifier: String = "", drivingSide: String = ""): Int {
         val normalized = key(type)
         val compact = normalized.replace("_", "")
         if (compact in setOf("MAKEUTURN", "TRYMAKEUTURN", "UTURN", "UTURNLEFT", "UTURNRIGHT", "MAKEUTURNLEFT", "MAKEUTURNRIGHT", "LEFTUTURN", "RIGHTUTURN"))
-            return if (compact.endsWith("RIGHT") || compact.startsWith("RIGHT") || key(modifier) == "RIGHT") 8 else -8
+            return when {
+                compact.endsWith("RIGHT") || compact.startsWith("RIGHT") || key(modifier) == "RIGHT" -> 8
+                compact.endsWith("LEFT") || compact.startsWith("LEFT") || key(modifier) == "LEFT" -> -8
+                key(drivingSide) == "LEFT" -> 8 // Left-side traffic normally turns across the road to the right.
+                else -> -8
+            }
         return when (normalized) {
             "TURN_LEFT" -> -2; "TURN_RIGHT" -> 2
             "BEAR_LEFT", "KEEP_LEFT" -> -1; "BEAR_RIGHT", "KEEP_RIGHT" -> 1
