@@ -4,6 +4,18 @@ import org.junit.Test
 import org.maplibre.android.geometry.LatLng
 import app.pillion.core.*
 class ItineraryRoutesTest {
+    @Test fun publicBangkokProviderLoopParsesEveryLegAndFinalArrival() {
+        val instrumentation=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val text=instrumentation.context.assets.open("bangkok_public_loop.json").bufferedReader().use{it.readText()}
+        val route=NavigationApi.parseRoutes(org.json.JSONObject(text),NavigationPlace("Public Bangkok loop",13.7279,100.5241)).single()
+        assertEquals(3,route.stopIndices.size)
+        assertTrue(route.stopIndices.zipWithNext().all{it.first<it.second})
+        assertEquals(route.points.lastIndex,route.stopIndices.last())
+        assertEquals(1,route.turns.count{it.sign==5})
+        assertTrue(route.turns.all{it.start in route.points.indices && it.end in it.start..route.points.lastIndex})
+        assertEquals(15085.0,route.meters,1.0)
+        assertTrue(route.millis in 2_250_000L..2_270_000L)
+    }
     private val a=NavigationPlace("A",13.0,100.0)
     private val b=NavigationPlace("B",13.001,100.001)
     private val c=NavigationPlace("C",13.002,100.002)

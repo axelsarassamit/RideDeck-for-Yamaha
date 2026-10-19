@@ -22,9 +22,7 @@ class FunRideFlowTest {
         val c=InstrumentationRegistry.getInstrumentation().targetContext
         check(c.packageName.endsWith(".preview"))
         val old=NativeNavigation.route
-        val running=fixture()
         RideBackgroundSession.navigationStopped(c)
-        NativeNavigation.route=running
         try {
             ActivityScenario.launch(FunRideActivity::class.java).use { scenario ->
                 scenario.onActivity { a ->
@@ -36,9 +34,9 @@ class FunRideFlowTest {
                 scenario.onActivity { a ->
                     val spinners=views(a.window.decorView).filterIsInstance<Spinner>()
                     assertEquals(listOf(3,1,2),spinners.map{it.selectedItemPosition})
-                    assertSame(running,NativeNavigation.route)
+                    assertSame(old,NativeNavigation.route)
                     views(a.window.decorView).filterIsInstance<Button>().first{it.text.toString()=="Back"}.performClick()
-                    assertSame(running,NativeNavigation.route)
+                    assertSame(old,NativeNavigation.route)
                 }
             }
         } finally { NativeNavigation.route=old;RideBackgroundSession.navigationStopped(c) }

@@ -157,11 +157,11 @@ class BikeDataActivity : RiderPage() {
         }
         checks.text=BikeDataStatusText.format(s,now)
         history.text="${s.packets} bike-data packets received\n" + if(s.lastPacket==0L) "Waiting for bike data." else "Last packet ${(now-s.lastPacket)/1000} seconds ago."
-        fuel.text="Fuel remaining and range: awaiting confirmed litres and consumption units.\n" +
+        fuel.text="Bike-reported fuel remaining: unavailable. Use Estimated fuel range and refills for your manual full-tank estimate.\n" +
             if(s.injection==null) "Fuel-injection counter: waiting for a supported reply." else "Fuel-injection counter: ${s.injection} raw units.\nThis is not remaining fuel. Received ${(now-s.injectionAt)/1000} seconds ago."
         val experiment=BikeDataStore.fuelExperiment()
         experimentalFuel.text=if(experiment==null) "Experimental session fuel: off. Separate from tank range." else buildString {
-            append("Estimated session fuel (experimental)\n")
+            append("Fuel sample coverage (experimental)\n")
             append("${experiment.samples} samples · ${experiment.coveredMillis/1000} seconds covered\n")
             if(experiment.litres!=null)append(String.format(Locale.US,"~%.3f L · calibration pending\n",experiment.litres))
             if(experiment.kmPerLitre!=null)append(String.format(Locale.US,"Estimated %.1f km/L\n",experiment.kmPerLitre))
