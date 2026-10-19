@@ -593,7 +593,6 @@ public class MainActivity extends android.app.Activity {
         boolean stacked = compact || portrait;
         boolean shortMusic = !portrait && getResources().getConfiguration().screenHeightDp < 500 && "music".equals(renderedPanel);
         boolean shortHeight = !portrait && getResources().getConfiguration().screenHeightDp < 500;
-        int headerHeight = shortHeight ? 56 : 64;
         boolean controlsRight = controlsOnRight();
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(RideStyle.BACKGROUND); root.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -604,26 +603,14 @@ public class MainActivity extends android.app.Activity {
         });
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         VelocityBrandView logo = new VelocityBrandView(this);
-        LinearLayout logoSlot = new LinearLayout(this);
-        logoSlot.setOrientation(LinearLayout.HORIZONTAL);
-        logoSlot.setGravity(Gravity.CENTER);
         logo.setContentDescription("RideDeck");
-        LinearLayout.LayoutParams rideLogoParams = new LinearLayout.LayoutParams(dp(104), dp(headerHeight));
-        rideLogoParams.rightMargin = dp(6);
-        logoSlot.addView(logo, rideLogoParams);
-        header.addView(logoSlot, new LinearLayout.LayoutParams(dp(112), dp(headerHeight)));
+        header.addView(logo,new LinearLayout.LayoutParams(dp(88),dp(48)));
+        CockpitClockView clock=new CockpitClockView(this);
+        ((TextView)clock.getChildAt(0)).setTextSize(9);
+        ((TextView)clock.getChildAt(1)).setAutoSizeTextTypeUniformWithConfiguration(12,18,1,android.util.TypedValue.COMPLEX_UNIT_SP);
+        header.addView(clock,new LinearLayout.LayoutParams(0,dp(48),1));
+        if (!compact) root.addView(header,new LinearLayout.LayoutParams(-1,dp(52)));
         castStatus = text(YamahaCastService.status, 11, RideStyle.MUTED, false);
-        castStatus.setMaxLines(1); castStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        CockpitClockView clock = new CockpitClockView(this);
-        header.addView(clock, new LinearLayout.LayoutParams(0, dp(headerHeight), 1));
-        clock.setOnClickListener(v -> RideAppearance.showOptions(this));
-        clock.setContentDescription("Clock; tap for design appearance");
-        if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(headerHeight)));
-        if (portrait && !compact) {
-            VelocityRideSummary summary = new VelocityRideSummary(this, "Search destination", () -> NavigationUi.search(this, null));
-            LinearLayout.LayoutParams summarySize = new LinearLayout.LayoutParams(-1, dp(100));
-            summarySize.topMargin = dp(8); root.addView(summary, summarySize);
-        }
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
             phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, RideStyle.TEXT, true);
             phoneGuidance.setMaxLines(shortHeight ? 1 : portrait && !compact ? 3 : 2);
@@ -657,7 +644,7 @@ public class MainActivity extends android.app.Activity {
         LinearLayout controls = new LinearLayout(this); controls.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         // Navigation guidance shares the short landscape height with music.
         boolean compactMusic = compact || shortMusic;
-        LinearLayout music = rideCard("NOW PLAYING");
+        LinearLayout music = rideCard("MUSIC");
         if (compactMusic) {
             music.removeAllViews(); music.setOrientation(compact ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
             music.setGravity(Gravity.CENTER_VERTICAL); music.setPadding(dp(8), dp(4), dp(8), dp(4));
@@ -669,7 +656,7 @@ public class MainActivity extends android.app.Activity {
             albumArt.setContentDescription("Album artwork");
             albumArt.setBackground(RideStyle.surface(this, RideStyle.RAISED, 8, false));
             albumArt.setClipToOutline(true);
-            LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(dp(portrait ? 88 : 64), dp(portrait ? 88 : 64)); art.rightMargin = dp(16);
+            LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(dp(portrait ? 88 : 64), dp(portrait ? 88 : 64)); art.rightMargin = dp(12);
             details.addView(albumArt, art);
         }
         LinearLayout metadataColumn = new LinearLayout(this); metadataColumn.setOrientation(LinearLayout.VERTICAL);
@@ -718,6 +705,7 @@ public class MainActivity extends android.app.Activity {
         LinearLayout.LayoutParams nextParams = rideWeight(compactMusic ? 56 : 64);
         nextParams.topMargin = 0;
         transport.addView(nextButton, nextParams); music.addView(transport, compact ? new LinearLayout.LayoutParams(dp(186), -2) : new LinearLayout.LayoutParams(-1, -2));
+        if (!compact) RoadlineUi.transport(transport,previousButton,playPauseButton,nextButton);
         LinearLayout.LayoutParams musicParams = compact
             ? new LinearLayout.LayoutParams(-1, dp(72))
             : portrait ? new LinearLayout.LayoutParams(-1, 0, 0.9f)
@@ -746,9 +734,10 @@ public class MainActivity extends android.app.Activity {
 
         LinearLayout messages = rideCard("MESSAGES");
         messages.setTag("ride_message_box");
-        messages.setBackground(RideStyle.surface(this, RideStyle.PANEL, 18, true));
+        messages.setBackground(RideStyle.surface(this, RideStyle.PANEL, 10, false));
+        messages.getChildAt(0).setVisibility(View.GONE);
         if (shortMusic) messages.setPadding(dp(16), dp(8), dp(16), dp(8));
-        messageSource = text("LATEST MESSAGE", compact ? 13 : 20, RideTheme.accent(this), true);
+        messageSource = text("LATEST MESSAGE", compact ? 13 : 14, RideTheme.accent(this), true);
         messageSource.setMaxLines(1); messageSource.setEllipsize(android.text.TextUtils.TruncateAt.END);
         messages.addView(messageSource);
         messagePreview = text("No new messages", compact ? 14 : 16, RideStyle.MUTED, false);
@@ -766,6 +755,7 @@ public class MainActivity extends android.app.Activity {
         Button seenNext = rideAction("Seen / next", false);
         seenNext.setOnClickListener(v -> acknowledgeMessage(displayedMessage()));
         messageActions.addView(seenNext, rideWeight(56));
+        RoadlineUi.messageAction(listen); RoadlineUi.messageAction(seenNext);
         messages.addView(messageActions);
         messagePanel = messages;
         android.widget.FrameLayout messageSlot = new android.widget.FrameLayout(this); messageSlot.setTag("ride_message_pane");
@@ -784,7 +774,8 @@ public class MainActivity extends android.app.Activity {
         LinearLayout dock = new LinearLayout(this);
         Button settings = rideAction("Setup", false);
         settings.setOnClickListener(v -> buildSetupScreen());
-        if (!compact) header.addView(settings, new LinearLayout.LayoutParams(dp(80), dp(56)));
+        RoadlineUi.setup(settings);
+        if (!compact) header.addView(settings, new LinearLayout.LayoutParams(dp(72), dp(48)));
         String[] labels = new String[]{"Yamaha", "Camera", "Voice", "Ride"};
         for (String label : labels) {
             if (label.equals("Ride")) { addDashRideDock(dock,compact,false);continue; }
@@ -807,6 +798,7 @@ public class MainActivity extends android.app.Activity {
             gear.setMargins(dp(3), dp(4), dp(3), 0);
             dock.addView(settings, gear);
         }
+        RoadlineUi.dock(dock);
         RideStyle.mirrorActions(dock,controlsRight);
         LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2); dp.topMargin = dp(8);
         root.addView(dock, dp);
@@ -849,7 +841,7 @@ public class MainActivity extends android.app.Activity {
 
     private LinearLayout rideCard(String label) {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(12), dp(16), dp(12)); card.setBackground(RideStyle.surface(this, RideStyle.PANEL, 8, true));
+        card.setPadding(dp(14), dp(10), dp(14), dp(10)); card.setBackground(RideStyle.surface(this, RideStyle.PANEL, 10, false));
         TextView title = text(label, 11, RideStyle.MUTED, true); title.setLetterSpacing(0.12f);
         card.addView(title, new LinearLayout.LayoutParams(-1, dp(18))); return card;
     }

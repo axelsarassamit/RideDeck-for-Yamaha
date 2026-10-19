@@ -27,7 +27,7 @@ object NavigationUi {
                 "Search" to { search(activity,null) },
                 "Fun ride" to { activity.startActivity(Intent(activity,FunRideActivity::class.java)) },
                 "Ride tools" to { RideToolsActivity.open(activity) })
-            val visibleActions=if(activity.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT && !activity.isInMultiWindowMode) actions.drop(1) else actions
+            val visibleActions=actions
             for((label,action) in visibleActions) addView(Button(activity).apply {
                 text=label;contentDescription="Ride action: $label";isAllCaps=false;textSize=18f;maxLines=2;minHeight=dp(56)
                 gravity=Gravity.CENTER;setPadding(dp(3),dp(2),dp(3),dp(2));setTextColor(RideStyle.TEXT)

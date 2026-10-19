@@ -14,6 +14,9 @@ class MapPanelSettingsTest {
         val hadVoice=prefs.contains("navigation_voice");val voice=prefs.getBoolean("navigation_voice",true)
         val hadPanel=prefs.contains("phone_panel");val panel=prefs.getString("phone_panel","map")
         try {
+            // Force an actual change from Map to Music. With the new Music
+            // default, selecting Music on fresh preferences need not write a key.
+            prefs.edit().putString("phone_panel","map").commit()
             ActivityScenario.launch(SetupActivity::class.java).use { scenario ->
                 scenario.onActivity { a ->
                     SharedSetupTest.click(a,"Yamaha");SharedSetupTest.click(a,"Bike display & maps")
@@ -30,6 +33,12 @@ class MapPanelSettingsTest {
                     SharedSetupTest.click(a,"Map & routing accounts · Hide");assertFalse(account.isShown)
                 }
                 instrumentation.waitForIdleSync()
+                // Spinner selection is delivered by the next traversal, after the UI
+                // thread becomes idle. Wait for the persisted choice, not just idle.
+                for(attempt in 0 until 30) {
+                    if(prefs.getString("phone_panel","map")=="music")break
+                    Thread.sleep(50);instrumentation.waitForIdleSync()
+                }
                 assertEquals("music",prefs.getString("phone_panel","map"))
                 scenario.recreate();instrumentation.waitForIdleSync()
                 scenario.onActivity { a ->
