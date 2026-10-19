@@ -613,10 +613,12 @@ public class MainActivity extends android.app.Activity {
         castStatus = text(YamahaCastService.status, 11, RideStyle.MUTED, false);
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
             phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, RideStyle.TEXT, true);
-            phoneGuidance.setMaxLines(shortHeight ? 1 : portrait && !compact ? 3 : 2);
-            if (shortHeight) phoneGuidance.setTextSize(22);
-            phoneGuidance.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            phoneGuidance.setPadding(dp(12), dp(shortHeight ? 4 : 10), dp(12), dp(shortHeight ? 4 : 10));
+            final int guidanceHeight = compact || shortHeight ? 64 : 88;
+            phoneGuidance.setMaxLines(compact || shortHeight ? 2 : 3);
+            phoneGuidance.setAutoSizeTextTypeUniformWithConfiguration(12, portrait && !compact ? 30 : 26, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+            phoneGuidance.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+            phoneGuidance.setIncludeFontPadding(false);
+            phoneGuidance.setPadding(dp(12), dp(8), dp(12), dp(8));
             phoneGuidance.setBackground(RideStyle.surface(this, RideStyle.PANEL, 8, true));
             phoneGuidance.setTag("ride_navigation_instruction");
             phoneGuidance.setOnClickListener(v -> new android.app.AlertDialog.Builder(this).setTitle("Navigation instruction")
@@ -628,12 +630,16 @@ public class MainActivity extends android.app.Activity {
             });
             LinearLayout guidanceRow = new LinearLayout(this); guidanceRow.setGravity(Gravity.CENTER_VERTICAL);
             guidanceRow.setVisibility(NativeNavigation.INSTANCE.getRoute() == null ? View.GONE : View.VISIBLE);
-            guidanceRow.addView(phoneGuidance, new LinearLayout.LayoutParams(0, -2, 1));
+            guidanceRow.addView(phoneGuidance, new LinearLayout.LayoutParams(0, -1, 1));
             phoneSpeedLimit = new SpeedLimitIcon(this);
             phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
             LinearLayout.LayoutParams limitParams = new LinearLayout.LayoutParams(dp(compact || shortHeight ? 48 : 64), dp(compact || shortHeight ? 48 : 64));
-            limitParams.leftMargin = dp(8); guidanceRow.addView(phoneSpeedLimit, limitParams);
-            LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
+            // Reserve this slot even when the sign is unavailable, so guidance
+            // width never changes as speed-limit data arrives or disappears.
+            android.widget.FrameLayout limitSlot = new android.widget.FrameLayout(this);
+            limitSlot.addView(phoneSpeedLimit, new android.widget.FrameLayout.LayoutParams(-1, -1));
+            limitParams.leftMargin = dp(8); guidanceRow.addView(limitSlot, limitParams);
+            LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, dp(guidanceHeight));
             guidanceParams.topMargin = dp(8); root.addView(guidanceRow, guidanceParams);
         }
 
