@@ -17,7 +17,7 @@ import java.net.URL
 
 data class NavigationPlace(val label: String, val latitude: Double, val longitude: Double, val kind: String = "", val relevance: Double = 1.0, val provider: String = "")
 data class NavigationTurn(val text: String, val sign: Int, val start: Int, val end: Int, val road: String = "", val millis: Long = 0)
-data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long, val provider: String = "Valhalla", val speedLimits: IntArray? = null, val trafficDelayMillis: Long = 0, val lanes: List<app.pillion.core.LaneSection> = emptyList()) {
+data class NavigationRoute(val destination: NavigationPlace, val points: List<LatLng>, val turns: List<NavigationTurn>, val meters: Double, val millis: Long, val provider: String = "Valhalla", val speedLimits: IntArray? = null, val trafficDelayMillis: Long = 0, val lanes: List<app.pillion.core.LaneSection> = emptyList(), val itinerary: List<NavigationPlace> = emptyList(), val stopIndices: List<Int> = emptyList(), val rideStyle: String = "relaxed") {
     val cumulative = DoubleArray(points.size).also { distances ->
         val result = FloatArray(1)
         for (i in 1 until points.size) {
@@ -154,14 +154,21 @@ object NavigationApi {
         }.thenByDescending { it.relevance }).take(10)
     }
     fun route(context: Context, origin: Location, target: NavigationPlace): NavigationRoute = routes(context, origin, target, false).first()
+    fun itinerary(context: Context, origin: Location, stops: List<NavigationPlace>, style: String = "relaxed"): NavigationRoute {
+        require(stops.size in 1..6)
+        val route=routes(context,origin,stops.last(),false,stops.dropLast(1),style).first()
+        require(route.stopIndices.size==stops.size) { "The provider did not preserve every ride stop." }
+        return route.copy(itinerary=stops,rideStyle=style)
+    }
 
-    fun routes(context: Context, origin: Location, target: NavigationPlace, alternatives: Boolean = true): List<NavigationRoute> {
+    fun routes(context: Context, origin: Location, target: NavigationPlace, alternatives: Boolean = true, via: List<NavigationPlace> = emptyList(), style: String = "relaxed"): List<NavigationRoute> {
         if(TomTomApi.configured(context) && RidePreferences.prefs(context).getBoolean("tomtom_routing",true))
-            return TomTomApi.routes(context,origin,target,alternatives)
+            return TomTomApi.routes(context,origin,target,alternatives,via,style)
         val preferences=RoutePreferencesUi.read(context)
         val locations = JSONArray()
             .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude))
-            .put(JSONObject().put("lat", target.latitude).put("lon", target.longitude))
+
+        (via+target).forEach { locations.put(JSONObject().put("lat",it.latitude).put("lon",it.longitude)) }
         val payload = JSONObject().put("locations", locations).put("costing", "motorcycle")
             .put("units", "kilometers").put("language", "en-US").put("alternates", if(alternatives) 2 else 0)
             .put("turn_lanes",preferences.laneGuidance)
@@ -183,7 +190,14 @@ object NavigationApi {
     private fun parseTrip(trip: JSONObject, target: NavigationPlace): NavigationRoute {
         check(trip.optInt("status", 0) == 0) { trip.optString("status_message", "No motorcycle route was found.") }
         val legs = trip.getJSONArray("legs")
-        require(legs.length() == 1) { "Unexpected route response." }
+        require(legs.length() in 1..6) { "Unexpected route response." }
+        if(legs.length()>1) {
+            val parts=(0 until legs.length()).map { i ->
+                val item=legs.getJSONObject(i)
+                parseTrip(JSONObject().put("legs",JSONArray().put(item)).put("summary",item.getJSONObject("summary")),target)
+            }
+            return ItineraryRoutes.combine(target,parts)
+        }
         val leg = legs.getJSONObject(0)
         val points = decodePolyline(leg.getString("shape"))
         require(points.size in 2..100000) { "Route geometry unavailable." }

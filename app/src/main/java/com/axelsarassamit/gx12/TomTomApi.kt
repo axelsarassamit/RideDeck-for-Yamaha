@@ -3,6 +3,7 @@ package com.axelsarassamit.gx12
 import android.content.Context
 import android.location.Location
 import android.net.Uri
+import org.json.JSONArray
 import org.json.JSONObject
 import org.maplibre.android.geometry.LatLng
 
@@ -35,12 +36,13 @@ object TomTomApi {
         }
         return all.distinctBy { "${it.latitude},${it.longitude}" }.take(10)
     }
-    fun routes(c:Context,origin:Location,target:NavigationPlace,alternatives:Boolean):List<NavigationRoute> {
+    fun routes(c:Context,origin:Location,target:NavigationPlace,alternatives:Boolean,via:List<NavigationPlace> = emptyList(),style:String = "relaxed"):List<NavigationRoute> {
         val preferences=RoutePreferencesUi.read(c)
-        val url=endpoint(c,"routing/1/calculateRoute/${origin.latitude},${origin.longitude}:${target.latitude},${target.longitude}/json")
+        val coordinates=(listOf(NavigationPlace("Start",origin.latitude,origin.longitude))+via+target).joinToString(":"){"${it.latitude},${it.longitude}"}
+        val url=endpoint(c,"routing/1/calculateRoute/$coordinates/json")
             .appendQueryParameter("travelMode","motorcycle").appendQueryParameter("traffic","true").appendQueryParameter("departAt","now")
 
-            .appendQueryParameter("routeType",if(preferences.shortest) "shortest" else "fastest").appendQueryParameter("alternativeType","anyRoute")
+            .appendQueryParameter("routeType",if(style=="winding") "thrilling" else if(preferences.shortest) "shortest" else "fastest").appendQueryParameter("alternativeType","anyRoute")
             .appendQueryParameter("maxAlternatives",if(alternatives) "2" else "0")
             .appendQueryParameter("instructionsType","text").appendQueryParameter("language","en-GB")
         NativeNavigation.reliableHeading(origin)?.takeIf { android.os.SystemClock.elapsedRealtimeNanos()-origin.elapsedRealtimeNanos in 0..5_000_000_000L }?.let {
@@ -48,6 +50,7 @@ object TomTomApi {
         }
         for(avoid in preferences.tomTomAvoids())url.appendQueryParameter("avoid",avoid)
         for(section in listOf("speedLimit","traffic","motorway","toll","tollVignette","travelMode","ferry","unpaved")) url.appendQueryParameter("sectionType",section)
+        if(style=="winding") { url.appendQueryParameter("windingness","high");url.appendQueryParameter("hilliness","normal") }
         val base=url.build()
         val lanes=preferences.laneGuidance && !extendedLanesUnavailable
         val request=if(lanes)base.buildUpon().appendQueryParameter("sectionType","lanes").build() else base
@@ -73,8 +76,25 @@ object TomTomApi {
                     else->false
                 }
             }) continue
-            val legs=r.getJSONArray("legs");require(legs.length()==1) { "Unexpected motorcycle route." }
-            val geometry=legs.getJSONObject(0).getJSONArray("points");require(geometry.length() in 2..100000)
+            val legs=r.getJSONArray("legs");require(legs.length() in 1..6) { "Unexpected motorcycle route." }
+            var geometry=JSONArray();val stopIndices=mutableListOf<Int>();val rawGeometry=JSONArray();val rawEnds=mutableListOf<Int>()
+            for(leg in 0 until legs.length()) {
+                val rows=legs.getJSONObject(leg).getJSONArray("points");require(rows.length()>=2)
+                for(n in 0 until rows.length()) {
+                    val point=rows.getJSONObject(n);rawGeometry.put(point)
+                    if(n==0 && geometry.length()>0 && geometry.getJSONObject(geometry.length()-1).getDouble("latitude")==point.getDouble("latitude") && geometry.getJSONObject(geometry.length()-1).getDouble("longitude")==point.getDouble("longitude")) continue
+                    geometry.put(point)
+                };stopIndices.add(geometry.length()-1);rawEnds.add(rawGeometry.length()-1)
+            }
+            if(legs.length()>1) {
+                val guidance=r.getJSONObject("guidance").getJSONArray("instructions")
+                val last=guidance.getJSONObject(guidance.length()-1)
+                require(last.optString("maneuver").startsWith("ARRIVE")) { "Ride arrival guidance unavailable." }
+                val lastIndex=last.getInt("pointIndex")
+                if(lastIndex==rawGeometry.length()-1) {geometry=rawGeometry;stopIndices.clear();stopIndices.addAll(rawEnds)}
+                else require(lastIndex==geometry.length()-1) { "Ride instruction geometry could not be aligned." }
+            }
+            require(geometry.length() in 2..100000)
             val points=(0 until geometry.length()).map { n->geometry.getJSONObject(n).let {
                 val lat=it.getDouble("latitude");val lon=it.getDouble("longitude");require(lat in -90.0..90.0 && lon in -180.0..180.0);LatLng(lat,lon)
             } }
@@ -86,7 +106,8 @@ object TomTomApi {
                 val start=row.getInt("pointIndex");val end=rows.getOrNull(n+1)?.getInt("pointIndex") ?: points.lastIndex
                 require(start in points.indices && end in start..points.lastIndex)
                 val begin=row.optLong("travelTimeInSeconds",0);val finish=rows.getOrNull(n+1)?.optLong("travelTimeInSeconds",seconds) ?: seconds
-                NavigationTurn(row.optString("message","Continue"),NavigationManeuver.tomTom(row.optString("maneuver"), row.optString("modifier")),start,end,row.optString("street"),(finish-begin).coerceAtLeast(0)*1000)
+                val intermediateArrival=legs.length()>1 && n<rows.lastIndex && row.optString("maneuver").startsWith("ARRIVE")
+                NavigationTurn(if(intermediateArrival) "Continue on the planned ride" else row.optString("message","Continue"),if(intermediateArrival) 0 else NavigationManeuver.tomTom(row.optString("maneuver"), row.optString("modifier")),start,end,row.optString("street"),(finish-begin).coerceAtLeast(0)*1000)
             }
             val limits=IntArray(points.size-1);val seen=BooleanArray(limits.size)
             for(n in 0 until (sections?.length() ?: 0)) {
@@ -96,7 +117,7 @@ object TomTomApi {
                 val limit=app.pillion.core.RoadSpeedLimits.numeric((s.opt("maxSpeedLimitInKmh") as? Number)?.toDouble()) ?: 0
                 for(edge in a until b) { limits[edge]=if(seen[edge]) 0 else limit;seen[edge]=true }
             }
-            result.add(NavigationRoute(target,points,turns,meters,seconds*1000,"TomTom",limits,summary.optLong("trafficDelayInSeconds",0).coerceAtLeast(0)*1000,LaneData.tomTom(sections,points.size)))
+            result.add(NavigationRoute(target,points,turns,meters,seconds*1000,"TomTom",limits,summary.optLong("trafficDelayInSeconds",0).coerceAtLeast(0)*1000,LaneData.tomTom(sections,points.size),stopIndices=stopIndices))
         }
         check(result.isNotEmpty()) { "No motorcycle route matching the selected road preferences was found. Try changing Road preferences." }
         return result

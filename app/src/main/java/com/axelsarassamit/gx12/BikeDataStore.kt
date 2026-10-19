@@ -24,14 +24,32 @@ data class BikeDataState(val active: Boolean = false, val authenticated: Boolean
 /** Private, bounded log and immutable UI snapshots. No authentication, VIN or pairing payload is admitted. */
 object BikeDataStore {
     private var logContext: Context? = null
+    private var experimentalFuel: SampledFuelSession? = null
+    @Synchronized fun startFuelExperiment(): Boolean {
+        val now=SystemClock.elapsedRealtime();val s=state
+        val odo=s.values[BikeMetric.ODOMETER];val speed=s.values[BikeMetric.SPEED]
+        val bike=BikeDataService.selectedAddress()
+        if(!s.active||!s.authenticated||bike.isBlank()||odo==null||speed==null||!odo.fresh(now)||!speed.fresh(now)||speed.value>0.5||!speed.value.isFinite()||!odo.value.isFinite())return false
+        experimentalFuel=SampledFuelSession(bike,odo.value,now)
+        logContext?.let { append(it,JSONObject().put("event","fuel_coverage_start").put("physical_totals_enabled",false)) };return true
+    }
+    @Synchronized fun stopFuelExperiment() {
+        experimentalFuel?.result(SystemClock.elapsedRealtime())?.let { result -> logContext?.let { c ->
+            append(c,JSONObject().put("event","fuel_coverage_stop").put("samples",result.samples).put("covered_ms",result.coveredMillis).put("reason",result.reason))
+        } }
+        experimentalFuel=null
+    }
+    @Synchronized fun fuelExperiment(): SampledFuelSession.Result? = experimentalFuel?.result(SystemClock.elapsedRealtime())
     @Volatile var state = BikeDataState(); private set
     private val logNames = listOf("ccu-parked-test.previous.jsonl", "ccu-parked-test.jsonl")
     @Synchronized fun start(c: Context) {
+        experimentalFuel=null
         logContext=c.applicationContext
         state = BikeDataState(active = true, status = "Connecting to the paired Yamaha…")
         append(c, JSONObject().put("event", "session_start").put("version", BuildConfig.VERSION_NAME).put("decoder", "xmax-1248-v1"))
     }
     @Synchronized fun status(text: String, authenticated: Boolean) {
+        if(!authenticated)experimentalFuel?.invalidate("Bike data disconnected; start a new test")
         state = state.copy(status = text, authenticated = authenticated, connectedAt=if(authenticated && state.connectedAt==0L) SystemClock.elapsedRealtime() else state.connectedAt)
         logContext?.let { append(it,JSONObject().put("event","connection_status").put("status",text.take(500)).put("authenticated",authenticated)) }
     }
@@ -41,6 +59,7 @@ object BikeDataStore {
     }
     @Synchronized fun stop(c: Context, text: String) {
         if (state.active) append(c, JSONObject().put("event", "session_stop").put("status",text.take(500)))
+        experimentalFuel?.invalidate("Bike data stopped; start a new test")
         state = state.copy(active = false, authenticated = false, status = text)
     }
     @Synchronized fun accept(c: Context, message: CcuProtocol.Message) {
@@ -77,6 +96,14 @@ object BikeDataStore {
             }
             val telemetry = message.command in setOf(0x10f, 0x114, 0x106, 0x120, 0x138)
             state = if (telemetry) updated.copy(packets = state.packets + 1, lastPacket = now) else updated
+            if(message.command==0x114) {
+                val fuelItems=items.filter { it.id==574 }
+                if(fuelItems.size>1)experimentalFuel?.invalidate("Multiple fuel samples in one response; timing ambiguous")
+                else fuelItems.singleOrNull()?.let { item ->
+                    val odo=state.values[BikeMetric.ODOMETER]?.takeIf { it.fresh(now) }?.value
+                    experimentalFuel?.sample(BikeDataService.selectedAddress(),now,item.bytes,odo)
+                }
+            }
             val event = JSONObject().put("command", message.command).put("fields", JSONArray().apply {
                 safeItems.forEach { put(JSONObject().put("id", it.id).put("raw", hex(it.bytes))) }
             })
@@ -85,6 +112,9 @@ object BikeDataStore {
             } })
             if (message.command == 0x120) event.put("injection_raw", state.injection)
             if (message.command == 0x138) event.put("ignition", state.ignition)
+            if(message.command==0x114 && items.any{it.id==574}) experimentalFuel?.result(now)?.let {
+                event.put("fuel_coverage",JSONObject().put("samples",it.samples).put("covered_ms",it.coveredMillis).put("reason",it.reason).put("physical_totals_enabled",false))
+            }
             // Market records are represented only by the fact a reply arrived, never arbitrary bytes.
             append(c, event)
             if (decoded.isNotEmpty() || safeItems.isNotEmpty()) RideBookStore.recordBike(c, decoded, name, safeItems, wall, now)

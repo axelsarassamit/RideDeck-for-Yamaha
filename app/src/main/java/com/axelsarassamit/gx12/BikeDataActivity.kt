@@ -17,6 +17,7 @@ class BikeDataActivity : RiderPage() {
     private val labels = linkedMapOf<BikeMetric, TextView>()
     private lateinit var history: TextView
     private lateinit var fuel: TextView
+    private lateinit var experimentalFuel: TextView
     private lateinit var notices: TextView
     private lateinit var raw: TextView
     private lateinit var checks: TextView
@@ -75,6 +76,16 @@ class BikeDataActivity : RiderPage() {
             };row(line)
         }
         history=text("");row(history);fuel=text("");row(fuel);notices=text("");row(notices)
+        experimentalFuel=text("");row(experimentalFuel)
+        row(button("Start experimental session fuel test · parked") {
+            android.app.AlertDialog.Builder(this).setTitle("Experimental session fuel")
+                .setMessage("Uses the regional MyRide 1 Hz sample model. Litres and economy are estimates awaiting a pump-refill comparison, not a fuel gauge. This build collects sample coverage only: totals stay unavailable until firmware sample identity and delivery are verified. Timing gaps or duplicate bursts invalidate the test. Equal consecutive values are valid samples. No tank range is changed. Start only while parked.")
+                .setPositiveButton("Start test") { _,_->
+                    if(!BikeDataStore.startFuelExperiment())Toast.makeText(this,"Connect bike data and wait for fresh speed and odometer while parked.",Toast.LENGTH_LONG).show()
+                    refresh()
+                }.setNegativeButton("Cancel",null).show()
+        })
+        row(button("Clear experimental fuel test") { BikeDataStore.stopFuelExperiment();refresh() })
         row(button("Estimated fuel range and refills") { FuelRangeActivity.open(this) })
         row(button("Find a fuel station") { FuelStationsActivity.open(this) })
         row(button("Ride book") { RideBookActivity.open(this) })
@@ -148,6 +159,15 @@ class BikeDataActivity : RiderPage() {
         history.text="${s.packets} bike-data packets received\n" + if(s.lastPacket==0L) "Waiting for bike data." else "Last packet ${(now-s.lastPacket)/1000} seconds ago."
         fuel.text="Fuel remaining and range: awaiting confirmed litres and consumption units.\n" +
             if(s.injection==null) "Fuel-injection counter: waiting for a supported reply." else "Fuel-injection counter: ${s.injection} raw units.\nThis is not remaining fuel. Received ${(now-s.injectionAt)/1000} seconds ago."
+        val experiment=BikeDataStore.fuelExperiment()
+        experimentalFuel.text=if(experiment==null) "Experimental session fuel: off. Separate from tank range." else buildString {
+            append("Estimated session fuel (experimental)\n")
+            append("${experiment.samples} samples · ${experiment.coveredMillis/1000} seconds covered\n")
+            if(experiment.litres!=null)append(String.format(Locale.US,"~%.3f L · calibration pending\n",experiment.litres))
+            if(experiment.kmPerLitre!=null)append(String.format(Locale.US,"Estimated %.1f km/L\n",experiment.kmPerLitre))
+            experiment.reason?.let { append(it);append("\n") }
+            append("Source-inferred sample units. No sample sequence is provided; on-time retransmissions cannot be detected. Not remaining fuel.")
+        }
         notices.text=if(s.faults==null) "Diagnostic notices: waiting for the bike." else {
             (if(s.faults.isNullOrEmpty()) "No notices returned by the selected Yamaha diagnostic query." else s.faults.joinToString("\n") { "Yamaha notice ${it.code} · status ${it.status}" }) + "\nUpdated ${(now-s.faultsAt)/1000} seconds ago."
         }

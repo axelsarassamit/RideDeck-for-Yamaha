@@ -162,7 +162,7 @@ object NativeNavigation {
         acquisitionStatus=if(next.provider==LocationManager.GPS_PROVIDER) "GPS connected" else "Network position; waiting for GPS"
         pendingDestination?.let { target ->
             pendingDestination = null
-            context?.let { navigate(it, target) }
+            context?.let { navigate(it, target,RideBackgroundSession.itinerary(it),RideBackgroundSession.rideStyle(it)) }
             return
         }
         if (route != null) status = "Navigating"
@@ -228,9 +228,9 @@ object NativeNavigation {
         check(coordinate != null) { "Choose this address from search suggestions on the phone first. Save coordinates for bike favorites." }
         main.post { navigate(c, coordinate) }
     }
-    fun navigate(c: Context, target: NavigationPlace) {
+    fun navigate(c: Context, target: NavigationPlace, stops: List<NavigationPlace> = emptyList(), style:String = "relaxed") {
         context = c.applicationContext
-        RideBackgroundSession.saveDestination(c,target)
+        RideBackgroundSession.saveDestination(c,target,stops,style)
         val origin = location
         if (origin == null || SystemClock.elapsedRealtimeNanos() - origin.elapsedRealtimeNanos > 10_000_000_000L) {
             pendingDestination = target
@@ -240,7 +240,7 @@ object NativeNavigation {
         val recalculating = route != null
         routeBusy = true; speedLimit = null; speedWindow = null; lastSpeedRequest = -30000L; dashRoute = dashRoute?.copy(remainingMillis=null); status = "Calculating route"
         worker.execute {
-            val result = runCatching { NavigationApi.route(c, origin, target) }
+            val result = runCatching { if(stops.isEmpty()) NavigationApi.route(c, origin, target) else NavigationApi.itinerary(c,origin,stops,style) }
             main.post {
                 if (generation != routeGeneration) return@post
                 routeBusy = false
@@ -263,10 +263,11 @@ object NativeNavigation {
     fun startSelected(c: Context, selected: NavigationRoute) {
         context = c.applicationContext
         routeGeneration++; routeBusy = false; pendingDestination = null
-        RideBackgroundSession.saveDestination(c, selected.destination)
+        RideBackgroundSession.saveDestination(c, selected.destination,selected.itinerary,selected.rideStyle)
         applyRoute(c, selected)
     }
     private fun applyRoute(c: Context, selected: NavigationRoute, announceStart: Boolean = true, recalculated: Boolean = false) {
+        RideBackgroundSession.saveItinerary(c,selected.itinerary,selected.rideStyle)
         val previousIncidents=incidentMatches.map{it.incident};val previousCheck=incidentCheckedAt
         route = selected; dashRouteRevision++; dashRoute = null; progressIndex = 0; announcements.reset(announceStart,recalculated); offRouteSamples = 0
         if(announceStart && !recalculated) trafficAnnouncements.reset()
@@ -333,11 +334,15 @@ object NativeNavigation {
             guidance = "Off route. Recalculating"
             if(offRouteSamples >= 3 && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L) announce(announcements.offRoute())
             if (!routeBusy && offRouteSamples >= 3 && SystemClock.elapsedRealtime() - lastReroute > 30000) {
-                lastReroute = SystemClock.elapsedRealtime(); context?.let { navigate(it, r.destination) }
+                lastReroute = SystemClock.elapsedRealtime(); context?.let { navigate(it, r.destination, if(r.itinerary.isEmpty()) emptyList() else ItineraryRoutes.remaining(r,progressIndex),r.rideStyle) }
             }
             return
         }
-        offRouteSamples = 0; progressIndex = bestIndex; announcements.onTrack()
+        offRouteSamples = 0; progressIndex = bestIndex
+        if(r.itinerary.isNotEmpty()) context?.let { c ->
+            val remaining=ItineraryRoutes.remaining(r,progressIndex)
+            if(RideBackgroundSession.itinerary(c)!=remaining) RideBackgroundSession.saveItinerary(c,remaining,r.rideStyle)
+        }; announcements.onTrack()
         val travelled = r.cumulative[bestIndex] + bestFraction*(r.cumulative[bestIndex+1]-r.cumulative[bestIndex])
         travelledMeters=travelled
         remaining = max(0.0, r.cumulative.last() - travelled)
@@ -454,8 +459,9 @@ object NativeNavigation {
         if(trafficRefreshBusy) return
         val origin=location?.let(::Location) ?: return
         val generation=routeGeneration;trafficRefreshBusy=true
+        val remaining=if(current.itinerary.isEmpty()) emptyList() else ItineraryRoutes.remaining(current,progressIndex)
         worker.execute {
-            val result=runCatching { NavigationApi.route(c,origin,current.destination) }
+            val result=runCatching { if(remaining.isEmpty()) NavigationApi.route(c,origin,current.destination) else NavigationApi.itinerary(c,origin,remaining,current.rideStyle) }
             main.post {
                 trafficRefreshBusy=false
                 if(!running || routeGeneration!=generation || route!==current) return@post
@@ -694,7 +700,7 @@ class NativeNavigationService : Service(), LocationListener {
             wake=RideSessionWakeLock(this,"navigation").also { it.start() }
             locations=getSystemService(LocationManager::class.java)
             NativeNavigation.attach(this)
-            RideBackgroundSession.destination(this)?.let { NativeNavigation.navigate(this,it) }
+            RideBackgroundSession.destination(this)?.let { NativeNavigation.navigate(this,it,RideBackgroundSession.itinerary(this),RideBackgroundSession.rideStyle(this)) }
             val available = locations!!.allProviders
             val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
                 .filter { it in available }

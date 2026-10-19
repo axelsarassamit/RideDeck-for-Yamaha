@@ -33,7 +33,7 @@ class RoutePreviewActivity : Activity() {
                 .putExtra("label",target.label).putExtra("lat",target.latitude).putExtra("lon",target.longitude))
         }
     }
-    private data class Plan(val routes: List<NavigationRoute>, val origin: Location?, val selected: Int, val style: String?,val target: NavigationPlace)
+    private data class Plan(val routes: List<NavigationRoute>, val origin: Location?, val selected: Int, val style: String?,val target: NavigationPlace,val targetMinutes:Int=0)
     private val worker=Executors.newSingleThreadExecutor()
     private val parkingWorker=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
@@ -57,6 +57,8 @@ class RoutePreviewActivity : Activity() {
     private var selected=0
     private var styleJson: String?=null
     private var styleReady=false
+    private var funRide=false
+    private var targetMinutes=0
     private var busy=false
     private var routeRequest=0
     private val lineChoices=HashMap<Long,Int>()
@@ -75,7 +77,9 @@ class RoutePreviewActivity : Activity() {
         if(lat !in -90.0..90.0 || lon !in -180.0..180.0) { finish(); return }
         target=NavigationPlace(intent.getStringExtra("label") ?: "Destination",lat,lon)
         goal=target
-        (lastNonConfigurationInstance as? Plan)?.let { routes=it.routes; origin=it.origin; selected=it.selected; styleJson=it.style;target=it.target }
+        funRide=intent.getBooleanExtra("funRide",false)
+        if(funRide) { val plan=FunRidePreview.take();if(plan!=null){routes=plan.routes;origin=plan.origin;targetMinutes=plan.minutes}else if(lastNonConfigurationInstance==null){android.widget.Toast.makeText(this,"Please find rides again",android.widget.Toast.LENGTH_LONG).show();finish();return} }
+        (lastNonConfigurationInstance as? Plan)?.let { routes=it.routes; origin=it.origin; selected=it.selected; styleJson=it.style;target=it.target;targetMinutes=it.targetMinutes }
         MapLibre.getInstance(this)
         NativeNavigation.start(this)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -112,7 +116,7 @@ class RoutePreviewActivity : Activity() {
             tools.addView(button(label).apply {
                 minHeight=dp(56);textSize=20f
                 contentDescription=when(index){0->"Zoom out";2->"Road preferences";3->"Zoom in";else->"Show all routes"}
-                setOnClickListener { when(index){0->map?.animateCamera(CameraUpdateFactory.zoomOut());2->RoutePreferencesUi.show(this@RoutePreviewActivity){chooseDestination(target)};3->map?.animateCamera(CameraUpdateFactory.zoomIn());else->overview()} }
+                setOnClickListener { when(index){0->map?.animateCamera(CameraUpdateFactory.zoomOut());2->if(funRide) Toast.makeText(this@RoutePreviewActivity,"Go Back to change roads and find rides again",Toast.LENGTH_LONG).show() else RoutePreferencesUi.show(this@RoutePreviewActivity){chooseDestination(target)};3->map?.animateCamera(CameraUpdateFactory.zoomIn());else->overview()} }
             },LinearLayout.LayoutParams(if(index==1) 0 else dp(72),dp(56),if(index==1) 1f else 0f).apply { leftMargin=dp(4);rightMargin=dp(4) })
         }
         mapColumn.addView(tools,LinearLayout.LayoutParams(-1,dp(60)))
@@ -143,7 +147,7 @@ class RoutePreviewActivity : Activity() {
             loadStyle()
         }
         if(routes.isEmpty()) { status.text="Getting your GPS position..."; main.post(awaitGps) } else showChoices()
-        findParking()
+        if(funRide)parking.visibility=View.GONE else findParking()
     }
     private fun findParking() {
         if(parkingBusy) return
@@ -219,6 +223,7 @@ class RoutePreviewActivity : Activity() {
         }
     }
     private fun loadRoutes() {
+        if(funRide){status.text="Go Back to change or regenerate this ride.";return}
         retry.visibility=View.VISIBLE
         val fix=freshFix()
         if(fix==null) { status.text="Waiting for GPS. Move outdoors, then Retry."; return }
@@ -246,6 +251,7 @@ class RoutePreviewActivity : Activity() {
         val wide=resources.configuration.screenWidthDp>=600
         status.text=(routes.firstOrNull()?.let { if(it.provider=="TomTom") "TomTom · Live traffic · " else "Valhalla · No live traffic · " } ?: "")+if(routes.size==1) "One route available" else "${routes.size} routes · Route ${selected+1} selected"
         retry.visibility=View.GONE
+        if(funRide)status.text=status.text.toString()+" · Target $targetMinutes min · Riding time only"
         routes.forEachIndexed { index,r ->
             choices.addView(button((if(index==selected) "✓ " else "")+RouteChoices.label(routes,index)+"\n"+
                 RouteTimeEstimator.durationText(r.millis)+(if(wide) "  ·  " else "\n")+String.format(Locale.US,"%.1f km",r.meters/1000)+"\n"+RouteChoices.comparison(routes,index),index==selected).apply {
@@ -268,6 +274,7 @@ class RoutePreviewActivity : Activity() {
         }
         origin?.let { m.addMarker(MarkerOptions().position(LatLng(it.latitude,it.longitude)).title("Start")) }
         m.addMarker(MarkerOptions().position(LatLng(target.latitude,target.longitude)).title("Destination"))
+        if(funRide) routes.getOrNull(selected)?.itinerary?.dropLast(1)?.forEach { m.addMarker(MarkerOptions().position(LatLng(it.latitude,it.longitude)).title(it.label)) }
         if(target!=goal) m.addMarker(MarkerOptions().position(LatLng(goal.latitude,goal.longitude)).title("Final destination after parking"))
     }
     private fun overview() {
@@ -285,7 +292,7 @@ class RoutePreviewActivity : Activity() {
         startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         finish()
     }
-    override fun onRetainNonConfigurationInstance(): Any=Plan(routes,origin,selected,styleJson,target)
+    override fun onRetainNonConfigurationInstance(): Any=Plan(routes,origin,selected,styleJson,target,targetMinutes)
     override fun onStart() { super.onStart(); if(::mapView.isInitialized) mapView.onStart() }
     override fun onResume() { super.onResume(); if(::mapView.isInitialized) mapView.onResume() }
     override fun onPause() { if(::mapView.isInitialized) mapView.onPause(); super.onPause() }

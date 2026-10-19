@@ -23,7 +23,7 @@ object NavigationUi {
     private val names=arrayOf("Map", "Turn arrows", "Music")
     private val modes=arrayOf("map","arrows","music")
     @JvmStatic fun configure(activity: Activity) {
-        AlertDialog.Builder(activity).setTitle("Navigation and panels").setItems(arrayOf("Map and routing accounts", "Phone panel", "Bike display", "Precise location", "Voice guidance", "Stop navigation", "Nearby fuel stations", "Traffic nearby", "Ride book", "Bike data and fuel range", "Road preferences", "Estimated fuel range")) { _, choice ->
+        AlertDialog.Builder(activity).setTitle("Navigation and panels").setItems(arrayOf("Map and routing accounts", "Phone panel", "Bike display", "Precise location", "Voice guidance", "Stop navigation", "Nearby fuel stations", "Traffic nearby", "Ride book", "Bike data and fuel range", "Road preferences", "Estimated fuel range", "Go for a fun ride")) { _, choice ->
             when(choice) {
                 0 -> credentials(activity)
                 1 -> {
@@ -48,6 +48,7 @@ object NavigationUi {
                 9 -> BikeDataActivity.open(activity)
                 10 -> RoutePreferencesUi.show(activity)
                 11 -> FuelRangeActivity.open(activity)
+                12 -> activity.startActivity(Intent(activity,FunRideActivity::class.java))
             }
         }.setNegativeButton("Close",null).show()
     }
@@ -103,13 +104,14 @@ object NavigationUi {
     }
     @JvmStatic fun mapMenu(activity: Activity) {
         AlertDialog.Builder(activity).setTitle("Map")
-            .setItems(arrayOf("Search destination", "Stop route", "Voice guidance", "Road preferences", "Estimated fuel range")) { _, choice ->
+            .setItems(arrayOf("Search destination", "Stop route", "Voice guidance", "Road preferences", "Estimated fuel range", "Go for a fun ride")) { _, choice ->
                 when (choice) {
                     0 -> search(activity, null)
                     1 -> NativeNavigation.stopRoute()
                     2 -> voiceGuidance(activity)
                     3 -> RoutePreferencesUi.show(activity)
                     4 -> FuelRangeActivity.open(activity)
+                    5 -> activity.startActivity(Intent(activity,FunRideActivity::class.java))
                 }
             }.setNegativeButton("Close", null).show()
     }
