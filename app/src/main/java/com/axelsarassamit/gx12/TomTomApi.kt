@@ -42,9 +42,9 @@ object TomTomApi {
         val url=endpoint(c,"routing/1/calculateRoute/$coordinates/json")
             .appendQueryParameter("travelMode","motorcycle").appendQueryParameter("traffic","true").appendQueryParameter("departAt","now")
 
-            .appendQueryParameter("routeType",if(style=="winding") "thrilling" else if(preferences.shortest) "shortest" else "fastest").appendQueryParameter("alternativeType","anyRoute")
-            .appendQueryParameter("maxAlternatives",if(alternatives) "2" else "0")
+            .appendQueryParameter("routeType",if(style=="winding") "thrilling" else if(preferences.shortest) "shortest" else "fastest")
             .appendQueryParameter("instructionsType","text").appendQueryParameter("language","en-GB")
+        for((name,value) in app.pillion.core.TomTomAlternatives.parameters(alternatives))url.appendQueryParameter(name,value)
         NativeNavigation.reliableHeading(origin)?.takeIf { android.os.SystemClock.elapsedRealtimeNanos()-origin.elapsedRealtimeNanos in 0..5_000_000_000L }?.let {
             url.appendQueryParameter("vehicleHeading","${kotlin.math.round(it).toInt()%360}")
         }

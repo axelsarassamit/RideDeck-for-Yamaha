@@ -15,13 +15,17 @@ class FunRideLiveTest {
         check(c.packageName.endsWith(".preview"))
         val p=RidePreferences.prefs(c);val old=p.all["tomtom_routing"];val keys=c.getSharedPreferences("navigation_keys",0);val oldKey=keys.getString("tomtom",null)
         val reject=InstrumentationRegistry.getArguments().getString("rejectTomTom")=="true"
-        p.edit().putBoolean("tomtom_routing",reject).commit()
+        val tomtom=InstrumentationRegistry.getArguments().getString("useTomTom")=="true"
+        if(tomtom)NavigationSecrets.importDebugSetup(c)
+        p.edit().putBoolean("tomtom_routing",reject || tomtom).commit()
         if(reject)NavigationSecrets.save(c,"tomtom","invalid-test-key")
         val monitor=i.addMonitor(RoutePreviewActivity::class.java.name,null,false)
         try {
             ActivityScenario.launch(FunRideActivity::class.java).use { s ->
                 s.onActivity { a ->
                     FunRideActivity::class.java.getDeclaredField("startPlace").apply{isAccessible=true}.set(a,NavigationPlace("Public Bangkok test start",13.7513,100.5018))
+                    if(InstrumentationRegistry.getArguments().getString("winding")=="true")
+                        SharedSetupTest.views(a.window.decorView).filterIsInstance<android.widget.Spinner>()[1].setSelection(1)
                     SharedSetupTest.views(a.window.decorView).filterIsInstance<Button>().single{it.text=="Find rides"}.performClick()
                 }
                 val preview=i.waitForMonitorWithTimeout(monitor,120000)
