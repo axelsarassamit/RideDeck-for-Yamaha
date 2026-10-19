@@ -251,7 +251,8 @@ class RoutePreviewActivity : Activity() {
         val wide=resources.configuration.screenWidthDp>=600
         status.text=(routes.firstOrNull()?.let { if(it.provider=="TomTom") "TomTom · Live traffic · " else "Valhalla · No live traffic · " } ?: "")+if(routes.size==1) "One route available" else "${routes.size} routes · Route ${selected+1} selected"
         retry.visibility=View.GONE
-        if(funRide)status.text=status.text.toString()+" · Target $targetMinutes min · Riding time only"
+        if(funRide)status.text=status.text.toString()+" · Target $targetMinutes min · Riding time only"+
+            (if(routes.getOrNull(selected)?.let{it.millis/60000.0 !in (targetMinutes*.4)..(targetMinutes*2.0)}==true) " · Outside requested time: review duration before starting" else "")
         routes.forEachIndexed { index,r ->
             choices.addView(button((if(index==selected) "✓ " else "")+RouteChoices.label(routes,index)+"\n"+
                 RouteTimeEstimator.durationText(r.millis)+(if(wide) "  ·  " else "\n")+String.format(Locale.US,"%.1f km",r.meters/1000)+"\n"+RouteChoices.comparison(routes,index),index==selected).apply {

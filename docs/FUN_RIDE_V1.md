@@ -33,3 +33,7 @@ Main cockpit: **Search | Fun ride | Ride tools**, always visible for map and mus
 ## Traffic-side U-turn correction
 
 Generic TomTom U-turn instructions use the instruction drivingSide: LEFT selects a right U-turn arrow; RIGHT selects a left U-turn arrow. Explicit maneuver direction takes priority. Valhalla explicit left/right types remain unchanged. English speech says make a U-turn. This source and fixture correction still needs normal-road verification in Thailand.
+
+## Ride search reliability
+
+Search adapts exploration radius to returned road times within three attempts. Valid routes outside the target-time range can be shown with their actual durations and an explicit warning instead of being hidden. Relaxed rides retry the free road provider if configured TomTom routing fails; returned Valhalla routes have no live traffic. Winding never silently falls back to relaxed routing. Public Bangkok live-network checks are opt-in and stop before Start navigation.

@@ -164,6 +164,15 @@ object NavigationApi {
     fun routes(context: Context, origin: Location, target: NavigationPlace, alternatives: Boolean = true, via: List<NavigationPlace> = emptyList(), style: String = "relaxed"): List<NavigationRoute> {
         if(TomTomApi.configured(context) && RidePreferences.prefs(context).getBoolean("tomtom_routing",true))
             return TomTomApi.routes(context,origin,target,alternatives,via,style)
+        return valhallaRoutes(context,origin,target,alternatives,via)
+    }
+    internal fun freeItinerary(context:Context,origin:Location,stops:List<NavigationPlace>):NavigationRoute {
+        require(stops.size in 1..6)
+        val route=valhallaRoutes(context,origin,stops.last(),false,stops.dropLast(1)).first()
+        require(route.stopIndices.size==stops.size) { "The provider did not preserve every ride stop." }
+        return route.copy(itinerary=stops,rideStyle="relaxed")
+    }
+    private fun valhallaRoutes(context:Context,origin:Location,target:NavigationPlace,alternatives:Boolean,via:List<NavigationPlace>):List<NavigationRoute> {
         val preferences=RoutePreferencesUi.read(context)
         val locations = JSONArray()
             .put(JSONObject().put("lat", origin.latitude).put("lon", origin.longitude))

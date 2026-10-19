@@ -69,22 +69,34 @@ class FunRideActivity:Activity() {
         val end=finishPlace ?: NavigationPlace("Return to start",fix.latitude,fix.longitude)
         val chosenStops=stops.toList();val request=++generation;busy(true);status.text="Finding roads in three directions... You can go Back to cancel."
         worker.execute {
-            val candidates=mutableListOf<NavigationRoute>();var lastRequest=0L
+            val candidates=mutableListOf<NavigationRoute>();var lastRequest=0L;var scale=1.0;var failures=0
             for(bearing in listOf(heading,heading+35,heading-35)) {
                 if(Thread.currentThread().isInterrupted || request!=generation)break
                 val elapsed=SystemClock.elapsedRealtime()-lastRequest
                 if(elapsed<1200)try { Thread.sleep(1200-elapsed) } catch(_:InterruptedException) { Thread.currentThread().interrupt();return@execute }
-                val seeds=runCatching { FunRidePlan.seeds(FunPoint(fix.latitude,fix.longitude),minutes,bearing).mapIndexed{i,p->NavigationPlace("Explore via ${i+1}",p.latitude,p.longitude)} }.getOrNull() ?: continue
+                val seeds=runCatching { FunRidePlan.seeds(FunPoint(fix.latitude,fix.longitude),minutes,bearing,scale).mapIndexed{i,p->NavigationPlace("Explore via ${i+1}",p.latitude,p.longitude)} }.getOrNull() ?: continue
                 val via=if(chosenStops.isEmpty())seeds else chosenStops
                 lastRequest=SystemClock.elapsedRealtime()
-                runCatching{NavigationApi.itinerary(this,fix,via+end,if(winding)"winding" else "relaxed")}.onSuccess{r->if(r.meters>=1000 && r.millis/60000.0 in (minutes*.4)..(minutes*2.0))candidates.add(r)}
+                val routed=runCatching{NavigationApi.itinerary(this,fix,via+end,if(winding)"winding" else "relaxed")}.recoverCatching { original ->
+                    if(winding || !TomTomApi.configured(this) || !RidePreferences.prefs(this).getBoolean("tomtom_routing",true))throw original
+                    // Relaxed rides can use the same free road provider as Standard. Winding never silently loses its style.
+                    main.post{if(request==generation && !isDestroyed)status.text="TomTom could not plan this ride. Trying free road routing; no live traffic."}
+                    NavigationApi.freeItinerary(this,fix,via+end)
+                }
+                routed.onSuccess { r ->
+                    val actual=r.millis/60000.0
+                    if(r.meters>=1000 && actual>0 && actual<=720)candidates.add(r)
+                    if(chosenStops.isEmpty() && actual>0)scale=(scale*(minutes/actual).coerceIn(.5,2.0)).coerceIn(.25,4.0)
+                }.onFailure { failures++ }
+
                 // Fixed requested stops produce the same itinerary; a single request is sufficient.
                 if(chosenStops.isNotEmpty())break
             }
             main.post {
                 if(isDestroyed || request!=generation)return@post;busy(false)
-                val distinct=RouteChoices.ranked(candidates).sortedBy{FunRidePlan.score(it.millis/60000.0,minutes,it.turns.count{t->kotlin.math.abs(t.sign)==8})}
-                if(distinct.isEmpty()){status.text="No rides found. Try another direction, shorter time or different road preferences.";return@post}
+                val matching=candidates.filter{it.millis/60000.0 in (minutes*.4)..(minutes*2.0)}
+                val distinct=RouteChoices.ranked(matching.ifEmpty{candidates}).sortedBy{FunRidePlan.score(it.millis/60000.0,minutes,it.turns.count{t->kotlin.math.abs(t.sign)==8})}
+                if(distinct.isEmpty()){status.text=if(failures>0) "Road routing could not build a ride. Check your connection, try another direction or relax road preferences. Winding rides require working TomTom routing." else "No usable ride returned. Try a shorter time or choose your own stops.";return@post}
                 FunRidePreview.put(distinct,fix,minutes);startActivity(Intent(this,RoutePreviewActivity::class.java).putExtra("funRide",true).putExtra("lat",end.latitude).putExtra("lon",end.longitude).putExtra("label",end.label))
             }
         }

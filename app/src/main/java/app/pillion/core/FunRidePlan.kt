@@ -12,10 +12,10 @@ object FunRidePlan {
         val o=lon+atan2(sin(b)*sin(radius)*cos(lat),cos(radius)-sin(lat)*sin(a))
         return FunPoint(Math.toDegrees(a),((Math.toDegrees(o)+540)%360)-180)
     }
-    fun seeds(start:FunPoint,minutes:Int,bearing:Double):List<FunPoint> {
-        require(minutes in 30..360)
+    fun seeds(start:FunPoint,minutes:Int,bearing:Double,scale:Double=1.0):List<FunPoint> {
+        require(minutes in 30..360 && scale.isFinite() && scale in 0.25..4.0)
         // 30 km/h planning assumption is only a seed size, never an ETA promise.
-        val radius=(minutes/60.0*30.0/4.5).coerceIn(3.0,40.0)
+        val radius=(minutes/60.0*30.0/4.5*scale).coerceIn(3.0,80.0)
         return listOf(offset(start,radius,bearing-40),offset(start,radius,bearing+40))
     }
     fun score(actualMinutes:Double,target:Int,uTurns:Int):Double {
