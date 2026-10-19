@@ -27,7 +27,8 @@ object NavigationUi {
                 "Search" to { search(activity,null) },
                 "Fun ride" to { activity.startActivity(Intent(activity,FunRideActivity::class.java)) },
                 "Ride tools" to { RideToolsActivity.open(activity) })
-            for((label,action) in actions) addView(Button(activity).apply {
+            val visibleActions=if(activity.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT && !activity.isInMultiWindowMode) actions.drop(1) else actions
+            for((label,action) in visibleActions) addView(Button(activity).apply {
                 text=label;contentDescription="Ride action: $label";isAllCaps=false;textSize=18f;maxLines=2;minHeight=dp(56)
                 gravity=Gravity.CENTER;setPadding(dp(3),dp(2),dp(3),dp(2));setTextColor(RideStyle.TEXT)
                 background=RideStyle.row(activity);setOnClickListener{action()}
@@ -106,6 +107,12 @@ object NavigationUi {
         val mapArea=FrameLayout(activity)
         mapArea.addOnLayoutChangeListener { _,left,top,right,bottom,_,_,_,_ -> NativeNavigation.phoneViewport(right-left,bottom-top) }
         mapArea.addView(image,FrameLayout.LayoutParams(-1,-1))
+        val empty=TextView(activity).apply {
+            text="Your route appears here\nChoose a destination to begin";gravity=Gravity.CENTER;textSize=18f
+            setTextColor(RideStyle.MUTED);setPadding(20,16,20,16)
+            setOnClickListener { search(activity,null) }
+        }
+        mapArea.addView(empty,FrameLayout.LayoutParams(-1,-1))
         body.addView(mapArea,LinearLayout.LayoutParams(0,-1,1f))
         val density=activity.resources.displayMetrics.density
         fun dp(value:Int)=(value*density).toInt()
@@ -124,7 +131,11 @@ object NavigationUi {
         page.addView(state)
         val refresh=object: Runnable { override fun run() {
             if(!page.isAttachedToWindow) return
-            image.setImageBitmap(NativeNavigation.phoneBitmap(RidePreferences.prefs(activity).getString("phone_panel","map") ?: "map"))
+            val active=NativeNavigation.running
+            empty.visibility=if(active) View.GONE else View.VISIBLE
+            image.visibility=if(active) View.VISIBLE else View.GONE
+            zoom.visibility=if(active) View.VISIBLE else View.GONE
+            if(active) image.setImageBitmap(NativeNavigation.phoneBitmap(RidePreferences.prefs(activity).getString("phone_panel","music") ?: "map"))
             directions.text=NativeNavigation.phoneGuidance()
             gps.text=NativeNavigation.gpsSummary()
             state.text="© MapTiler  © OpenStreetMap contributors"

@@ -605,7 +605,7 @@ object NativeNavigation {
                         if (i==0) path.moveTo(pixel.x,pixel.y) else path.lineTo(pixel.x,pixel.y)
                     }
                     paint.color = Color.WHITE; paint.style=Paint.Style.STROKE; paint.strokeWidth=8f; canvas.drawPath(path,paint)
-                    paint.color=if(phone) { if(frameNight) 0xff48a4ff.toInt() else 0xff087eff.toInt() } else 0xffdb35e7.toInt()
+                    paint.color=if(frameNight) 0xff6284ff.toInt() else 0xff3456cc.toInt()
                     paint.strokeWidth=5f; canvas.drawPath(path,paint)
                 }
                 val pixel = snapshot.pixelForLatLng(LatLng(fix.latitude,fix.longitude))

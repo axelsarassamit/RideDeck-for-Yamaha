@@ -59,11 +59,11 @@ object MapPanelSettings {
         val panel=Spinner(a).apply {
             contentDescription="Phone panel";minimumHeight=dp(56);tag="phone_panel"
             adapter=ArrayAdapter(a,android.R.layout.simple_spinner_dropdown_item,arrayOf("Map","Turn arrows","Music"))
-            setSelection(modes.indexOf(prefs.getString("phone_panel","map")).coerceAtLeast(0))
+            setSelection(modes.indexOf(prefs.getString("phone_panel","music")).coerceAtLeast(0))
             onItemSelectedListener=object:AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent:AdapterView<*>?)=Unit
                 override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) {
-                    if(prefs.getString("phone_panel","map")!=modes[position])prefs.edit().putString("phone_panel",modes[position]).apply()
+                    if(prefs.getString("phone_panel","music")!=modes[position])prefs.edit().putString("phone_panel",modes[position]).apply()
                 }
             }
         };page.addView(panel,LinearLayout.LayoutParams(-1,-2))

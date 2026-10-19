@@ -118,7 +118,11 @@ public class MainActivity extends android.app.Activity {
             refreshMediaSession();
             refreshWhatsAppPreview();
             if (castStatus != null) castStatus.setText(YamahaCastService.status);
-            if (phoneGuidance != null) phoneGuidance.setText(NativeNavigation.phoneGuidance());
+            if (phoneGuidance != null) {
+                phoneGuidance.setText(NativeNavigation.phoneGuidance());
+                ((View) phoneGuidance.getParent()).setVisibility(
+                    NativeNavigation.INSTANCE.getRoute() == null ? View.GONE : View.VISIBLE);
+            }
             if (phoneSpeedLimit != null) phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
             if (!setupVisible && RidePreferences.automaticMap(MainActivity.this) && YamahaCastService.automaticFallbackPending && !YamahaCastService.active) {
                 YamahaCastService.automaticFallbackPending = false;
@@ -178,11 +182,11 @@ public class MainActivity extends android.app.Activity {
     }
     private final Runnable callRefresh = new Runnable() {
         @Override public void run() {
-            if (BuildConfig.YAMAHA && !setupVisible && !RidePreferences.prefs(MainActivity.this).getString("phone_panel", "map").equals(renderedPanel)) buildScreen();
+            if (BuildConfig.YAMAHA && !setupVisible && !RidePreferences.prefs(MainActivity.this).getString("phone_panel", "music").equals(renderedPanel)) buildScreen();
             refreshCallPanel(); reconnectSavedBike(); handler.postDelayed(this, 500);
         }
     };
-    private String renderedPanel = "map";
+    private String renderedPanel = "music";
     private void reconnectSavedBike() {
         if (!BuildConfig.YAMAHA || !activityVisible || setupVisible || this instanceof SetupActivity || YamahaCastService.active
             || YamahaCastService.autoReconnectPaused || !RidePreferences.automaticMap(this)) return;
@@ -577,7 +581,7 @@ public class MainActivity extends android.app.Activity {
     private void buildScreen() {
         if (this instanceof SetupActivity) { buildSetupScreen(); return; }
         setupVisible = false; cockpitVisible = true;
-        renderedPanel = RidePreferences.prefs(this).getString("phone_panel", "map");
+        renderedPanel = RidePreferences.prefs(this).getString("phone_panel", "music");
         if (phoneMapPending) { phoneMapPending = false; handler.postDelayed(this::openPhoneMap, 400); }
         messagePreview = null; messageSource = null; albumArt = null;
         trackArtist = null; musicSource = null; playbackTimeline = null;
@@ -599,29 +603,27 @@ public class MainActivity extends android.app.Activity {
             return insets;
         });
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        android.widget.ImageView logo = new android.widget.ImageView(this);
-        logo.setImageResource(R.drawable.ridedeck_brand);
-        logo.setColorFilter(RideTheme.accent(this));
+        VelocityBrandView logo = new VelocityBrandView(this);
         LinearLayout logoSlot = new LinearLayout(this);
         logoSlot.setOrientation(LinearLayout.HORIZONTAL);
         logoSlot.setGravity(Gravity.CENTER);
         logo.setContentDescription("RideDeck");
-        LinearLayout.LayoutParams rideLogoParams = new LinearLayout.LayoutParams(dp(44), dp(44));
+        LinearLayout.LayoutParams rideLogoParams = new LinearLayout.LayoutParams(dp(104), dp(headerHeight));
         rideLogoParams.rightMargin = dp(6);
         logoSlot.addView(logo, rideLogoParams);
-        android.widget.ImageView yamahaLogo = new android.widget.ImageView(this);
-        yamahaLogo.setImageDrawable(YamahaBranding.roundLogo(this));
-        yamahaLogo.setContentDescription("Yamaha Motor compatibility");
-        yamahaLogo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        yamahaLogo.setPadding(0, 0, 0, 0);
-        LinearLayout.LayoutParams yamahaLogoParams = new LinearLayout.LayoutParams(dp(40), dp(40));
-        logoSlot.addView(yamahaLogo, yamahaLogoParams);
-        header.addView(logoSlot, new LinearLayout.LayoutParams(dp(96), dp(headerHeight)));
+        header.addView(logoSlot, new LinearLayout.LayoutParams(dp(112), dp(headerHeight)));
         castStatus = text(YamahaCastService.status, 11, RideStyle.MUTED, false);
         castStatus.setMaxLines(1); castStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);
         CockpitClockView clock = new CockpitClockView(this);
         header.addView(clock, new LinearLayout.LayoutParams(0, dp(headerHeight), 1));
+        clock.setOnClickListener(v -> RideAppearance.showOptions(this));
+        clock.setContentDescription("Clock; tap for design appearance");
         if (!compact) root.addView(header, new LinearLayout.LayoutParams(-1, dp(headerHeight)));
+        if (portrait && !compact) {
+            VelocityRideSummary summary = new VelocityRideSummary(this, "Search destination", () -> NavigationUi.search(this, null));
+            LinearLayout.LayoutParams summarySize = new LinearLayout.LayoutParams(-1, dp(100));
+            summarySize.topMargin = dp(8); root.addView(summary, summarySize);
+        }
         if (BuildConfig.YAMAHA && "music".equals(renderedPanel)) {
             phoneGuidance = text(NativeNavigation.phoneGuidance(), compact ? 22 : portrait ? 30 : 26, RideStyle.TEXT, true);
             phoneGuidance.setMaxLines(shortHeight ? 1 : portrait && !compact ? 3 : 2);
@@ -638,6 +640,7 @@ public class MainActivity extends android.app.Activity {
                 return true;
             });
             LinearLayout guidanceRow = new LinearLayout(this); guidanceRow.setGravity(Gravity.CENTER_VERTICAL);
+            guidanceRow.setVisibility(NativeNavigation.INSTANCE.getRoute() == null ? View.GONE : View.VISIBLE);
             guidanceRow.addView(phoneGuidance, new LinearLayout.LayoutParams(0, -2, 1));
             phoneSpeedLimit = new SpeedLimitIcon(this);
             phoneSpeedLimit.setLimit(NativeNavigation.currentSpeedLimitKph());
@@ -731,7 +734,7 @@ public class MainActivity extends android.app.Activity {
         callPanel.setOrientation(compact ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         callPanel.setGravity(Gravity.CENTER_VERTICAL);
         callPanel.setVisibility(View.GONE); renderedCall = null;
-        if (BuildConfig.YAMAHA && !"music".equals(RidePreferences.prefs(this).getString("phone_panel", "map"))) {
+        if (BuildConfig.YAMAHA && !"music".equals(RidePreferences.prefs(this).getString("phone_panel", "music"))) {
             mediaSlot.removeView(music);
             mediaSlot.addView(NavigationUi.panel(this), new android.widget.FrameLayout.LayoutParams(-1, -1));
         }
@@ -742,12 +745,16 @@ public class MainActivity extends android.app.Activity {
         controls.addView(mediaSlot, musicParams);
 
         LinearLayout messages = rideCard("MESSAGES");
+        messages.setTag("ride_message_box");
+        messages.setBackground(RideStyle.surface(this, RideStyle.PANEL, 18, true));
         if (shortMusic) messages.setPadding(dp(16), dp(8), dp(16), dp(8));
         messageSource = text("LATEST MESSAGE", compact ? 13 : 20, RideTheme.accent(this), true);
         messageSource.setMaxLines(1); messageSource.setEllipsize(android.text.TextUtils.TruncateAt.END);
         messages.addView(messageSource);
         messagePreview = text("No new messages", compact ? 14 : 16, RideStyle.MUTED, false);
         messagePreview.setTextSize(compact ? 16 : portrait ? 20 : 18);
+        messagePreview.setLineSpacing(dp(3), 1f);
+        messagePreview.setPadding(0, dp(8), 0, dp(8));
         messagePreview.setMaxLines(portrait ? 7 : 4); messagePreview.setEllipsize(android.text.TextUtils.TruncateAt.END);
         messagePreview.setOnClickListener(v -> showFullMessage());
         messageSource.setOnClickListener(v -> showFullMessage());
@@ -1441,8 +1448,8 @@ public class MainActivity extends android.app.Activity {
         refreshCallPanel();
         if (messagePreview == null) return;
         if (!hasNotificationAccess(new ComponentName(this, GX12NotificationListener.class))) {
-            if (messageSource != null) messageSource.setText("ACCESS IS OFF");
-            if (messagePreview != null) messagePreview.setText("Enable message access while parked");
+            if (messageSource != null) messageSource.setText("Messages paused");
+            if (messagePreview != null) messagePreview.setText("Allow message access in Setup");
             return;
         }
         GX12NotificationListener.NotificationPreview preview = displayedMessage();
