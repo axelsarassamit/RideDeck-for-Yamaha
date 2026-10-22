@@ -3,8 +3,6 @@ package com.axelsarassamit.gx12;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
-import android.graphics.PorterDuff;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 
@@ -22,7 +20,6 @@ public final class YamahaBranding {
         }
         BitmapDrawable drawable = new BitmapDrawable(context.getResources(), emblem);
         drawable.setFilterBitmap(true);
-        drawable.setColorFilter(RideTheme.accent(context), PorterDuff.Mode.SRC_IN);
         return drawable;
     }
 }

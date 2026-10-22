@@ -603,7 +603,7 @@ public class MainActivity extends android.app.Activity {
         });
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         VelocityBrandView logo = new VelocityBrandView(this);
-        logo.setContentDescription("RideDeck");
+        logo.setContentDescription("RideDeck for Yamaha");
         header.addView(logo,new LinearLayout.LayoutParams(dp(88),dp(48)));
         CockpitClockView clock=new CockpitClockView(this);
         ((TextView)clock.getChildAt(0)).setTextSize(9);

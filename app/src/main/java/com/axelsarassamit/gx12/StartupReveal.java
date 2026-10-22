@@ -30,12 +30,11 @@ public final class StartupReveal {
     private static final class BrandView extends View {
         final String edition;final int background,accent,text;final Paint paint=new Paint(3);float progress;
         final Bitmap logo;
-        BrandView(Activity a,String edition,int background,int accent,int text){super(a);this.edition=edition;this.background=background;this.accent=accent;this.text=text;logo=BitmapFactory.decodeResource(getResources(),R.drawable.velocity_logo);}
+        BrandView(Activity a,String edition,int background,int accent,int text){super(a);this.edition=edition;this.background=background;this.accent=accent;this.text=text;logo=BitmapFactory.decodeResource(getResources(),RideAppearance.isDark(a)?R.drawable.velocity_logo:R.drawable.velocity_logo_light);}
         protected void onDraw(Canvas canvas){
             canvas.drawColor(background);float d=getResources().getDisplayMetrics().density;
             float alpha=progress>.82f?(1-progress)/.18f:Math.min(1,progress/.2f);paint.setAlpha((int)(255*alpha));
-            float size=Math.min(getWidth()*.7f,280*d);RectF box=new RectF((getWidth()-size)/2,(getHeight()-size)/2,(getWidth()+size)/2,(getHeight()+size)/2);
-            if(!RideAppearance.isDark(getContext()))paint.setColorFilter(new android.graphics.PorterDuffColorFilter(text,android.graphics.PorterDuff.Mode.SRC_IN));
+            float size=Math.min(getWidth()*.7f,280*d),height=size*logo.getHeight()/logo.getWidth();RectF box=new RectF((getWidth()-size)/2,(getHeight()-height)/2,(getWidth()+size)/2,(getHeight()+height)/2);
             canvas.drawBitmap(logo,null,box,paint);
         }
     }
