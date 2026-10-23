@@ -88,8 +88,8 @@ object YamahaPositionMarker {
             }
         }
         page.addView(preview,LinearLayout.LayoutParams(-1,dp(144)))
-        val modelButton=Button(activity).apply { isAllCaps=false; textSize=20f }
-        val colourButton=Button(activity).apply { isAllCaps=false; textSize=20f }
+        val modelButton=Button(activity).apply { RideStyle.action(this,true) }
+        val colourButton=Button(activity).apply { RideStyle.action(this,true) }
         fun refresh() {
             modelButton.text="Model: ${models[selectedModel]}"; colourButton.text="Colour: ${colours[selectedColour]}"
             preview.contentDescription="${models[selectedModel]} in ${colours[selectedColour]}"; preview.invalidate()
