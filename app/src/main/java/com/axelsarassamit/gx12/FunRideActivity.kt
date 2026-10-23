@@ -23,7 +23,7 @@ class FunRideActivity:Activity() {
     private val stops=mutableListOf<NavigationPlace>()
     private lateinit var startButton:Button;private lateinit var finishButton:Button;private lateinit var stopButton:Button
     private lateinit var status:TextView;private lateinit var build:Button;private lateinit var duration:Spinner;private lateinit var style:Spinner;private lateinit var direction:Spinner
-    private fun button(label:String,action:()->Unit)=Button(this).apply { text=label;isAllCaps=false;textSize=21f;minHeight=(76*resources.displayMetrics.density).toInt();setOnClickListener{action()};controls.add(this) }
+    private fun button(label:String,action:()->Unit)=Button(this).apply { text=label;RideStyle.action(this,true);setOnClickListener{action()};controls.add(this) }
     override fun onCreate(saved:Bundle?) {
         RideAppearance.prepare(this);super.onCreate(saved);NativeNavigation.start(this)
         startPlace=ItineraryRoutes.decode(saved?.getString("start")).firstOrNull();finishPlace=ItineraryRoutes.decode(saved?.getString("finish")).firstOrNull();stops.addAll(ItineraryRoutes.decode(saved?.getString("stops")))

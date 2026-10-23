@@ -16,13 +16,13 @@ class DestinationSearchActivity:Activity() {
     private lateinit var results:LinearLayout
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
     private fun button(label:String,action:()->Unit)=Button(this).apply {
-        text=label;isAllCaps=false;textSize=20f;minHeight=dp(72);setTextColor(RideStyle.TEXT);background=RideStyle.row(this@DestinationSearchActivity);setOnClickListener { action() }
+        text=label;RideStyle.action(this,true);setOnClickListener { action() }
     }
     override fun onCreate(saved:Bundle?) {
         RideAppearance.prepare(this); super.onCreate(saved);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(16),dp(16),dp(8));setBackgroundColor(RideStyle.BACKGROUND) }
-        page.setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(page) { view, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
             view.setPadding(dp(16) + bars.left, dp(16) + bars.top, dp(16) + bars.right, dp(8) + bars.bottom)
             insets
         }
@@ -31,19 +31,19 @@ class DestinationSearchActivity:Activity() {
             imeOptions=android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH;setOnEditorActionListener { _,a,_ -> if(a==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { search();true } else false } }
         page.addView(field,LinearLayout.LayoutParams(-1,dp(80)))
         val row=LinearLayout(this)
-        row.addView(button("Search") { search() },LinearLayout.LayoutParams(0,dp(72),1f))
+        row.addView(button("Search") { search() },LinearLayout.LayoutParams(0,dp(56),1f).apply { leftMargin=dp(4);rightMargin=dp(4) })
         row.addView(button("Paste map pin") {
             val clip=getSystemService(ClipboardManager::class.java).primaryClip
             val value=clip?.takeIf { it.itemCount>0 }?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
             if(value.isBlank()) status.text="Copy coordinates or a Google Maps place link first."
             else if(value.contains("https://")) share(value)
             else { field.setText(value);search() }
-        },LinearLayout.LayoutParams(0,dp(72),1f));page.addView(row)
+        },LinearLayout.LayoutParams(0,dp(56),1f).apply { leftMargin=dp(4);rightMargin=dp(4) });page.addView(row)
         status=TextView(this).apply { text="Search by name, or paste latitude, longitude.";textSize=16f;setTextColor(RideStyle.MUTED);setPadding(0,dp(8),0,dp(8)) };page.addView(status)
         results=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         page.addView(ScrollView(this).apply { addView(results) },LinearLayout.LayoutParams(-1,0,1f))
         page.addView(button("Manage favorites") { FavoritePlacesActivity.open(this) });
-        page.addView(button("Close") { finish() });setContentView(page);page.requestApplyInsets();showSaved("")
+        page.addView(button("Back") { finish() });setContentView(page);page.requestApplyInsets();showSaved("")
     }
     private fun share(text:String) { startActivity(Intent(this,SharedLocationActivity::class.java).setAction(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT,text)) }
     private fun showSaved(query:String) {
@@ -109,7 +109,7 @@ class DestinationSearchActivity:Activity() {
     }
     private fun largeButtons(dialog:AlertDialog) {
         for(which in listOf(AlertDialog.BUTTON_POSITIVE,AlertDialog.BUTTON_NEUTRAL,AlertDialog.BUTTON_NEGATIVE))
-            dialog.getButton(which)?.apply { minHeight=dp(72);textSize=20f;isAllCaps=false }
+            dialog.getButton(which)?.apply { RideStyle.action(this,false) }
     }
     override fun onDestroy() { generation++;worker.shutdownNow();super.onDestroy() }
 }

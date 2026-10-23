@@ -29,6 +29,7 @@ class RideToolsActivity:Activity() {
             "Fuel" to { FuelStationsActivity.open(this) },
             "Traffic" to { TrafficActivity.open(this) },
             "Ride book" to { RideBookActivity.open(this) },
+            "Map settings" to { MapPanelSettingsActivity.open(this) },
             "Stop navigation" to { NativeNavigation.stopRoute();Toast.makeText(this,"Navigation stopped",Toast.LENGTH_SHORT).show() }
         )
         val columns=if(resources.configuration.screenWidthDp>=560)3 else 2
@@ -45,8 +46,7 @@ class RideToolsActivity:Activity() {
         setContentView(page);androidx.core.view.ViewCompat.requestApplyInsets(page)
     }
     private fun tile(label:String,action:()->Unit)=Button(this).apply {
-        text=label;contentDescription="Ride tools: $label";isAllCaps=false;textSize=20f;maxLines=2;minHeight=dp(56)
-        gravity=Gravity.CENTER;setTextColor(RideStyle.TEXT);setPadding(dp(4),dp(2),dp(4),dp(2));background=RideStyle.row(this@RideToolsActivity);setOnClickListener{action()}
+        text=label;contentDescription="Ride tools: $label";RideStyle.action(this,false);maxLines=2;setOnClickListener{action()}
     }
     private fun savedPlace(label:String,key:String) {
         val place=NavigationApi.coordinate(RidePreferences.prefs(this).getString(key,"").orEmpty())?.copy(label=label)

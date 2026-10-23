@@ -29,9 +29,8 @@ object NavigationUi {
                 "Ride tools" to { RideToolsActivity.open(activity) })
             val visibleActions=actions
             for((label,action) in visibleActions) addView(Button(activity).apply {
-                text=label;contentDescription="Ride action: $label";isAllCaps=false;textSize=18f;maxLines=2;minHeight=dp(56)
-                gravity=Gravity.CENTER;setPadding(dp(3),dp(2),dp(3),dp(2));setTextColor(RideStyle.TEXT)
-                background=RideStyle.row(activity);setOnClickListener{action()}
+                text=label;contentDescription="Ride action: $label";RideStyle.action(this,false);maxLines=2
+                setPadding(dp(3),dp(2),dp(3),dp(2));setOnClickListener{action()}
             },LinearLayout.LayoutParams(0,dp(56),1f).apply{leftMargin=dp(3);rightMargin=dp(3)})
         }
     }
@@ -59,28 +58,8 @@ object NavigationUi {
     @JvmStatic fun search(activity: Activity, initial: String?) {
         activity.startActivity(Intent(activity,DestinationSearchActivity::class.java).putExtra("query",initial))
     }
-    @JvmStatic fun mapMenu(activity: Activity) {
-        AlertDialog.Builder(activity).setTitle("Map")
-            .setItems(arrayOf("Search destination", "Stop route", "Voice guidance", "Road preferences", "Estimated fuel range", "Go for a fun ride")) { _, choice ->
-                when (choice) {
-                    0 -> search(activity, null)
-                    1 -> NativeNavigation.stopRoute()
-                    2 -> voiceGuidance(activity)
-                    3 -> RoutePreferencesUi.show(activity)
-                    4 -> FuelRangeActivity.open(activity)
-                    5 -> activity.startActivity(Intent(activity,FunRideActivity::class.java))
-                }
-            }.setNegativeButton("Close", null).show()
-    }
-    private fun voiceGuidance(activity: Activity) {
-        val prefs=RidePreferences.prefs(activity)
-        val dialog=AlertDialog.Builder(activity).setTitle("Navigation voice: English")
-            .setSingleChoiceItems(arrayOf("On","Off"),if(prefs.getBoolean("navigation_voice",true)) 0 else 1) { _,index ->
-                prefs.edit().putBoolean("navigation_voice",index == 0).apply()
-            }.setNeutralButton("Test English voice",null).setNegativeButton("Close",null).create()
-        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { NavigationVoice.sample(activity) } }
-        dialog.show()
-    }
+    /** One map action menu, shared with the cockpit's Ride tools button. */
+    @JvmStatic fun mapMenu(activity: Activity) { RideToolsActivity.open(activity) }
     @JvmStatic fun panel(activity: Activity): View {
         val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(RideStyle.BACKGROUND) }
         val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Map; tap for navigation menu"; setOnClickListener { mapMenu(activity) } }
@@ -119,7 +98,7 @@ object NavigationUi {
         val zoom=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setBackgroundColor(RideStyle.PANEL) }
         listOf("+","−").forEachIndexed { index,label ->
             zoom.addView(Button(activity).apply {
-                text=label;textSize=30f;isAllCaps=false;minWidth=0;minimumWidth=0
+                RideStyle.action(this,false);text=label;textSize=30f;setPadding(0,0,0,0)
                 contentDescription=if(index==0) "Zoom in" else "Zoom out"
                 setOnClickListener { NativeNavigation.zoom(index==0) }
             },LinearLayout.LayoutParams(dp(64),dp(64)))

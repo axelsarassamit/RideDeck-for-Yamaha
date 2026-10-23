@@ -66,10 +66,11 @@ class RoutePreviewActivity : Activity() {
     private val blue=0xff087eff.toInt()
     private fun dp(value: Int)=(resources.displayMetrics.density*value).toInt()
     private fun button(label: String, primary: Boolean=false)=Button(this).apply {
-        text=label; isAllCaps=false; textSize=22f; minHeight=dp(80)
-        setTextColor(if(primary) Color.WHITE else RideStyle.TEXT)
-        background=GradientDrawable().apply { setColor(if(primary) blue else RideStyle.RAISED); cornerRadius=dp(14).toFloat() }
-        setPadding(dp(12),dp(8),dp(12),dp(8))
+        text=label; RideStyle.action(this,false)
+        if(primary) {
+            setTextColor(Color.WHITE)
+            background=android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x28ffffff),RideStyle.surface(this@RoutePreviewActivity,blue,14,false),null)
+        }
     }
     override fun onCreate(saved: Bundle?) {
         RideAppearance.prepare(this); super.onCreate(saved)
@@ -137,8 +138,8 @@ class RoutePreviewActivity : Activity() {
         retry=button("Retry routes").apply { setOnClickListener { loadRoutes() } }
         controls.addView(retry,LinearLayout.LayoutParams(-1,dp(64)).apply { topMargin=dp(8) })
         val footer=LinearLayout(this)
-        footer.addView(start,LinearLayout.LayoutParams(0,dp(80),1f).apply { rightMargin=dp(8) })
-        footer.addView(button("Cancel").apply { setOnClickListener { finish() } },LinearLayout.LayoutParams(dp(104),dp(80)))
+        footer.addView(start,LinearLayout.LayoutParams(0,dp(64),1f).apply { rightMargin=dp(8) })
+        footer.addView(button("Cancel").apply { setOnClickListener { finish() } },LinearLayout.LayoutParams(dp(104),dp(64)))
         controls.addView(footer,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
         setContentView(page)
         mapView.getMapAsync { ready ->

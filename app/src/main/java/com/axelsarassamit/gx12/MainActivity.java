@@ -473,11 +473,7 @@ public class MainActivity extends android.app.Activity {
                 String original = action.getText().toString();
                 String label = original.toLowerCase(Locale.ROOT);
                 if (!label.isEmpty() && original.equals(original.toUpperCase(Locale.ROOT))) action.setText(Character.toUpperCase(label.charAt(0)) + label.substring(1));
-                action.setMinimumHeight(dp(52)); action.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-                action.setPadding(dp(16), dp(8), dp(16), dp(8)); action.setTextColor(RideStyle.TEXT);
-                android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
-                shape.setColor(RideStyle.RAISED); shape.setCornerRadius(dp(6));
-                action.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x286c94ff), shape, null));
+                RideStyle.action(action, true);
             } else if (child instanceof android.view.ViewGroup) styleSetupActions((android.view.ViewGroup) child);
         }
     }
@@ -1612,7 +1608,7 @@ public class MainActivity extends android.app.Activity {
     private String safeMessage(Exception error) { String m = error.getMessage(); return m == null || m.isBlank() ? error.getClass().getSimpleName() : m; }
     private String appVersion() { try { PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0); return info.versionName + " (" + info.versionCode + ")"; } catch (Exception ignored) { return "unknown"; } }
     private TextView text(String value, int size, int color, boolean bold) { TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); v.setTypeface(Typeface.create(bold ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL)); return v; }
-    private Button button(String label) { Button b = new Button(this); b.setText(label); b.setTextColor(RideStyle.TEXT); b.setAllCaps(false); b.setBackground(RideStyle.row(this)); return b; }
+    private Button button(String label) { Button b = new Button(this); b.setText(label); RideStyle.action(b, false); return b; }
     private LinearLayout.LayoutParams params() { return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT); }
     private LinearLayout.LayoutParams buttonParams() { LinearLayout.LayoutParams p = params(); p.topMargin = dp(8); return p; }
 

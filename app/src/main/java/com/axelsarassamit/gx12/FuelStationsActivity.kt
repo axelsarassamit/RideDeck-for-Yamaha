@@ -38,7 +38,7 @@ class FuelStationsActivity:RiderPage() {
         content.addView(prices)
         val dialog=android.app.AlertDialog.Builder(this).setTitle(place.name).setView(android.widget.ScrollView(this).apply { addView(content) }).setNegativeButton("Back",null)
             .setPositiveButton("Choose route") { _,_->NavigationApi.coordinate(place.destination)?.let { RoutePreviewActivity.open(this,it.copy(label=place.name)) } }.show()
-        for(which in listOf(android.app.AlertDialog.BUTTON_POSITIVE,android.app.AlertDialog.BUTTON_NEGATIVE)) dialog.getButton(which).apply { minHeight=dp(72);textSize=20f;isAllCaps=false }
+        for(which in listOf(android.app.AlertDialog.BUTTON_POSITIVE,android.app.AlertDialog.BUTTON_NEGATIVE)) dialog.getButton(which).apply { RideStyle.action(this,false) }
         if(place.fuelPriceId.isNotBlank() && RidePreferences.prefs(this).getBoolean("tomtom_fuel_entitled",false)) worker.execute {
             val result=runCatching { TomTomApi.fuelPrices(applicationContext,place.fuelPriceId) }
             runOnUiThread { if(!dialog.isShowing || isDestroyed) return@runOnUiThread

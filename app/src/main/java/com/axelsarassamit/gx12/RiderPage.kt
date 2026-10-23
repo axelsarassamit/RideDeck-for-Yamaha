@@ -18,8 +18,7 @@ abstract class RiderPage:Activity() {
         text=value;textSize=size;setTextColor(RideStyle.TEXT);setPadding(dp(12),dp(12),dp(12),dp(12))
     }
     protected fun button(label:String,action:()->Unit)=Button(this).apply {
-        text=label;textSize=21f;isAllCaps=false;minHeight=dp(72);gravity=Gravity.START or Gravity.CENTER_VERTICAL
-        setTextColor(RideStyle.TEXT);background=RideStyle.row(this@RiderPage);setPadding(dp(16),dp(12),dp(16),dp(12));setOnClickListener { action() }
+        text=label;RideStyle.action(this,true);setOnClickListener { action() }
     }
     protected fun row(view:android.view.View)=rows.addView(view,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
     protected fun build(title:String) {

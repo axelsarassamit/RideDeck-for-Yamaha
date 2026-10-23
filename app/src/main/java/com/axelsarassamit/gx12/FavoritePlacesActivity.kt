@@ -12,12 +12,11 @@ class FavoritePlacesActivity : RiderPage() {
         @JvmStatic fun open(activity: Activity) { activity.startActivity(Intent(activity, FavoritePlacesActivity::class.java)) }
         private fun dp(a: Activity, n: Int) = (n * a.resources.displayMetrics.density).toInt()
         private fun action(a: Activity, label: String, run: () -> Unit) = Button(a).apply {
-            text=label; textSize=21f; isAllCaps=false; minHeight=dp(a,72)
-            setTextColor(RideStyle.TEXT); background=RideStyle.row(a); setOnClickListener { run() }
+            text=label; RideStyle.action(this,true); setOnClickListener { run() }
         }
         private fun sizeButtons(dialog: AlertDialog, a: Activity) {
             for (which in listOf(AlertDialog.BUTTON_POSITIVE,AlertDialog.BUTTON_NEGATIVE,AlertDialog.BUTTON_NEUTRAL))
-                dialog.getButton(which)?.apply { minHeight=dp(a,72); textSize=20f; isAllCaps=false }
+                dialog.getButton(which)?.apply { RideStyle.action(this,false) }
         }
         private fun chooseCategory(a: Activity, selected: (String) -> Unit) {
             val rows=LinearLayout(a).apply { orientation=LinearLayout.VERTICAL }

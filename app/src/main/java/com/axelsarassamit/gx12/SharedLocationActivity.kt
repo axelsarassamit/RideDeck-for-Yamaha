@@ -85,7 +85,7 @@ class SharedLocationActivity : Activity() {
         dialog.setOnCancelListener { finish() }
         dialog.setOnShowListener {
             listOf(AlertDialog.BUTTON_POSITIVE,AlertDialog.BUTTON_NEGATIVE).forEach {
-                dialog.getButton(it).apply { textSize=20f; minHeight=(80*resources.displayMetrics.density).toInt() }
+                dialog.getButton(it).apply { RideStyle.action(this,false) }
             }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val target = field.text.toString().trim()

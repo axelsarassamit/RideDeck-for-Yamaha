@@ -40,9 +40,7 @@ object MapPanelSettings {
         }
         fun heading(label:String) { words(page,label,19f,false).apply { setPadding(dp(8),dp(24),dp(8),dp(8));androidx.core.view.ViewCompat.setAccessibilityHeading(this,true) } }
         fun action(parent:LinearLayout,label:String,run:()->Unit)=Button(a).apply {
-            text=label;isAllCaps=false;textSize=17f;minHeight=dp(56);gravity=Gravity.START or Gravity.CENTER_VERTICAL
-            setTextColor(RideStyle.TEXT);background=RideStyle.row(a);backgroundTintList=null;stateListAnimator=null;elevation=0f
-            setPadding(dp(16),dp(12),dp(16),dp(12));setOnClickListener { run() }
+            text=label;RideStyle.action(this,true);setOnClickListener { run() }
             parent.addView(this,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
         }
         fun toggle(parent:LinearLayout,key:String,label:String,default:Boolean,detail:String?=null):Switch {
