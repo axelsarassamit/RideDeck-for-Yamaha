@@ -13,4 +13,6 @@ Validation on the final source:
 
 CI now runs unit tests and lint in addition to building and checking compiled text.
 
-These checks do not replace physical-bike or road validation. Real Thai U-turn/lane guidance, real calls/headset/recording handoff, calibrated fuel range and unconfirmed brake/indicator fields remain separate validation work. No new motorcycle control commands were introduced.
+On 2026-10-24 the owner confirmed that real-road U-turn and lane guidance work and look good. This is owner-reported road validation, separate from the automated audit.
+
+Remaining validation includes rerouting announcements, real calls/headset/recording handoff, calibrated fuel range and unconfirmed brake/indicator fields. No new motorcycle control commands were introduced.
