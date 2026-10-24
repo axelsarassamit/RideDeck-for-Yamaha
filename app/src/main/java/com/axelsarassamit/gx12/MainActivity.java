@@ -89,6 +89,15 @@ public class MainActivity extends android.app.Activity {
     private String messageApp;
     private GX12NotificationListener.NotificationPreview voiceReplyTarget;
     private android.app.Dialog voiceReplyReview;
+    private GX12NotificationListener.NotificationPreview voiceReviewTarget;
+    private EditText voiceReviewDraft;
+    private static final class RetainedReply {
+        final GX12NotificationListener.NotificationPreview pending, recipient;
+        final String draft;
+        RetainedReply(GX12NotificationListener.NotificationPreview pending, GX12NotificationListener.NotificationPreview recipient, String draft) {
+            this.pending=pending; this.recipient=recipient; this.draft=draft;
+        }
+    }
     private GX12NotificationListener.NotificationPreview newestSeen;
     private boolean setupVisible;
     private boolean cockpitVisible;
@@ -146,6 +155,10 @@ public class MainActivity extends android.app.Activity {
         }
         Object retained = getLastNonConfigurationInstance();
         if (retained instanceof GX12NotificationListener.NotificationPreview) voiceReplyTarget = (GX12NotificationListener.NotificationPreview) retained;
+        if (retained instanceof RetainedReply) {
+            RetainedReply reply=(RetainedReply)retained; voiceReplyTarget=reply.pending;
+            if (reply.recipient != null) handler.post(() -> { if (!isFinishing() && !isDestroyed()) confirmVoiceReply(reply.recipient,reply.draft); });
+        }
         if (state != null) autoMapSession = state.getString("auto_map_session");
         if (state != null) phoneMapPending = state.getBoolean("phone_map_pending", false);
         if (this instanceof SetupActivity) buildSetupScreen();
@@ -274,6 +287,7 @@ public class MainActivity extends android.app.Activity {
 
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        if (voiceReplyReview != null) voiceReplyReview.dismiss();
         if (headsetMic != null) headsetMic.release();
         pendingHeadsetVoice = null;
         if (speech != null) { speech.stop(); speech.shutdown(); }
@@ -434,7 +448,9 @@ public class MainActivity extends android.app.Activity {
 
     @Override public void onBackPressed() {
         if (setupVisible && setupMenu != null && setupMenu.back()) return;
-        super.onBackPressed();
+        if (!isTaskRoot()) { super.onBackPressed(); return; }
+        RideAppExit.stop(this);
+        finishAndRemoveTask();
     }
 
     private void setupAction(LinearLayout page, String label, Runnable action) {
@@ -512,7 +528,9 @@ public class MainActivity extends android.app.Activity {
     @Override public Object onRetainNonConfigurationInstance() {
         // Keep the recipient and its exact reply handle through rotation during dictation.
         // Message contents and reply drafts are never written to saved state or storage.
-        return voiceReplyTarget;
+        boolean reviewing=voiceReplyReview != null && voiceReplyReview.isShowing();
+        return new RetainedReply(voiceReplyTarget,reviewing ? voiceReviewTarget : null,
+            reviewing && voiceReviewDraft != null ? voiceReviewDraft.getText().toString() : "");
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -784,7 +802,7 @@ public class MainActivity extends android.app.Activity {
             Button action = rideAction(label, false);
             if (label.equals("Yamaha")) {
                 action.setContentDescription("Yamaha bike connection and screen options");
-                action.setOnLongClickListener(v -> { finishAndRemoveTask(); return true; });
+                action.setOnLongClickListener(v -> { RideAppExit.stop(this); finishAndRemoveTask(); return true; });
             }
             action.setOnClickListener(v -> {
                 switch (label) {
@@ -1038,6 +1056,7 @@ public class MainActivity extends android.app.Activity {
         TextView caption = text("YOUR REPLY", 16, RideTheme.accent(this), true);
         caption.setPadding(0, 0, 0, dp(8)); page.addView(caption);
         EditText draft = new EditText(this); draft.setHint("Your reply"); draft.setText(words);
+        draft.setTag("reply_review_draft");
         draft.setTextSize(28); draft.setTextColor(RideStyle.TEXT); draft.setHintTextColor(RideStyle.MUTED);
         draft.setMinLines(3); draft.setMaxLines(10); draft.setGravity(Gravity.TOP);
         draft.setPadding(dp(20), dp(16), dp(20), dp(16)); draft.setBackground(RideStyle.surface(this, RideStyle.PANEL, 12, true));
@@ -1117,8 +1136,8 @@ public class MainActivity extends android.app.Activity {
             int keyboard = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom;
             view.setPadding(edges.left + dp(20), edges.top + dp(20), edges.right + dp(20), Math.max(edges.bottom, keyboard) + dp(20)); return insets;
         });
-        dialog.setContentView(root); voiceReplyReview = dialog;
-        dialog.setOnDismissListener(d -> { if (voiceReplyReview == dialog) voiceReplyReview = null; });
+        dialog.setContentView(root); voiceReplyReview = dialog; voiceReviewTarget=target; voiceReviewDraft=draft;
+        dialog.setOnDismissListener(d -> { if (voiceReplyReview == dialog) { voiceReplyReview = null; voiceReviewTarget=null; voiceReviewDraft=null; } });
         dialog.show();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(RideStyle.BACKGROUND));

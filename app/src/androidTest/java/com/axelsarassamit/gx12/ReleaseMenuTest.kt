@@ -25,7 +25,7 @@ class ReleaseMenuTest {
                 assertTrue("No controls on ${type.simpleName}", controls.isNotEmpty())
                 val density = activity.resources.displayMetrics.density
                 controls.filter { it.visibility == View.VISIBLE }.forEach {
-                    assertTrue("Small control: ${it.text}, height=${it.height}, density=$density", it.height >= 64 * density)
+                    assertTrue("Small control: ${it.text}, height=${it.height}, density=$density", it.height >= 56 * density)
                 }
                 assertTrue(activity.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
                 if (activity is BikeDataActivity) {

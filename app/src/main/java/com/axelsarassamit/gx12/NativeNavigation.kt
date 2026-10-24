@@ -104,6 +104,7 @@ object NativeNavigation {
     private var lastSummary = 0L
 
     @JvmStatic fun start(c: Context) {
+        if(RideAppExit.closed(c))return
         context = c.applicationContext
         runCatching { NavigationSecrets.importDebugSetup(c) }
         if (c.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -229,6 +230,7 @@ object NativeNavigation {
         main.post { navigate(c, coordinate) }
     }
     fun navigate(c: Context, target: NavigationPlace, stops: List<NavigationPlace> = emptyList(), style:String = "relaxed") {
+        if(RideAppExit.closed(c))return
         context = c.applicationContext
         RideBackgroundSession.saveDestination(c,target,stops,style)
         val origin = location
@@ -684,6 +686,7 @@ class NativeNavigationService : Service(), LocationListener {
     private var wake: RideSessionWakeLock? = null
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if(RideAppExit.closed(this)) return RideAppExit.rejectQueuedStart(this,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         if(intent?.action=="STOP") { RideBackgroundSession.navigationStopped(this); stopSelf(); return START_NOT_STICKY }
         if(intent == null && !RideBackgroundSession.navigationActive(this)) { stopSelf(); return START_NOT_STICKY }
         if(NativeNavigation.running) return START_STICKY
@@ -740,7 +743,7 @@ class NativeNavigationService : Service(), LocationListener {
     }
     override fun onProviderDisabled(provider: String) { refreshProviderStatus() }
     override fun onProviderEnabled(provider: String) { refreshProviderStatus() }
-    override fun onTaskRemoved(rootIntent: Intent?) { BikeDiagnostics.record(this,"Navigation continues after Recent apps removal"); super.onTaskRemoved(rootIntent) }
+    override fun onTaskRemoved(rootIntent: Intent?) { RideAppExit.stop(this); super.onTaskRemoved(rootIntent) }
     override fun onDestroy() {
         try { locations?.removeUpdates(this) } catch(_: Exception) { }
         wake?.close(); wake=null; NativeNavigation.detach()

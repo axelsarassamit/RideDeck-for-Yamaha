@@ -32,22 +32,23 @@ class BikeDataService : Service() {
     }
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (RideAppExit.closed(this)) return RideAppExit.rejectQueuedStart(this,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         if (intent?.action == "STOP") { YamahaBikeAutoConnect.pause(); stopSelf(); return START_NOT_STICKY }
         if (intent?.action != "START") { stopSelf(); return START_NOT_STICKY }
         if (client != null) { BikeDataStore.status("Bike data is already connecting or connected. Stop it before choosing another bike.", client?.isAuthenticated == true); return START_NOT_STICKY }
         automatic = intent.getBooleanExtra("automatic", false)
-        val device = runCatching {
+        val device = try {
             val manager = getSystemService(BluetoothManager::class.java)
             manager.adapter.bondedDevices.firstOrNull { it.address == intent.getStringExtra("device") &&
                 (it.name.orEmpty().contains("YCCU", true) || it.name.orEmpty().contains("Yamaha", true)) }
-        }.getOrNull()
+        } catch (_:SecurityException) { null } catch (_:RuntimeException) { null }
         if (device == null) { BikeDataStore.status("Selected Yamaha pairing unavailable. Check Bluetooth and Nearby devices permission.", false); stopSelf(); return START_NOT_STICKY }
         // Another GATT client may still own the data session after its screen was closed.
         // Do not authenticate over that session or disconnect a connection belonging to it.
-        val alreadyConnected=runCatching {
+        val alreadyConnected=try {
             getSystemService(BluetoothManager::class.java).getConnectedDevices(android.bluetooth.BluetoothProfile.GATT)
                 .any { it.address.equals(device.address,true) }
-        }.getOrDefault(false)
+        } catch (_:SecurityException) { false } catch (_:RuntimeException) { false }
         if(alreadyConnected) {
             BikeDataStore.start(this)
             BikeDataStore.stop(this,"The Yamaha data service is already connected to another app. Disconnect Y-Connect and nRF Connect first; closing their screen may leave them connected. The map connection can remain in use.")
@@ -77,6 +78,7 @@ class BikeDataService : Service() {
         if (!intent.getBooleanExtra("during_ride", false)) main.postDelayed(endTest, 600000)
         return START_NOT_STICKY
     }
+    override fun onTaskRemoved(rootIntent: Intent?) { RideAppExit.stop(this); super.onTaskRemoved(rootIntent) }
     override fun onDestroy() {
         closing = true; main.removeCallbacksAndMessages(null); client?.close(); client = null
         wake?.close(); wake = null; if (current === this) current = null

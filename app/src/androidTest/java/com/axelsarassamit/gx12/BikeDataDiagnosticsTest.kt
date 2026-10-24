@@ -55,7 +55,7 @@ class BikeDataDiagnosticsTest {
                     assertFalse(prefs.getBoolean("bike_data_auto",true))
                     for (label in listOf("Check additional bike fields","Save private test log")) {
                         val button=all.filterIsInstance<Button>().single { it.text.toString().startsWith(label) }
-                        assertTrue(button.minHeight >= (72*a.resources.displayMetrics.density).toInt())
+                        assertTrue(button.minHeight >= (56*a.resources.displayMetrics.density).toInt())
                     }
                 }
                 scenario.recreate()

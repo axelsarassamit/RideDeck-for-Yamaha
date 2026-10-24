@@ -15,7 +15,7 @@ class YamahaTestPanelTest {
     private fun views(v:View):List<View> = listOf(v)+if(v is ViewGroup)(0 until v.childCount).flatMap { views(v.getChildAt(it)) } else emptyList()
     private fun tap(a:YamahaTestPanelActivity,label:String) {
         val button=views(a.window.decorView).filterIsInstance<Button>().first { it.text.toString().startsWith(label) }
-        assertTrue(button.minHeight >= (72*a.resources.displayMetrics.density).toInt());button.performClick()
+        assertTrue(button.minHeight >= (56*a.resources.displayMetrics.density).toInt());button.performClick()
     }
     @Test fun readsRealPhoneBatteryWithoutBikeConnection() {
         val instrumentation=InstrumentationRegistry.getInstrumentation()

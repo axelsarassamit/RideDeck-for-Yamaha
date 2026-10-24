@@ -20,6 +20,8 @@ class YamahaNativeMusicBridgeTest {
         val delivered=CountDownLatch(1);val paused=CountDownLatch(1)
         var session: MediaSession?=null;var bridge: YamahaNativeMusicBridge?=null
         var attempts=0
+        // The isolated preview does not inherit production notification access.
+        instrumentation.uiAutomation.adoptShellPermissionIdentity(android.Manifest.permission.MEDIA_CONTENT_CONTROL)
         try {
             prefs.edit().putString("music_app",c.packageName).putBoolean("yamaha_native_music_test",true).commit()
             instrumentation.runOnMainSync {
@@ -48,6 +50,7 @@ class YamahaNativeMusicBridgeTest {
             instrumentation.runOnMainSync { bridge!!.close() }
         } finally {
             instrumentation.runOnMainSync { bridge?.close();session?.release() }
+            instrumentation.uiAutomation.dropShellPermissionIdentity()
             prefs.edit().apply { if(original==null)remove("music_app") else putString("music_app",original) }
                 .putBoolean("yamaha_native_music_test",old).commit()
         }

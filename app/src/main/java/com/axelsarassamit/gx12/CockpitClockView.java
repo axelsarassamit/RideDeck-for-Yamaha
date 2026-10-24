@@ -26,7 +26,7 @@ public final class CockpitClockView extends LinearLayout {
         caption.setGravity(Gravity.CENTER); caption.setIncludeFontPadding(false); caption.setSingleLine(true);
         caption.setLetterSpacing(0.02f); addView(caption, new LayoutParams(-1, -2));
         value = new TextView(context); value.setTextColor(RideStyle.TEXT);
-        value.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
+        value.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
         value.setGravity(Gravity.CENTER); value.setIncludeFontPadding(false); value.setSingleLine(true);
         value.setAutoSizeTextTypeUniformWithConfiguration(18,36,1,android.util.TypedValue.COMPLEX_UNIT_SP);
         addView(value, new LayoutParams(-1,0,1));

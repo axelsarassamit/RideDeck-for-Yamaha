@@ -29,6 +29,7 @@ class DashRideService : Service() {
     private var wake: RideSessionWakeLock?=null
     override fun onBind(intent: Intent?)=null
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
+        if(RideAppExit.closed(this)) return RideAppExit.rejectQueuedStart(this,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         if(intent?.action=="PAUSE") { RideBookStore.pause(this);session.pause(SystemClock.elapsedRealtime());stopSelf();return START_NOT_STICKY }
         if(intent?.action=="END") { RideBookStore.pause(this,true);session.end();stopSelf();return START_NOT_STICKY }
         if(intent?.action!="START") { stopSelf();return START_NOT_STICKY }
@@ -77,7 +78,7 @@ class DashRideService : Service() {
             main.postDelayed(this,5000)
         }
     }
-    override fun onTaskRemoved(rootIntent: Intent?) { BikeDiagnostics.record(this,"Explicit Dash ride continues after Recent apps removal");super.onTaskRemoved(rootIntent) }
+    override fun onTaskRemoved(rootIntent: Intent?) { RideAppExit.stop(this);super.onTaskRemoved(rootIntent) }
     override fun onDestroy() {
         live=false;main.removeCallbacksAndMessages(null)
         telemetry?.stop();telemetry=null;RideBookStore.pause(this)

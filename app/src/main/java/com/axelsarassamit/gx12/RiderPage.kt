@@ -36,7 +36,8 @@ abstract class RiderPage:Activity() {
     protected fun freshLocation():Location? {
         val found=mutableListOf<Location>();NativeNavigation.location?.let(found::add)
         runCatching { val manager=getSystemService(LocationManager::class.java);manager.getProviders(true).forEach { name->
-            runCatching { manager.getLastKnownLocation(name) }.getOrNull()?.let(found::add)
+            val fix=try { manager.getLastKnownLocation(name) } catch(_:SecurityException) { null } catch(_:IllegalArgumentException) { null }
+            fix?.let(found::add)
         } }
         return found.filter { android.os.SystemClock.elapsedRealtimeNanos()-it.elapsedRealtimeNanos in 0..60_000_000_000L && it.hasAccuracy() && it.accuracy<=50 }
             .maxByOrNull { it.elapsedRealtimeNanos }

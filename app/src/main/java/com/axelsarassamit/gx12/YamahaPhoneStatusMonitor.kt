@@ -63,7 +63,7 @@ class YamahaPhoneStatusMonitor(private val context: Context, private val bikeAdd
         runCatching { stopTelephony?.invoke() }; stopTelephony = null
         network = YamahaPhoneStatus.Network.UNKNOWN; signalLevel = null
         val base = context.getSystemService(TelephonyManager::class.java) ?: return
-        val manager = if (SubscriptionManager.isValidSubscriptionId(id)) base.createForSubscriptionId(id) else base
+        val manager = if (id >= 0) base.createForSubscriptionId(id) else base
         telephony = manager
         fun signal(value: SignalStrength) { if (running && current == generation) { signalLevel = value.level; refresh() } }
         fun service(value: ServiceState) {
@@ -164,6 +164,7 @@ class YamahaPhoneStatusMonitor(private val context: Context, private val bikeAdd
         return { manager.listen(listener, PhoneStateListener.LISTEN_NONE) }
     }
 
+    @androidx.annotation.RequiresApi(31)
     private object Api31 {
         fun listen(context: Context, manager: TelephonyManager, signal: (SignalStrength) -> Unit,
                    service: (ServiceState) -> Unit): () -> Unit {

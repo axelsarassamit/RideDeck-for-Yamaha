@@ -257,7 +257,12 @@ class RoutePreviewActivity : Activity() {
         routes.forEachIndexed { index,r ->
             choices.addView(button((if(index==selected) "✓ " else "")+RouteChoices.label(routes,index)+"\n"+
                 RouteTimeEstimator.durationText(r.millis)+(if(wide) "  ·  " else "\n")+String.format(Locale.US,"%.1f km",r.meters/1000)+"\n"+RouteChoices.comparison(routes,index),index==selected).apply {
-                (background as GradientDrawable).setStroke(dp(3),routeColors[index])
+                val outline=when(val drawable=background) {
+                    is GradientDrawable -> drawable
+                    is android.graphics.drawable.RippleDrawable -> drawable.getDrawable(0) as? GradientDrawable
+                    else -> null
+                }
+                outline?.setStroke(dp(3),routeColors[index])
                 contentDescription="Route ${index+1}, ${if(index==selected) "selected, " else ""}${RouteChoices.label(routes,index)}, ${RouteTimeEstimator.durationText(r.millis)}, ${String.format(Locale.US,"%.1f kilometers",r.meters/1000)}"
                 textSize=if(wide) 19f else 16f;gravity=if(wide) Gravity.START or Gravity.CENTER_VERTICAL else Gravity.CENTER;setPadding(dp(4),dp(4),dp(4),dp(4));setOnClickListener { select(index) }
             },if(wide) LinearLayout.LayoutParams(-1,dp(112)).apply { bottomMargin=dp(8) }

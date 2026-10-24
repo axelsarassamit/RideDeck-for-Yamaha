@@ -19,7 +19,10 @@ class RideTelemetry(private val c:Context):SensorEventListener,LocationListener 
     }
     fun start() {
         sensors()
-        runCatching { locations.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000,0f,this,android.os.Looper.getMainLooper()) }
+        if(c.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)==android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try { locations.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000,0f,this,android.os.Looper.getMainLooper()) }
+            catch(_:SecurityException) { } catch(_:IllegalArgumentException) { }
+        }
     }
     override fun onSensorChanged(event:SensorEvent) {
         if(event.accuracy==SensorManager.SENSOR_STATUS_UNRELIABLE) { stableLean=null;up=null;return }

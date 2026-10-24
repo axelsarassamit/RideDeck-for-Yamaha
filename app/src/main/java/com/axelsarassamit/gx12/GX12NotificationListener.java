@@ -123,7 +123,14 @@ public final class GX12NotificationListener extends NotificationListenerService 
                 .setLabel(input.getLabel()).setChoices(input.getChoices()).setAllowFreeFormInput(input.getAllowFreeFormInput())
                 .addExtras(input.getExtras());
             if (input.getAllowedDataTypes() != null) for (String type : input.getAllowedDataTypes()) builder.setAllowDataType(type, true);
-            if (android.os.Build.VERSION.SDK_INT >= 29) builder.setEditChoicesBeforeSending(input.getEditChoicesBeforeSending());
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                int mode=input.getEditChoicesBeforeSending();
+                if (mode == android.app.RemoteInput.EDIT_CHOICES_BEFORE_SENDING_ENABLED && input.getAllowFreeFormInput())
+                    builder.setEditChoicesBeforeSending(android.app.RemoteInput.EDIT_CHOICES_BEFORE_SENDING_ENABLED);
+                else if (mode == android.app.RemoteInput.EDIT_CHOICES_BEFORE_SENDING_DISABLED)
+                    builder.setEditChoicesBeforeSending(android.app.RemoteInput.EDIT_CHOICES_BEFORE_SENDING_DISABLED);
+                else builder.setEditChoicesBeforeSending(android.app.RemoteInput.EDIT_CHOICES_BEFORE_SENDING_AUTO);
+            }
             inputs[i] = builder.build();
         }
         for (android.app.RemoteInput input : inputs) {
@@ -136,7 +143,9 @@ public final class GX12NotificationListener extends NotificationListenerService 
 
     @Override public void onListenerConnected() {
         BikeDiagnostics.record(this, "Notification listener connected");
-        super.onListenerConnected(); connected = this; RideQuietMode.refresh(this);
+        super.onListenerConnected();
+        if (RideAppExit.closed(this)) { requestUnbind(); return; }
+        connected = this; RideQuietMode.refresh(this);
         android.util.Log.i("RideDeckListener", "Notification listener connected"); applyQuietMode(); refreshActive();
     }
     public void refreshActive() {
@@ -153,7 +162,7 @@ public final class GX12NotificationListener extends NotificationListenerService 
     private static volatile GX12NotificationListener connected;
     private static long lastRebind = -30000;
     public static synchronized void recover(android.content.Context context) {
-        if (connected != null) return;
+        if (RideAppExit.closed(context) || connected != null) return;
         android.content.ComponentName component = new android.content.ComponentName(context, GX12NotificationListener.class);
         String enabled = android.provider.Settings.Secure.getString(context.getContentResolver(), "enabled_notification_listeners");
         boolean granted = false;
@@ -182,6 +191,17 @@ public final class GX12NotificationListener extends NotificationListenerService 
             requestRebind(component);
             android.util.Log.i("RideDeckListener", "Requested notification listener rebind");
         } catch (Exception error) { android.util.Log.w("RideDeckListener", "Listener recovery failed", error); }
+    }
+    public static synchronized void pauseForExit() {
+        GX12NotificationListener listener = connected;
+        if (listener != null) {
+            try { listener.requestListenerHints(0); listener.requestUnbind(); }
+            catch (RuntimeException error) { android.util.Log.w("RideDeckListener", "Listener already unavailable during exit"); }
+        }
+        connected = null; calls.clear(); activeCall = null; clearPreviews(); CallerAnnouncement.close();
+    }
+    public static synchronized void resumeAfterExit(android.content.Context context) {
+        lastRebind = -30000; recover(context);
     }
     public static void reloadSelected() { if (connected != null) connected.refreshActive(); }
     @Override public void onDestroy() { if (connected == this) connected = null; synchronized(GX12NotificationListener.class){calls.clear();activeCall=null;} CallerAnnouncement.close(); RideQuietMode.refresh(this); super.onDestroy(); }
@@ -220,8 +240,12 @@ public final class GX12NotificationListener extends NotificationListenerService 
                     if(label.matches(".*(answer|accept|svara|annehmen|รับสาย|ตอบรับ).*")) answer=true;
                 }
                 preview.incoming=IncomingCallPolicy.incoming(preview.callType,answer,notification.fullScreenIntent!=null,extras!=null && extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER,false));
-                android.app.Person person=android.os.Build.VERSION.SDK_INT>=28 && extras!=null?extras.getParcelable("android.callPerson"):null;
-                preview.callerName=IncomingCallPolicy.callerName(person!=null && person.getName()!=null?person.getName().toString():preview.title,preview.appName);
+                String caller=preview.title;
+                if (android.os.Build.VERSION.SDK_INT >= 28 && extras != null) {
+                    android.app.Person person=extras.getParcelable("android.callPerson");
+                    if (person != null && person.getName() != null) caller=person.getName().toString();
+                }
+                preview.callerName=IncomingCallPolicy.callerName(caller,preview.appName);
                 synchronized(GX12NotificationListener.class){calls.remove(preview.key);calls.put(preview.key,preview);}
                 updateCallState(context);
                 return;
@@ -251,6 +275,7 @@ public final class GX12NotificationListener extends NotificationListenerService 
             }
         }
     }
+    @Override public void onTaskRemoved(android.content.Intent intent) { RideAppExit.stop(this); super.onTaskRemoved(intent); }
     @Override public void onListenerDisconnected() {
         BikeDiagnostics.record(this, "Notification listener disconnected");
         if (connected == this) connected = null;

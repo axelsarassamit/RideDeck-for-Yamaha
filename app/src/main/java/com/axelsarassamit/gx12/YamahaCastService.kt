@@ -52,6 +52,7 @@ class YamahaCastService : Service() {
     override fun onBind(intent: Intent?) = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (RideAppExit.closed(this)) return RideAppExit.rejectQueuedStart(this,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         if (intent?.action == STOP) { RideBackgroundSession.castStopped(this); autoReconnectPaused = true; automatic = false; automaticFallbackPending = false; running=false; try { socket?.close() } catch(_: Exception) { }; stopSelf(); return START_NOT_STICKY }
         if (running || active) return START_STICKY
         autoReconnectPaused = false
@@ -375,7 +376,7 @@ class YamahaCastService : Service() {
         }
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) { diagnostic("Bike connection continues after Recent apps removal"); super.onTaskRemoved(rootIntent) }
+    override fun onTaskRemoved(rootIntent: Intent?) { RideAppExit.stop(this); super.onTaskRemoved(rootIntent) }
 
     override fun onDestroy() {
         val oldPeer = connectedAddress; connectedAddress = ""

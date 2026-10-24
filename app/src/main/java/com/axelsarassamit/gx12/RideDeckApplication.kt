@@ -10,14 +10,18 @@ class RideDeckApplication : Application() {
         super.onCreate()
         RideAppearance.install(this)
         registerActivityLifecycleCallbacks(object: ActivityLifecycleCallbacks {
+            private val activities=mutableSetOf<Activity>()
             private fun awake(activity: Activity) { activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-            override fun onActivityCreated(activity: Activity,state: Bundle?) { awake(activity) }
+            override fun onActivityCreated(activity: Activity,state: Bundle?) { activities.add(activity); RideAppExit.opened(activity); awake(activity) }
             override fun onActivityResumed(activity: Activity) { awake(activity) }
             override fun onActivityStarted(activity: Activity) { }
             override fun onActivityPaused(activity: Activity) { }
             override fun onActivityStopped(activity: Activity) { }
             override fun onActivitySaveInstanceState(activity: Activity,state: Bundle) { }
-            override fun onActivityDestroyed(activity: Activity) { }
+            override fun onActivityDestroyed(activity: Activity) {
+                activities.remove(activity)
+                if(activities.isEmpty() && activity.isTaskRoot && activity.isFinishing && !activity.isChangingConfigurations) RideAppExit.stop(activity)
+            }
         })
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

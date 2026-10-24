@@ -65,7 +65,10 @@ class RideQuickActionsTest {
             for(orientation in listOf(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)) {
                 rotate(s,orientation);instrumentation.waitForIdleSync();s.onActivity{a->
                     val tiles=buttons(a).filter{it.contentDescription?.startsWith("Ride tools:")==true && it.text.toString()!="Back"}
-                    assertEquals(9,tiles.size);tiles.forEach{val r=bounds(it);assertEquals("Whole tile visible: ${it.text}",it.height,r.height())};SharedSetupTest.shot(a,"direct-tools-${a.resources.configuration.orientation}")
+                    assertEquals(10,tiles.size);assertTrue(tiles.any{it.text.toString()=="Map settings"})
+                    // The tenth Map settings action uses the existing scroll fallback on short screens.
+                    tiles.forEach{it.requestRectangleOnScreen(Rect(0,0,it.width,it.height),true);val r=bounds(it);assertEquals("Whole tile reachable: ${it.text}",it.height,r.height())}
+                    SharedSetupTest.shot(a,"direct-tools-${a.resources.configuration.orientation}")
                 }
             }
             val monitor=instrumentation.addMonitor(FavoritePlacesActivity::class.java.name,null,false)
