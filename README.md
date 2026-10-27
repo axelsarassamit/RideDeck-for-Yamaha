@@ -19,3 +19,17 @@ Signed personal builds may bundle a MapTiler default. User-entered MapTiler and 
 ## Verification and bike diagnostics
 
 Release notes in `docs/RELEASE_<version>.md` distinguish automated checks from actual phone and motorcycle testing. Y-Connect authentication and supported bike telemetry remain under investigation. Keep decoder fixtures and protocol research separate from confirmed live-bike support. Raw captures and authentication material stay private.
+
+## Licensing
+
+Original source code and original project materials are protected under
+[LICENSE](LICENSE). Official releases supplied with these terms may be used
+without a license fee for personal, noncommercial use under [EULA.md](EULA.md).
+Source reuse, redistribution and commercial or organizational application use
+require separate permission, except where another applicable license or law
+permits them.
+
+[Third-party notices](THIRD_PARTY_NOTICES.md) and bundled component licenses
+remain applicable. These terms do not revoke earlier grants or limit rights
+provided by third-party licenses. No commercial rights to Pillion-derived code
+are granted by this project.
