@@ -4,14 +4,29 @@ package app.pillion.core
 data class GuidanceLane(val directions:List<Int>,val preferred:List<Int> = emptyList(),val valid:List<Int> = emptyList())
 data class LaneSection(val start:Int,val end:Int,val lanes:List<GuidanceLane>) {
     fun usable()=start>=0 && end>=start && lanes.size in 1..8 && lanes.any {it.preferred.isNotEmpty()||it.valid.isNotEmpty()}
+    fun recommendedIndices(): List<Int> = lanes.indices.filter{lanes[it].preferred.isNotEmpty()}
+        .ifEmpty{lanes.indices.filter{lanes[it].valid.isNotEmpty()}}
+    /** Only show a schematic split when provider arrows agree with the recommended outer lanes. */
+    fun junctionSide(sign:Int, meters:Double?):Int {
+        if(!usable() || lanes.size<4 || meters==null || meters !in 0.0..450.0 || sign !in listOf(-2,-1,1,2))return 0
+        val side=if(sign<0) -1 else 1
+        val best=recommendedIndices()
+        if(best.size !in 2 until lanes.size)return 0
+        val edge=if(side<0)lanes.indices.take(best.size) else (lanes.size-best.size until lanes.size).toList()
+        if(best!=edge)return 0
+        return if(best.all { i -> lanes[i].preferred.ifEmpty{lanes[i].valid}.any{it*side in 1..2} })side else 0
+    }
     fun spoken():String {
-        val best=lanes.indices.filter{lanes[it].preferred.isNotEmpty()}.ifEmpty{lanes.indices.filter{lanes[it].valid.isNotEmpty()}}
+        val best=recommendedIndices()
         if(best.isEmpty())return ""
+        val count = listOf("", "one", "two", "three", "four", "five", "six", "seven", "eight").getOrNull(best.size) ?: best.size.toString()
         return when {
             best.size==lanes.size -> "Any of these lanes follows your route."
             best==listOf(0) -> "Use the left lane."
             best==listOf(lanes.lastIndex) -> "Use the right lane."
             best==listOf(1) && lanes.size==3 -> "Use the middle lane."
+            best.size>1 && best==lanes.indices.take(best.size) -> "Use the $count leftmost lanes."
+            best.size>1 && best.first()==lanes.size-best.size -> "Use the $count rightmost lanes."
             else -> "Use lanes ${best.joinToString(" and "){(it+1).toString()}} from the left."
         }
     }

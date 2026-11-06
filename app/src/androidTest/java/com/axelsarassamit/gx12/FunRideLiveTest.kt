@@ -24,8 +24,9 @@ class FunRideLiveTest {
             ActivityScenario.launch(FunRideActivity::class.java).use { s ->
                 s.onActivity { a ->
                     FunRideActivity::class.java.getDeclaredField("startPlace").apply{isAccessible=true}.set(a,NavigationPlace("Public Bangkok test start",13.7513,100.5018))
-                    if(InstrumentationRegistry.getArguments().getString("winding")=="true")
-                        SharedSetupTest.views(a.window.decorView).filterIsInstance<android.widget.Spinner>()[1].setSelection(1)
+                    val args=InstrumentationRegistry.getArguments()
+                    val style=when { args.getString("winding")=="true" -> 3;args.getString("curvy")=="true" -> 1;else -> 0 }
+                    SharedSetupTest.views(a.window.decorView).filterIsInstance<android.widget.Spinner>()[1].setSelection(style)
                     SharedSetupTest.views(a.window.decorView).filterIsInstance<Button>().single{it.text=="Find rides"}.performClick()
                 }
                 val preview=i.waitForMonitorWithTimeout(monitor,120000)

@@ -20,13 +20,15 @@ object BikeNavigationRenderer {
         p.color = if (night) 0xff101724.toInt() else 0xff202632.toInt()
         canvas.drawRect(layout.panelLeft.toFloat(), 0f, layout.width.toFloat(), (layout.height-layout.creditHeight).toFloat(), p)
         p.color=Color.WHITE; p.style=Paint.Style.FILL
-        arrow(canvas, p, state.sign, layout.panelLeft + layout.panelWidth / 2f, 38f)
+        val junction=state.lanes?.junctionSide(state.sign,state.meters) ?: 0
+        if(junction==0) arrow(canvas, p, state.sign, layout.panelLeft + layout.panelWidth / 2f, 38f)
         p.textAlign=Paint.Align.CENTER; p.typeface=Typeface.DEFAULT_BOLD; p.textSize=32f
         val distance = state.meters?.let { if (it >= 1000) String.format(Locale.US,"%.1f km",it/1000)
             else "${(it.coerceAtLeast(0.0)/10).toInt()*10} m" } ?: "GPS"
-        canvas.drawText(distance, layout.panelLeft+layout.panelWidth/2f, 89f, p)
+        canvas.drawText(distance, layout.panelLeft+layout.panelWidth/2f, if(junction==0)89f else 37f, p)
         val title = state.notice.ifBlank { state.nextRoad.ifBlank { "Continue straight" } }
-        wrapped(canvas, title, layout.panelLeft+9f, 104f, layout.panelWidth-18, 19f, 3)
+        wrapped(canvas, title, layout.panelLeft+9f, if(junction==0)104f else 44f, layout.panelWidth-18, if(junction==0)19f else 14f, if(junction==0)3 else 2)
+        if(junction!=0) junction(canvas,layout,state.lanes!!,junction)
         if (!state.arrival.isNullOrBlank()) {
             p.color=0xff293957.toInt(); canvas.drawRect(layout.panelLeft.toFloat(),(layout.mapHeight).toFloat(),layout.width.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
             p.color=Color.WHITE; p.textSize=15f; p.textAlign=Paint.Align.CENTER
@@ -46,6 +48,27 @@ object BikeNavigationRenderer {
         p.color=0xff101724.toInt(); canvas.drawRect(0f,(layout.height-layout.creditHeight).toFloat(),480f,layout.height.toFloat(),p)
         p.color=Color.WHITE; p.typeface=Typeface.DEFAULT; p.textSize=10f
         canvas.drawText("© MapTiler  © OpenStreetMap contributors",7f,layout.height-3f,p)
+    }
+    private fun junction(canvas:Canvas,layout:BikeNavigationLayout,section:app.pillion.core.LaneSection,side:Int) {
+        val paint=Paint(Paint.ANTI_ALIAS_FLAG)
+        val selected=section.recommendedIndices().toSet()
+        val count=section.lanes.size
+        val middle=layout.panelLeft+layout.panelWidth/2f
+        val horizon=87f;val bottom=layout.mapHeight-8f
+        fun edge(i:Int,f:Float)=middle+(i.toFloat()/count-.5f)*(40f+f*(layout.panelWidth-52f))
+        for(i in 0 until count) {
+            paint.color=if(i in selected)0xff1675cb.toInt() else 0xff344254.toInt()
+            canvas.drawPath(Path().apply { moveTo(edge(i,0f),horizon);lineTo(edge(i+1,0f),horizon);lineTo(edge(i+1,1f),bottom);lineTo(edge(i,1f),bottom);close() },paint)
+        }
+        paint.color=0xffa0aec0.toInt();paint.strokeWidth=1f
+        for(i in 0..count)canvas.drawLine(edge(i,0f),horizon,edge(i,1f),bottom,paint)
+        for(i in 0 until count) {
+            val x=(edge(i,.73f)+edge(i+1,.73f))/2
+            canvas.save();canvas.translate(x,horizon+(bottom-horizon)*.73f)
+            val scale=(1.5f/count).coerceAtMost(.35f);canvas.scale(scale,scale)
+            paint.color=if(i in selected)Color.WHITE else 0xffa0aec0.toInt()
+            arrow(canvas,paint,if(i in selected)side else 0,0f,0f);canvas.restore()
+        }
     }
     private fun wrapped(canvas: Canvas, text: String, x: Float, y: Float, width: Int, size: Float, lines: Int) {
         val p=TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.WHITE; textSize=size; typeface=Typeface.DEFAULT }

@@ -109,6 +109,19 @@ object RideBookStore {
         } }
         android.os.Handler(android.os.Looper.getMainLooper()).post { answer(records) }
     } }
+    fun track(c:Context, ride:Long, answer:(List<List<app.pillion.core.RideTrackPoint>>)->Unit) { worker.execute {
+        val segments=mutableListOf<MutableList<app.pillion.core.RideTrackPoint>>()
+        var last:Long?=null
+        db(c).rawQuery("SELECT time,lat,lon FROM samples WHERE ride=? ORDER BY time,rowid LIMIT 100001",arrayOf(ride.toString())).use { q ->
+            if(q.count<=100000) while(q.moveToNext()) {
+                val t=q.getLong(0)
+                val point=runCatching { app.pillion.core.RideTrackPoint(q.getDouble(1),q.getDouble(2),t) }.getOrNull() ?: continue
+                if(last?.let{t-it !in 1..10000}!=false) segments.add(mutableListOf())
+                segments.last().add(point);last=t
+            }
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).post { answer(if(segments.size<=10000)segments else emptyList()) }
+    } }
     fun recordBike(c:Context,values:List<BikeValue>,category:String,raw:List<CcuProtocol.Reading>,wall:Long,elapsed:Long) {
         val copied=raw.map { CcuProtocol.Reading(it.id,it.bytes.copyOf()) }
         worker.execute {

@@ -44,7 +44,27 @@ object NativeNavigation {
         private set
     @Volatile var status = "Start navigation to get a GPS position"
     @Volatile var mapBitmap: Bitmap? = null
-    @Volatile private var mapJpeg: ByteArray? = null
+    internal class MapFrame(val live: Bitmap, base: Bitmap, private val capturedAt: Long, encode: (Bitmap) -> ByteArray) {
+        @Volatile var invalidated = false
+        val liveJpeg by lazy { encode(live) }
+        val lastMap by lazy {
+            Bitmap.createBitmap(live.width, live.height, Bitmap.Config.ARGB_8888).also { image ->
+                val canvas = Canvas(image)
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                canvas.drawBitmap(base, null, android.graphics.Rect(0, 0, image.width, image.height), paint)
+                paint.color = 0xff101724.toInt()
+                canvas.drawRect(0f, 0f, image.width.toFloat(), 30f, paint)
+                canvas.drawRect(0f, image.height-14f, image.width.toFloat(), image.height.toFloat(), paint)
+                paint.color = Color.WHITE; paint.textSize = 17f; paint.typeface = Typeface.DEFAULT_BOLD
+                canvas.drawText("Last map | Updates paused", 9f, 21f, paint)
+                paint.textSize = 10f; paint.typeface = Typeface.DEFAULT
+                canvas.drawText("© MapTiler  © OpenStreetMap contributors", 7f, image.height-3f, paint)
+            }
+        }
+        val lastJpeg by lazy { encode(lastMap) }
+        fun fresh(now: Long = SystemClock.elapsedRealtime()) = !invalidated && now - capturedAt in 0L until 10000L
+    }
+    @Volatile private var bikeMapFrame: MapFrame? = null
     @Volatile var acquisitionStatus = "Waiting for a GPS fix. Move outdoors if needed"
     @Volatile private var guidance = "Waiting for GPS"
     @Volatile private var maneuver = 0
@@ -57,7 +77,7 @@ object NativeNavigation {
     private var phoneInFlight = false
     private var phoneFrameAt = 0L
     private var phoneRenderStarted = 0L
-    private var phoneMapBitmap: Bitmap? = null
+    @Volatile private var phoneMapFrame: MapFrame? = null
     private var englishStyle: String? = null
     private var styleDark: Boolean? = null
     private val styleCache = HashMap<Boolean,String>()
@@ -132,14 +152,14 @@ object NativeNavigation {
         running = false; routeGeneration++; routeBusy = false; pendingDestination = null
         main.removeCallbacks(tick); snapshotter?.cancel(); snapshotter = null; inFlight = false
         speaker?.shutdown(); speaker = null; speechReady = false
-        phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapBitmap = null; englishStyle = null; styleLoading = false
+        phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapFrame = null; englishStyle = null; styleLoading = false
         styleGeneration++; styleCache.clear(); styleDark = null; styleRetryAt = 0L; lastSolarNight = null
-        location = null; route = null; mapJpeg = null; mapBitmap = null; dashRoute = null; speedWindow = null; speedLimit = null
+        location = null; route = null; bikeMapFrame = null; mapBitmap = null; dashRoute = null; speedWindow = null; speedLimit = null
         announcements.reset(); trafficAnnouncements.reset(); incidentMatches=emptyList();incidentCheckedAt=null;incidentAnnouncements.reset();incidentStatus="Navigation stopped. Incident checks paused."; status = "Navigation stopped"
     }
     fun resize(width: Int, h: Int) {
         require(width == 480 && h in listOf(234, 240))
-        main.post { height = h; snapshotter?.cancel(); snapshotter = null; inFlight = false }
+        main.post { if(height != h) bikeMapFrame = null; height = h; snapshotter?.cancel(); snapshotter = null; inFlight = false }
     }
     fun phoneViewport(width: Int, h: Int) {
         phoneVisible = width > 0 && h > 0
@@ -147,7 +167,7 @@ object NativeNavigation {
         val next = (480.0 * h / width).roundToInt().coerceIn(120, 1600)
         if (next != phoneHeight) {
             phoneHeight = next; phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false
-            phoneMapBitmap = null; phoneFrameAt = 0
+            phoneMapFrame = null; phoneFrameAt = 0
         }
     }
     fun update(next: Location) {
@@ -291,6 +311,7 @@ object NativeNavigation {
     }
     private fun invalidateFrames() {
         val previous = snapshotter; val previousPhone = phoneSnapshotter
+        bikeMapFrame?.invalidated = true; phoneMapFrame?.invalidated = true
         snapshotter = null; inFlight = false; frameAt = 0
         phoneSnapshotter = null; phoneInFlight = false; phoneFrameAt = 0
         // Cancel may deliver a callback synchronously. Detach first so it cannot publish an old frame.
@@ -619,11 +640,15 @@ object NativeNavigation {
                     currentTrafficAlert()?.let { TrafficAlertRenderer.draw(canvas,it,84f,38f,388f) }
                     currentLanes()?.let { LaneGuidanceRenderer.draw(canvas,it,104f,if(currentTrafficAlert()==null)6f else 82f,368f) }
                     LaneGuidanceRenderer.fuel(canvas,FuelEstimateStore.mapLabel(c),renderHeight)
-                    phoneMapBitmap = bitmap; phoneFrameAt = SystemClock.elapsedRealtime(); phoneInFlight = false
+                    phoneFrameAt = SystemClock.elapsedRealtime()
+                    phoneMapFrame = MapFrame(bitmap, snapshot.bitmap, phoneFrameAt, ::jpeg); phoneInFlight = false
                 } else {
                     val output=Bitmap.createBitmap(480,renderHeight,Bitmap.Config.ARGB_8888)
                     BikeNavigationRenderer.draw(Canvas(output),bitmap,bikeLayout,bikeState(),frameNight)
-                    mapBitmap=output; mapJpeg=jpeg(output); renderedZoomRevision=requestedZoom.revision; frameAt=SystemClock.elapsedRealtime(); inFlight=false
+                    frameAt=SystemClock.elapsedRealtime()
+                    val frame=MapFrame(output, snapshot.bitmap, frameAt, ::jpeg)
+                    frame.liveJpeg // Encode before publishing to the casting thread.
+                    mapBitmap=output; bikeMapFrame=frame; renderedZoomRevision=requestedZoom.revision; inFlight=false
                 }
             }) { _ ->
                 if ((if (phone) phoneSnapshotter else snapshotter) === renderer) { if (phone) { phoneInFlight=false; phoneSnapshotter=null } else { inFlight=false; snapshotter=null }; status="Map unavailable. Check provider key and internet connection"; BikeDiagnostics.record(c,"Native map render failed") }
@@ -657,7 +682,7 @@ object NativeNavigation {
     private fun jpeg(bitmap: Bitmap): ByteArray = ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG,85,it); it.toByteArray() }
     @JvmStatic fun frame(mode: String): ByteArray? = renderFrame(mode,false)
     private fun renderFrame(mode: String, phone: Boolean): ByteArray? {
-        if (!phone && mode == "map" && mapJpeg != null && SystemClock.elapsedRealtime()-frameAt < 10000) return mapJpeg
+        if (!phone && mode == "map") bikeMapFrame?.let { return if(it.fresh()) it.liveJpeg else it.lastJpeg }
         val bitmap=Bitmap.createBitmap(480,height,Bitmap.Config.ARGB_8888)
         val night=isNightMap()
         val canvas=Canvas(bitmap); canvas.drawColor(if(night) 0xff151c17.toInt() else 0xfff4f6fa.toInt())
@@ -677,7 +702,7 @@ object NativeNavigation {
         return jpeg(bitmap)
     }
     fun phoneBitmap(mode: String): Bitmap? = if(mode=="map") {
-        if(phoneMapBitmap != null && SystemClock.elapsedRealtime()-phoneFrameAt<10000) phoneMapBitmap else renderFrame("map",true)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
+        phoneMapFrame?.let { if(it.fresh()) it.live else it.lastMap } ?: renderFrame("map",true)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
     } else renderFrame(mode,true)?.let { BitmapFactory.decodeByteArray(it,0,it.size) }
 }
 

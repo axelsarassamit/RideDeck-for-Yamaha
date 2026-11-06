@@ -129,7 +129,10 @@ class RoutePreviewActivity : Activity() {
         val controls=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(if(wide) dp(12) else 0,dp(8),0,0) }
         body.addView(controls,if(wide) LinearLayout.LayoutParams(dp(300),-1) else LinearLayout.LayoutParams(-1,-2))
         status=TextView(this).apply { textSize=18f; setTextColor(RideStyle.TEXT); setPadding(0,0,0,dp(8)) }
-        controls.addView(status)
+        val statusRow=LinearLayout(this).apply { gravity=android.view.Gravity.CENTER_VERTICAL }
+        statusRow.addView(status,LinearLayout.LayoutParams(0,-2,1f))
+        statusRow.addView(button("GPX").apply { contentDescription="GPX and route summary";setOnClickListener { openRideFiles() } },LinearLayout.LayoutParams(dp(76),dp(56)))
+        controls.addView(statusRow)
         choices=LinearLayout(this).apply { orientation=if(wide) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
         choiceScroll=ScrollView(this).apply { addView(choices) }
         if(wide) controls.addView(choiceScroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -269,6 +272,10 @@ class RoutePreviewActivity : Activity() {
                 else LinearLayout.LayoutParams(0,dp(126),1f).apply { rightMargin=if(index<routes.lastIndex) dp(8) else 0 })
         }
         start.isEnabled=routes.isNotEmpty() && !busy
+    }
+    private fun openRideFiles() {
+        val r=routes.getOrNull(selected) ?: return
+        RideFilesActivity.openPlan(this,r.points.map { app.pillion.core.FunPoint(it.latitude,it.longitude) },r.millis/1000.0,r.meters/1000.0)
     }
     private fun select(index: Int) { selected=index; showChoices(); drawRoutes() }
     private fun drawRoutes() {

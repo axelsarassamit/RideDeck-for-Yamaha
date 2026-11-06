@@ -11,6 +11,7 @@ import android.content.Intent
 import android.widget.*
 import app.pillion.core.FunPoint
 import app.pillion.core.FunRidePlan
+import app.pillion.core.TwistyRide
 import java.util.concurrent.Executors
 
 /** Parked planning. No running navigation is changed until Start in the map preview. */
@@ -37,9 +38,11 @@ class FunRideActivity:Activity() {
         startButton=button(startPlace?.label ?: "Start: current location") { selectPlace("Starting point",true){startPlace=it;startButton.text="Start: ${it.label}"} };page.addView(startButton)
         page.addView(text("How much riding time? Stops are extra."));duration=Spinner(this).apply{adapter=ArrayAdapter(this@FunRideActivity,android.R.layout.simple_spinner_dropdown_item,listOf("30 minutes","1 hour","90 minutes","2 hours","3 hours","4 hours","6 hours"));setSelection(saved?.getInt("duration",1) ?: 1);minimumHeight=(76*resources.displayMetrics.density).toInt()};page.addView(duration)
         finishButton=button(finishPlace?.let{"Finish: ${it.label}"} ?: "Finish: return to start") { AlertDialog.Builder(this).setTitle("Finish ride").setItems(arrayOf("Return to start","Saved Home","Choose a place")){_,n->if(n==0){finishPlace=null;finishButton.text="Finish: return to start"}else if(n==1){val home=NavigationApi.coordinate(RidePreferences.prefs(this).getString("bike_home","").orEmpty());if(home==null)Toast.makeText(this,"Save Home coordinates first",Toast.LENGTH_LONG).show()else{finishPlace=home.copy(label="Home");finishButton.text="Finish: Home"}}else selectPlace("Finish",false){finishPlace=it;finishButton.text="Finish: ${it.label}"}}.show() };page.addView(finishButton)
-        page.addView(text("Ride style"));style=Spinner(this).apply{adapter=ArrayAdapter(this@FunRideActivity,android.R.layout.simple_spinner_dropdown_item,listOf("Relaxed exploration","Winding roads · TomTom only"));setSelection(saved?.getInt("style",0) ?: 0);minimumHeight=(76*resources.displayMetrics.density).toInt()};page.addView(style)
+        page.addView(text("Ride style"));style=Spinner(this).apply{adapter=ArrayAdapter(this@FunRideActivity,android.R.layout.simple_spinner_dropdown_item,TwistyRide.names + "Winding roads · TomTom only");setSelection(saved?.getInt("style",0) ?: 0);minimumHeight=(76*resources.displayMetrics.density).toInt()};page.addView(style)
         page.addView(text("Explore towards"));direction=Spinner(this).apply{adapter=ArrayAdapter(this@FunRideActivity,android.R.layout.simple_spinner_dropdown_item,listOf("North","East","South","West"));setSelection(saved?.getInt("direction",0) ?: 0);minimumHeight=(76*resources.displayMetrics.density).toInt()};page.addView(direction)
         stopButton=button("Stops: ${stops.size} of 2") { if(stops.size>=2) AlertDialog.Builder(this).setTitle("Stops").setItems((stops.map{"Remove ${it.label}"}).toTypedArray()){_,i->stops.removeAt(i);stopButton.text="Stops: ${stops.size} of 2"}.show() else selectPlace("Add a stop · search coffee, fuel or a place",false){stops.add(it);stopButton.text="Stops: ${stops.size} of 2"} };page.addView(stopButton)
+        page.addView(text("Curvy styles rank the bends in returned routes. They do not guarantee winding roads."))
+        page.addView(button("GPX & ride recap") { RideFilesActivity.open(this) })
         page.addView(button("Roads to avoid") { RoutePreferencesUi.show(this) })
         status=text("Up to three route choices. Duration is a target, not a promise. TomTom uses available traffic; Valhalla has no live traffic.");page.addView(status)
         build=button("Find rides") { plan() };page.addView(build);page.addView(button("Back") { finish() });setContentView(ScrollView(this).apply{addView(page)})
@@ -63,7 +66,8 @@ class FunRideActivity:Activity() {
         val fix=startPlace?.let{Location("chosen").apply{latitude=it.latitude;longitude=it.longitude}} ?: NativeNavigation.location?.takeIf{it.hasAccuracy() && NavigationFixQuality.accept(NavigationFix(it.latitude,it.longitude,it.accuracy.toDouble(),it.elapsedRealtimeNanos,it.provider==android.location.LocationManager.GPS_PROVIDER),null,SystemClock.elapsedRealtimeNanos())}?.let(::Location)
         if(fix==null){status.text="Waiting for a fresh location. Move outdoors or choose your starting point.";return}
         if(fix.latitude !in -85.0..85.0){status.text="This planner supports locations between 85 degrees south and north.";return}
-        val winding=style.selectedItemPosition==1
+        val curvePreference=style.selectedItemPosition
+        val winding=curvePreference==3
         if(winding && (!TomTomApi.configured(this)||!RidePreferences.prefs(this).getBoolean("tomtom_routing",true))){status.text="Winding routes need TomTom routing enabled. Choose relaxed exploration or set up TomTom.";return}
         val minutes=listOf(30,60,90,120,180,240,360)[duration.selectedItemPosition];val heading=direction.selectedItemPosition*90.0
         val end=finishPlace ?: NavigationPlace("Return to start",fix.latitude,fix.longitude)
@@ -95,7 +99,7 @@ class FunRideActivity:Activity() {
             main.post {
                 if(isDestroyed || request!=generation)return@post;busy(false)
                 val matching=candidates.filter{it.millis/60000.0 in (minutes*.4)..(minutes*2.0)}
-                val distinct=RouteChoices.ranked(matching.ifEmpty{candidates}).sortedBy{FunRidePlan.score(it.millis/60000.0,minutes,it.turns.count{t->kotlin.math.abs(t.sign)==8})}
+                val distinct=RouteChoices.ranked(matching.ifEmpty{candidates}).sortedBy{FunRidePlan.score(it.millis/60000.0,minutes,it.turns.count{t->kotlin.math.abs(t.sign)==8})-TwistyRide.bonus(curvePreference,it.points.map{p->FunPoint(p.latitude,p.longitude)})}
                 if(distinct.isEmpty()){status.text=if(failures>0) "Road routing could not build a ride. Check your connection, try another direction or relax road preferences. Winding rides require working TomTom routing." else "No usable ride returned. Try a shorter time or choose your own stops.";return@post}
                 FunRidePreview.put(distinct,fix,minutes);startActivity(Intent(this,RoutePreviewActivity::class.java).putExtra("funRide",true).putExtra("lat",end.latitude).putExtra("lon",end.longitude).putExtra("label",end.label))
             }

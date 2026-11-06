@@ -447,6 +447,7 @@ public class MainActivity extends android.app.Activity {
     }
 
     @Override public void onBackPressed() {
+        if (RainLock.active(this)) return;
         if (setupVisible && setupMenu != null && setupMenu.back()) return;
         if (!isTaskRoot()) { super.onBackPressed(); return; }
         RideAppExit.stop(this);
@@ -533,7 +534,12 @@ public class MainActivity extends android.app.Activity {
             reviewing && voiceReviewDraft != null ? voiceReviewDraft.getText().toString() : "");
     }
 
+    @Override protected void onRestoreInstanceState(Bundle state) {
+        super.onRestoreInstanceState(state);
+        if (state.getBoolean("rain_lock")) RainLock.engage(this);
+    }
     @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("rain_lock", RainLock.active(this));
         state.putBoolean("voice_dash_resume",voiceDashResume);
         state.putLong("voice_dash_generation",voiceDashGeneration);
         state.putString("auto_map_session", autoMapSession);
@@ -819,6 +825,10 @@ public class MainActivity extends android.app.Activity {
             dock.addView(settings, gear);
         }
         RoadlineUi.dock(dock);
+        Button rainLock = rideAction(compact ? "Lock" : "Rain lock", false);
+        rainLock.setContentDescription("Rain lock: prevent accidental touches");
+        rainLock.setOnClickListener(v -> RainLock.engage(this));
+        dock.addView(rainLock, rideWeight(compact ? 56 : 64));
         RideStyle.mirrorActions(dock,controlsRight);
         LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2); dp.topMargin = dp(8);
         root.addView(dock, dp);

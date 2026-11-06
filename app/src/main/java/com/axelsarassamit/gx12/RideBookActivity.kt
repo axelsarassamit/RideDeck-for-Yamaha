@@ -22,6 +22,7 @@ class RideBookActivity:RiderPage() {
         row(button(if(allTime) "Show ride history" else "Show all-time records") { allTime=!allTime;refresh() })
         row(button("Bike data and fuel range") { BikeDataActivity.open(this) })
         row(button("Refresh ride data") { refresh() })
+        row(button("Import GPX / ride recap") { RideFilesActivity.open(this) })
         row(button(if(DashRideService.active()) "Pause ride" else "Start / resume ride") {
             if(DashRideService.active()) DashRideService.pause(this) else {
                 if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -54,7 +55,11 @@ class RideBookActivity:RiderPage() {
                         val label=runCatching { app.pillion.core.BikeMetric.valueOf(name).label }.getOrDefault(name)
                         "Maximum $label · ${String.format(Locale.US,"%.1f",value.maximum)} ${value.unit}\n${date(value.maximumAt)}\n${value.source}\nMinimum ${String.format(Locale.US,"%.1f",value.minimum)} ${value.unit} · ${date(value.minimumAt)}"
                     }).joinToString("\n\n").ifBlank { "No measurements recorded. GPS or the bike connection may have been unavailable." }
-                    android.app.AlertDialog.Builder(this).setTitle("Ride ${ride.id}").setMessage(detail).setPositiveButton("Close",null).show()
+                    android.app.AlertDialog.Builder(this).setTitle("Ride ${ride.id}").setMessage(detail).setPositiveButton("Close",null).setNeutralButton("Recap / GPX") { _,_->
+                        RideBookStore.track(applicationContext,ride.id) { segments->
+                            if(!isFinishing && !isDestroyed) RideFilesActivity.openRecorded(this,"Ride ${ride.id}",segments,ride.meters/1000,ride.seconds,ride.peaks["lean"]?.first)
+                        }
+                    }.show()
                 })
             }
             if(allTime) for(metric in app.pillion.core.BikeMetric.entries) {
