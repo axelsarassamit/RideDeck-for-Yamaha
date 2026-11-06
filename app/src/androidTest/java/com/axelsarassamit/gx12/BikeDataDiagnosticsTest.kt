@@ -6,8 +6,6 @@ import android.widget.Button
 import android.widget.CheckBox
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
-import app.pillion.core.CcuAdditionalFields
-import app.pillion.core.CcuProtocol
 import app.pillion.protocol.YamahaPhoneStatus
 import app.pillion.protocol.YamahaStatusUpdates
 import org.junit.Assert.*
@@ -18,30 +16,7 @@ class BikeDataDiagnosticsTest {
     private fun views(v: View): List<View> = listOf(v) +
         if(v is ViewGroup) (0 until v.childCount).flatMap { views(v.getChildAt(it)) } else emptyList()
 
-    @Test fun unknownSupportedPayloadIsExcludedButReplyMetadataAndWrittenStatusAreExported() {
-        val c = InstrumentationRegistry.getInstrumentation().targetContext
-        BikeDataStore.start(c); BikeDataStore.status("Preview-only diagnostics test", true)
-        try {
-            val secretFixture = "PRIVATE-UNKNOWN-FIELD-DO-NOT-EXPORT".toByteArray()
-            val item = CcuProtocol.integer(1,3) + byteArrayOf(0x12,secretFixture.size.toByte()) + secretFixture
-            BikeDataStore.accept(c, CcuProtocol.Message(0x10f,
-                CcuProtocol.integer(3,1248) + byteArrayOf(0x22,item.size.toByte()) + item))
-            BikeDataStore.additional(c,listOf(CcuAdditionalFields.Observation(3,CcuAdditionalFields.Result.REPLIED,secretFixture.size)))
-            BikeDataStore.phoneStatusWritten(c,YamahaPhoneStatus(80,false),YamahaStatusUpdates.Kind.BATTERY)
-            assertFalse(BikeDataStore.state.raw.containsKey("Vehicle ID 3"))
-            val file = BikeDataStore.export(c)
-            val exported = file.readText()
-            assertFalse(exported.contains(secretFixture.joinToString("") { "%02x".format(it.toInt() and 255) }))
-            assertFalse(exported.contains("PRIVATE-UNKNOWN-FIELD"))
-            assertTrue(exported.contains("additional_fields"))
-            assertTrue(exported.contains("phone_status_written"))
-            assertTrue(exported.contains("\"charging\":false"))
-            assertTrue(BikeDataStatusText.format(BikeDataStore.state,android.os.SystemClock.elapsedRealtime()).contains("meaning not verified"))
-            file.delete()
-        } finally { BikeDataStore.stop(c,"Preview test finished") }
-    }
-
-    @Test fun newControlsRemainLargeAndAutoConnectPreferenceSurvivesRecreation() {
+    @Test fun testControlsAreAbsentAndAutoConnectPreferenceSurvivesRecreation() {
         val c = InstrumentationRegistry.getInstrumentation().targetContext
         val prefs = RidePreferences.prefs(c)
         val existed = prefs.contains("bike_data_auto")
@@ -53,9 +28,9 @@ class BikeDataDiagnosticsTest {
                     val auto=all.filterIsInstance<CheckBox>().first { it.text.toString().startsWith("Auto-connect") }
                     auto.isChecked=false
                     assertFalse(prefs.getBoolean("bike_data_auto",true))
-                    for (label in listOf("Check additional bike fields","Save private test log")) {
-                        val button=all.filterIsInstance<Button>().single { it.text.toString().startsWith(label) }
-                        assertTrue(button.minHeight >= (56*a.resources.displayMetrics.density).toInt())
+                    val labels = all.filterIsInstance<Button>().map { it.text.toString() }
+                    for (testLabel in listOf("Check additional bike fields", "Save private test log", "Yamaha test panel")) {
+                        assertFalse(labels.any { it.startsWith(testLabel) })
                     }
                 }
                 scenario.recreate()
@@ -92,33 +67,6 @@ class BikeDataDiagnosticsTest {
         } finally {
             instrumentation.runOnMainSync { monitor?.close() }
             BikeDataStore.stop(c,"Preview test finished")
-        }
-    }
-
-    @Test fun optionalMusicTimeoutKeepsAuthenticationAndBlocksUncertainBulkState() {
-        val instrumentation=InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val reports=mutableListOf<String>();var ended=false
-            val client=CcuDiagnosticClient(instrumentation.targetContext,{ reports.add(it) },{}, { ended=true })
-            fun field(name:String)=CcuDiagnosticClient::class.java.getDeclaredField(name).apply { isAccessible=true }
-            try {
-                field("authenticated").setBoolean(client,true)
-                field("optionalMusicTransfer").setBoolean(client,true)
-                field("stage").set(client,"active")
-                field("transfer").set(client,byteArrayOf(1,0x16,0,0,0))
-                (field("transferTimeout").get(client) as Runnable).run()
-                assertFalse(ended)
-                assertFalse(field("closed").getBoolean(client))
-                assertTrue(field("authenticated").getBoolean(client))
-                assertTrue(field("bulkBlocked").getBoolean(client))
-                assertEquals("",field("stage").get(client))
-                assertEquals(0,(field("transfer").get(client) as ByteArray).size)
-                val begin=CcuDiagnosticClient::class.java.getDeclaredMethod("begin",ByteArray::class.java).apply { isAccessible=true }
-                begin.invoke(client,byteArrayOf(1,0x16,0,0,0))
-                assertEquals("",field("stage").get(client))
-                assertTrue(reports.any { it.contains("Live bike data continues") })
-                assertTrue(reports.last().contains("Reconnect"))
-            } finally { client.close() }
         }
     }
 

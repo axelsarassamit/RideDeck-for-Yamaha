@@ -19,8 +19,6 @@ class BikeDataService : Service() {
         fun stop(c: Context) { YamahaBikeAutoConnect.pause(); c.stopService(Intent(c, BikeDataService::class.java)) }
         fun stopAutomatic(c: Context) { if (current?.automatic == true) c.stopService(Intent(c, BikeDataService::class.java)) }
         fun selectedAddress(): String = current?.client?.bikeAddress ?: YamahaCastService.connectedAddress
-        fun checkAdditionalFields() { current?.client?.checkAdditionalFields() ?: BikeDataStore.status("Connect to the parked Yamaha first.", false) }
-        fun readSnapshot() { current?.client?.readSnapshot() ?: BikeDataStore.status("Connect to the parked Yamaha first.", false) }
     }
     private val main = Handler(Looper.getMainLooper())
     private var client: CcuDiagnosticClient? = null

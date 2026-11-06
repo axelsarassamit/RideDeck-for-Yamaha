@@ -1,25 +1,9 @@
 package com.axelsarassamit.gx12
 
-import app.pillion.core.CcuAdditionalFields
 import app.pillion.protocol.YamahaStatusUpdates.Kind
 
 /** Diagnostics only: a completed Bluetooth write is not a verified dashboard graphic. */
 object BikeDataStatusText {
-    fun format(s: BikeDataState, now: Long): String =
-        "Additional bike fields\n" + if (s.additionalFields.isEmpty()) {
-            "Not checked this session. Park first, then use Check additional bike fields.\n\n" + phoneWrites(s, now)
-        } else {
-            s.additionalFields.joinToString("\n") { item ->
-                "ID ${item.id}: " + when (item.result) {
-                    CcuAdditionalFields.Result.NOT_ADVERTISED -> "not declared by this bike"
-                    CcuAdditionalFields.Result.WAITING -> "waiting for a reply"
-                    CcuAdditionalFields.Result.REPLIED -> "reply received, ${item.bytes} bytes; meaning not verified"
-                    CcuAdditionalFields.Result.TIMED_OUT -> "no matching reply within 10 seconds"
-                    CcuAdditionalFields.Result.CANCELLED -> "check cancelled"
-                }
-            } + "\nUnknown payloads are not saved.\n\n" + phoneWrites(s, now)
-        }
-
     fun phoneWrites(s: BikeDataState, now: Long): String {
         fun yesNo(value: Boolean?) = when (value) { true -> "Yes"; false -> "No"; null -> "Unavailable" }
         fun line(kind: Kind, label: String, detail: (PhoneStatusWrite) -> String): String {

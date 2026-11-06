@@ -405,9 +405,6 @@ public class MainActivity extends android.app.Activity {
         setupAction(page, "Bike data and fuel range", () -> BikeDataActivity.open(this));
         setupAction(page, "Ride book", () -> startActivity(new Intent(this, RideBookActivity.class)));
         page = setupGroup(sections, "Help & diagnostics", "View connection details and share a log file", false);
-        Button testPanel = button("Yamaha test panel");
-        testPanel.setOnClickListener(v -> YamahaTestPanelActivity.open(this));
-        page.addView(testPanel, buttonParams());
         Button diagnostics = button("View and share diagnostic log");
         diagnostics.setOnClickListener(v -> {
             String report = BikeDiagnostics.report(this);

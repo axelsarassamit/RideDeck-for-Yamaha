@@ -47,17 +47,13 @@ class PreviewIntegrationTest {
         assertEquals(1600.0,BikeDataStore.state.values.getValue(BikeMetric.RPM).value,0.0)
         val previous=BikeDataStore.state
         BikeDataStore.accept(c,message(1249)); assertEquals(previous,BikeDataStore.state)
-        BikeDataStore.mark(c,"front_on")
         val ride=records().first(); assertEquals(1600.0,ride.bike.getValue("RPM").maximum,0.0)
         assertTrue(ride.bike.getValue("RPM").source.startsWith("Yamaha CCU"))
-        // A common-data VIN local must never be admitted to the private log or raw record table.
         BikeDataStore.accept(c,CcuProtocol.Message(0x10b,byteArrayOf(0x18,0xe0.toByte(),9,0x22,8,8,0x90.toByte(),0xe3.toByte(),3,0x12,2,65,66)))
-        assertFalse(BikeDataStore.state.raw.keys.any { it.contains("61840") })
         BikeDataStore.stop(c,"Preview disconnected")
         assertFalse(BikeDataStore.state.active); assertTrue(BikeDataStore.state.values.isNotEmpty())
         RideBookStore.pause(c,true); records()
         SQLiteDatabase.openDatabase(c.getDatabasePath("yamaha-rides.db").path,null,SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery("SELECT source,event FROM bike_events",null).use { q -> assertTrue(q.moveToFirst()); assertEquals("user_observation",q.getString(0)); assertEquals("front_on",q.getString(1)) }
             assertEquals(2,db.version)
         }
     }

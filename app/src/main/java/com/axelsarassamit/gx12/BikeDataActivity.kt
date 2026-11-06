@@ -1,34 +1,26 @@
 package com.axelsarassamit.gx12
 
 import android.app.Activity
-import android.bluetooth.BluetoothManager
 import android.content.Intent
+import android.bluetooth.BluetoothManager
 import android.os.Bundle
 import android.os.SystemClock
 import android.widget.*
 import app.pillion.core.BikeMetric
-import java.io.File
 import java.util.Locale
 
-/** Large riding values with a separate, explicitly labeled parked diagnostic section. */
+/** Live riding values, fuel range and bike notices. */
 class BikeDataActivity : RiderPage() {
     companion object { @JvmStatic fun open(a: Activity) { a.startActivity(Intent(a, BikeDataActivity::class.java)) } }
     private val updates = android.os.Handler(android.os.Looper.getMainLooper())
     private val labels = linkedMapOf<BikeMetric, TextView>()
     private lateinit var history: TextView
     private lateinit var fuel: TextView
-    private lateinit var experimentalFuel: TextView
     private lateinit var notices: TextView
-    private lateinit var raw: TextView
-    private lateinit var checks: TextView
-    private var exporting: File? = null
-    private var phonePreview: YamahaPhoneStatusMonitor? = null
-    private var phoneDialog: android.app.AlertDialog? = null
     override fun onCreate(saved: Bundle?) {
         RideAppearance.prepare(this); super.onCreate(saved); build("Bike data and fuel range")
         row(button("Connect to parked Yamaha") { choose() })
         row(button("Stop bike data") { BikeDataService.stop(this) })
-        row(button("Read bike snapshot") { BikeDataService.readSnapshot() })
         val auto = CheckBox(this).apply {
             text="Auto-connect bike data with the map";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
             isChecked=YamahaBikeAutoConnect.enabled(this@BikeDataActivity)
@@ -38,23 +30,6 @@ class BikeDataActivity : RiderPage() {
             }
         };row(auto)
         row(text("Uses the same paired CCU after the map connects. Stop bike data pauses automatic starts until the next map connection. Up to three attempts per map connection."))
-        row(button("Check additional bike fields · parked only") {
-            android.app.AlertDialog.Builder(this).setTitle("Parked bike check")
-                .setMessage("Keep the bike parked, ignition on and engine off. Check declared fields 3 and 9 once each. Live data continues; unknown payloads are not saved.")
-                .setPositiveButton("Start check") { _,_->BikeDataService.checkAdditionalFields() }.setNegativeButton("Cancel",null).show()
-        })
-        checks=text("");row(checks)
-        row(button("Save private test log") { exportLog() })
-        row(button("Yamaha test panel") { YamahaTestPanelActivity.open(this) })
-        row(button("Check phone status") { previewPhoneStatus() })
-        row(CheckBox(this).apply {
-            text="Native bike music · test";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
-            isChecked=RidePreferences.prefs(this@BikeDataActivity).getBoolean("yamaha_native_music_test",false)
-            setOnCheckedChangeListener { _,checked ->
-                RidePreferences.prefs(this@BikeDataActivity).edit().putBoolean("yamaha_native_music_test",checked).apply()
-            }
-        })
-        row(text("Optional parked test: send the selected player's track to Yamaha's built-in music screen and accept its music buttons. Requires music notification access. Phone playback controls remain available."))
         val continuous = CheckBox(this).apply {
             text="Keep bike data connected during a ride";textSize=19f;minHeight=dp(72);setTextColor(RideStyle.TEXT)
             isChecked=RidePreferences.prefs(this@BikeDataActivity).getBoolean("bike_data_during_ride",false)
@@ -76,61 +51,11 @@ class BikeDataActivity : RiderPage() {
             };row(line)
         }
         history=text("");row(history);fuel=text("");row(fuel);notices=text("");row(notices)
-        experimentalFuel=text("");row(experimentalFuel)
-        row(button("Start experimental session fuel test · parked") {
-            android.app.AlertDialog.Builder(this).setTitle("Experimental session fuel")
-                .setMessage("Uses the regional MyRide 1 Hz sample model. Litres and economy are estimates awaiting a pump-refill comparison, not a fuel gauge. This build collects sample coverage only: totals stay unavailable until firmware sample identity and delivery are verified. Timing gaps or duplicate bursts invalidate the test. Equal consecutive values are valid samples. No tank range is changed. Start only while parked.")
-                .setPositiveButton("Start test") { _,_->
-                    if(!BikeDataStore.startFuelExperiment())Toast.makeText(this,"Connect bike data and wait for fresh speed and odometer while parked.",Toast.LENGTH_LONG).show()
-                    refresh()
-                }.setNegativeButton("Cancel",null).show()
-        })
-        row(button("Clear experimental fuel test") { BikeDataStore.stopFuelExperiment();refresh() })
         row(button("Estimated fuel range and refills") { FuelRangeActivity.open(this) })
         row(button("Find a fuel station") { FuelStationsActivity.open(this) })
         row(button("Ride book") { RideBookActivity.open(this) })
-        row(text("Close Y-Connect and disconnect nRF Connect before testing RideDeck independently. Keep existing pairing. These readings use the source-confirmed XMAX layout and still need a dashboard check. Fuel-counter units, brake and indicator meanings remain unverified. Raw byte changes are not decoded controls."))
-        row(button("Mark a parked test action") {
-            android.app.AlertDialog.Builder(this).setTitle("Record what you can see").setItems(arrayOf("Baseline: brakes / indicators off","Front brake held","Front brake released","Rear brake held","Rear brake released","Left indicator on","Left indicator off","Right indicator on","Right indicator off","Hazards on","Hazards off")) { _,i->
-                val event=listOf("baseline","front_on","front_off","rear_on","rear_off","left_on","left_off","right_on","right_off","hazards_on","hazards_off")[i]
-                Toast.makeText(this,if(BikeDataStore.mark(this,event)) "Your observation was recorded." else "Connect bike data first.",Toast.LENGTH_LONG).show()
-            }.setNegativeButton("Cancel",null).show()
-        })
-        raw=text("");raw.visibility=android.view.View.GONE;row(raw)
-        row(button("Show / hide raw diagnostic fields") { raw.visibility=if(raw.visibility==android.view.View.VISIBLE) android.view.View.GONE else android.view.View.VISIBLE;refresh() })
         refresh()
     }
-    private fun exportLog() {
-        exporting=BikeDataStore.export(this)
-        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
-            .putExtra(Intent.EXTRA_TITLE,"yamaha-private-test-${System.currentTimeMillis()}.jsonl"),99)
-    }
-    private fun previewPhoneStatus() {
-        if(android.os.Build.VERSION.SDK_INT>=31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT),98)
-            Toast.makeText(this,"Allow Nearby devices, then check phone status again.",Toast.LENGTH_LONG).show();return
-        }
-        phoneDialog?.dismiss()
-        val dialog=android.app.AlertDialog.Builder(this).setTitle("Phone status")
-            .setMessage("Reading phone battery, signal and headset…\n\nThese are phone readings. Native Yamaha icons need a bike connection.")
-            .setPositiveButton("Close",null).create()
-        phoneDialog=dialog
-        dialog.setOnDismissListener { phonePreview?.close();phonePreview=null;phoneDialog=null }
-        dialog.show()
-        phonePreview=YamahaPhoneStatusMonitor(applicationContext, BikeDataService.selectedAddress()) { status,_ ->
-            if(dialog.isShowing) {
-                val signal=when(status.signal) {
-                    app.pillion.protocol.YamahaAccessoryStatus.CellSignal.NO_CONNECTION->"No cellular connection"
-                    app.pillion.protocol.YamahaAccessoryStatus.CellSignal.NO_SIGNAL->"No cellular signal"
-                    null->"Unavailable"
-                    else->"${status.signal.wireValue-1} of 4 bars"
-                }
-                fun yesNo(value:Boolean?)=when(value) { true->"Yes";false->"No";null->"Unavailable" }
-                dialog.setMessage("Phone battery: ${status.batteryPercent?.let { "$it%" } ?: "Unavailable"}\nCharging: ${yesNo(status.charging)}\nCellular signal: $signal\nHeadset connected: ${yesNo(status.headset)}\n\n" + BikeDataStatusText.phoneWrites(BikeDataStore.state,SystemClock.elapsedRealtime()))
-            }
-        }.also { it.start() }
-    }
-    override fun onStop() { phoneDialog?.dismiss();super.onStop() }
     private fun choose() {
         val required=if(android.os.Build.VERSION.SDK_INT>=31) arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_SCAN)
             else arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
@@ -155,33 +80,12 @@ class BikeDataActivity : RiderPage() {
             label.text=if(value==null) "Waiting" else String.format(Locale.US,if(metric==BikeMetric.RPM || metric==BikeMetric.SPEED) "%.0f %s" else "%.1f %s",value.value,metric.unit) + if(fresh) "" else "\nLast known"
             label.setTextColor(if(fresh) RideStyle.TEXT else RideStyle.MUTED)
         }
-        checks.text=BikeDataStatusText.format(s,now)
         history.text="${s.packets} bike-data packets received\n" + if(s.lastPacket==0L) "Waiting for bike data." else "Last packet ${(now-s.lastPacket)/1000} seconds ago."
-        fuel.text="Bike-reported fuel remaining: unavailable. Use Estimated fuel range and refills for your manual full-tank estimate.\n" +
-            if(s.injection==null) "Fuel-injection counter: waiting for a supported reply." else "Fuel-injection counter: ${s.injection} raw units.\nThis is not remaining fuel. Received ${(now-s.injectionAt)/1000} seconds ago."
-        val experiment=BikeDataStore.fuelExperiment()
-        experimentalFuel.text=if(experiment==null) "Experimental session fuel: off. Separate from tank range." else buildString {
-            append("Fuel sample coverage (experimental)\n")
-            append("${experiment.samples} samples · ${experiment.coveredMillis/1000} seconds covered\n")
-            if(experiment.litres!=null)append(String.format(Locale.US,"~%.3f L · calibration pending\n",experiment.litres))
-            if(experiment.kmPerLitre!=null)append(String.format(Locale.US,"Estimated %.1f km/L\n",experiment.kmPerLitre))
-            experiment.reason?.let { append(it);append("\n") }
-            append("Source-inferred sample units. No sample sequence is provided; on-time retransmissions cannot be detected. Not remaining fuel.")
-        }
+        fuel.text="Use Estimated fuel range and refills for your manual full-tank estimate."
         notices.text=if(s.faults==null) "Diagnostic notices: waiting for the bike." else {
             (if(s.faults.isNullOrEmpty()) "No notices returned by the selected Yamaha diagnostic query." else s.faults.joinToString("\n") { "Yamaha notice ${it.code} · status ${it.status}" }) + "\nUpdated ${(now-s.faultsAt)/1000} seconds ago."
         }
-        if(raw.visibility==android.view.View.VISIBLE) raw.text=s.raw.entries.joinToString("\n\n") { "${it.key}\nRaw ${it.value.first}\nReceived ${android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(it.value.second))}" }.ifBlank { "No permitted raw fields received yet." }
     }
     override fun onResume() { super.onResume();updates.post(tick) }
     override fun onPause() { updates.removeCallbacksAndMessages(null);super.onPause() }
-    @Deprecated("Android activity result compatibility") override fun onActivityResult(request:Int,result:Int,data:Intent?) {
-        super.onActivityResult(request,result,data)
-        if(request!=99) return
-        val file=exporting;exporting=null
-        val success=result==RESULT_OK && file!=null && data?.data!=null && runCatching {
-            contentResolver.openOutputStream(data.data!!)?.use { out->file.inputStream().use { it.copyTo(out) } } ?: error("No destination")
-        }.isSuccess
-        file?.delete();Toast.makeText(this,if(success) "Private test log saved." else "Log was not exported; the phone still retains the local data.",Toast.LENGTH_LONG).show()
-    }
 }
