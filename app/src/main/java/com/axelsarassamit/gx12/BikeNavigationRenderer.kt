@@ -17,12 +17,24 @@ object BikeNavigationRenderer {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         canvas.drawColor(Color.BLACK)
         canvas.drawBitmap(map, null, Rect(layout.mapLeft, 0, layout.mapWidth, layout.mapHeight), p)
-        p.color = if (night) 0xff101724.toInt() else 0xff202632.toInt()
-        canvas.drawRect(layout.panelLeft.toFloat(), 0f, layout.width.toFloat(), (layout.height-layout.creditHeight).toFloat(), p)
-        p.color=Color.WHITE; p.style=Paint.Style.FILL
+        // The map is the actual MapLibre bitmap. Only the guidance chrome is restyled.
+        val panelTop = if (night) 0xff101827.toInt() else 0xff202d40.toInt()
+        val panelBottom = if (night) 0xff070e19.toInt() else 0xff101a29.toInt()
+        p.shader = LinearGradient(layout.panelLeft.toFloat(), 0f, layout.width.toFloat(),
+            (layout.height-layout.creditHeight).toFloat(), panelTop, panelBottom, Shader.TileMode.CLAMP)
+        canvas.drawRect(layout.panelLeft.toFloat(), 0f, layout.width.toFloat(),
+            (layout.height-layout.creditHeight).toFloat(), p)
+        p.shader = null
+        // Narrow accent rail separates the live map from the guidance surface.
+        p.color = 0xffb76cff.toInt()
+        canvas.drawRoundRect(layout.panelLeft.toFloat(), 0f,
+            layout.panelLeft + 3f, layout.mapHeight.toFloat(), 2f, 2f, p)
+        p.color = 0x44ffffff
+        canvas.drawLine(layout.panelLeft + 12f, 99f, layout.width - 12f, 99f, p)
+        p.color=0xfff3f5ff.toInt(); p.style=Paint.Style.FILL
         val junction=state.lanes?.junctionSide(state.sign,state.meters) ?: 0
         if(junction==0) arrow(canvas, p, state.sign, layout.panelLeft + layout.panelWidth / 2f, 38f)
-        p.textAlign=Paint.Align.CENTER; p.typeface=Typeface.DEFAULT_BOLD; p.textSize=32f
+        p.textAlign=Paint.Align.CENTER; p.typeface=Typeface.create("sans-serif-condensed", Typeface.BOLD); p.textSize=32f
         val distance = state.meters?.let { if (it >= 1000) String.format(Locale.US,"%.1f km",it/1000)
             else "${(it.coerceAtLeast(0.0)/10).toInt()*10} m" } ?: "GPS"
         canvas.drawText(distance, layout.panelLeft+layout.panelWidth/2f, if(junction==0)89f else 37f, p)
@@ -30,15 +42,15 @@ object BikeNavigationRenderer {
         wrapped(canvas, title, layout.panelLeft+9f, if(junction==0)104f else 44f, layout.panelWidth-18, if(junction==0)19f else 14f, if(junction==0)3 else 2)
         if(junction!=0) junction(canvas,layout,state.lanes!!,junction)
         if (!state.arrival.isNullOrBlank()) {
-            p.color=0xff293957.toInt(); canvas.drawRect(layout.panelLeft.toFloat(),(layout.mapHeight).toFloat(),layout.width.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
-            p.color=Color.WHITE; p.textSize=15f; p.textAlign=Paint.Align.CENTER
+            p.color=0xff17263d.toInt(); canvas.drawRect(layout.panelLeft.toFloat(),(layout.mapHeight).toFloat(),layout.width.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
+            p.color=0xffe5d6ff.toInt(); p.textSize=15f; p.typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL); p.textAlign=Paint.Align.CENTER
             canvas.drawText("Arrival ${state.arrival}",layout.panelLeft+layout.panelWidth/2f,layout.mapHeight+18f,p)
         }
         // Exactly one speed sign belongs to this image. Unknown limits remain absent.
         state.speedLimit?.let { SpeedLimitIcon.draw(canvas,layout.speedX,layout.speedY,layout.speedRadius,it) }
-        p.style=Paint.Style.FILL; p.color=0xe6101724.toInt()
+        p.style=Paint.Style.FILL; p.color=0xf0101b2c.toInt()
         canvas.drawRect(0f,layout.mapHeight.toFloat(),layout.mapWidth.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
-        p.color=Color.WHITE; p.textAlign=Paint.Align.LEFT; p.textSize=18f; p.typeface=Typeface.DEFAULT_BOLD
+        p.color=0xfff2f5ff.toInt(); p.textAlign=Paint.Align.LEFT; p.textSize=18f; p.typeface=Typeface.create("sans-serif-medium",Typeface.BOLD)
         val road=state.currentRoad.ifBlank { "RideDeck navigation" }
         val shown=TextUtils.ellipsize(road,TextPaint(p),(layout.mapWidth-20).toFloat(),TextUtils.TruncateAt.END).toString()
         canvas.drawText(shown,10f,layout.mapHeight+19f,p)
