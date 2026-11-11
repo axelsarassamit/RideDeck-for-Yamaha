@@ -21,14 +21,15 @@ object NavigationUi {
     /** Always visible on the riding cockpit; these are actions, not setup menus. */
     @JvmStatic fun quickActions(activity:Activity):LinearLayout {
         fun dp(value:Int)=(value*activity.resources.displayMetrics.density).toInt()
+        val prefs = RidePreferences.prefs(activity)
+        val showFunRide = prefs.getBoolean("quick_action_fun_ride", true)
+        val showTools = prefs.getBoolean("quick_action_tools", true)
         return LinearLayout(activity).apply {
             tag="ride_quick_actions"
-            val actions=listOf<Pair<String,()->Unit>>(
-                "Search" to { search(activity,null) },
-                "Fun ride" to { activity.startActivity(Intent(activity,FunRideActivity::class.java)) },
-                "Ride tools" to { RideToolsActivity.open(activity) })
-            val visibleActions=actions
-            for((label,action) in visibleActions) addView(Button(activity).apply {
+            val actions=mutableListOf<Pair<String,()->Unit>>("Search" to { search(activity,null) })
+            if (showFunRide) actions.add("Fun ride" to { activity.startActivity(Intent(activity,FunRideActivity::class.java)) })
+            if (showTools) actions.add("Ride tools" to { RideToolsActivity.open(activity) })
+            for((label,action) in actions) addView(Button(activity).apply {
                 text=label;contentDescription="Ride action: $label";RideStyle.action(this,false);maxLines=2
                 setPadding(dp(3),dp(2),dp(3),dp(2));setOnClickListener{action()}
             },LinearLayout.LayoutParams(0,dp(56),1f).apply{leftMargin=dp(3);rightMargin=dp(3)})

@@ -67,10 +67,12 @@ object MapPanelSettings {
         };page.addView(panel,LinearLayout.LayoutParams(-1,-2))
         words(page,"Bike view: choose Default, Turn-by-turn or Turn list using Navigation > Change view on the bike. Phone panel choices do not change the bike's view.")
         action(page,"Preview bike map") { NavigationUi.bikePreview(a) }
-        heading("Guidance")
+        heading("Guidance & Quick Actions")
         toggle(page,"navigation_voice","Voice guidance",true,"English navigation announcements")
         action(page,"Test English voice") { NavigationVoice.sample(a) }
         toggle(page,"route_lanes","Lane arrows",true,"Shown only when the route provider supplies lane data.")
+        toggle(page,"quick_action_fun_ride","Show 'Fun ride' quick action",true)
+        toggle(page,"quick_action_tools","Show 'Ride tools' quick action",true)
         heading("Routing & traffic")
         toggle(page,"tomtom_routing","Use TomTom routing",true,"Requires a configured TomTom account. Without it, routes use Valhalla without live traffic.")
         toggle(page,"tomtom_refresh","Refresh traffic route every 5 minutes",true)

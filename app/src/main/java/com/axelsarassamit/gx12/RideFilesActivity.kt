@@ -1,6 +1,7 @@
 package com.axelsarassamit.gx12
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -8,7 +9,11 @@ import android.graphics.Path
 import android.os.Bundle
 import android.view.View
 import android.widget.*
+import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import app.pillion.core.*
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.UUID
@@ -43,18 +48,20 @@ class RideFilesActivity:Activity() {
     private fun recap(s:Summary):String {
         val r=s.track.recap();val km=s.distanceKm?:r.meters/1000
         return buildString {
-            append(s.title);append(String.format(Locale.US,"\n%.1f km",km))
+            append(s.title);append(String.format(Locale.US,"\nDistance: %.1f km",km))
+            r.avgMovingSpeedKph?.let { append(String.format(Locale.US, "\nAvg speed: %.1f km/h", it)) }
+            r.maxSpeedKph?.let { append(String.format(Locale.US, "\nMax speed: %.1f km/h", it)) }
             s.plannedSeconds?.let{append(" · ${it.toLong()/60} min planned")}
             s.recordedSeconds?.let{append(" · ${it/60} min recording")}
-            r.movingMs?.let{append("\n${it/60000} min moving (timed GPS samples only)")}
+            r.movingMs?.let{append("\n${it/60000} min moving time")}
             r.climb?.let{append("\nEstimated climb ${it.roundToInt()} m")}
             s.peakLean?.let{append(String.format(Locale.US,"\nPeak mounted-phone lean estimate %.1f°",it))}
         }
     }
     private fun showPage(message:String="") {
         val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(12),dp(16),dp(16));setBackgroundColor(RideStyle.BACKGROUND) }
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(page) { v,insets ->
-            val b=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout());v.setPadding(dp(16)+b.left,dp(12)+b.top,dp(16)+b.right,dp(16)+b.bottom);insets
+        ViewCompat.setOnApplyWindowInsetsListener(page) { v, insets ->
+            val b=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout());v.setPadding(dp(16)+b.left,dp(12)+b.top,dp(16)+b.right,dp(16)+b.bottom);insets
         }
         fun label(t:String,size:Float)=TextView(this).apply { text=t;textSize=size;setTextColor(RideStyle.TEXT);setPadding(0,dp(6),0,dp(6)) }
         fun action(t:String,fn:()->Unit){page.addView(Button(this).apply{text=t;RideStyle.action(this,false);isEnabled=!working;setOnClickListener{fn()}})}
@@ -80,19 +87,19 @@ class RideFilesActivity:Activity() {
         working=true;showPage("Preparing GPX…")
         io.execute {
             val file=runCatching {
-                val dir=java.io.File(cacheDir,"ride-share");check(dir.isDirectory || dir.mkdirs())
+                val dir= File(cacheDir,"ride-share");check(dir.isDirectory || dir.mkdirs())
                 dir.listFiles()?.filter { it.isFile && it.name.startsWith("RideDeck-") && it.extension=="gpx" &&
                     System.currentTimeMillis()-it.lastModified()>86_400_000 }?.forEach { it.delete() }
-                java.io.File.createTempFile("RideDeck-", ".gpx", dir).also { f->f.outputStream().use{RideGpx.write(track,it)} }
+                File.createTempFile("RideDeck-", ".gpx", dir).also { f->f.outputStream().use{RideGpx.write(track,it)} }
             }
             runOnUiThread {
                 if(isFinishing || isDestroyed)return@runOnUiThread
                 working=false
                 val shared=file.mapCatching { f ->
-                    val uri=androidx.core.content.FileProvider.getUriForFile(this, "$packageName.apkprovider",f)
+                    val uri= FileProvider.getUriForFile(this, "$packageName.apkprovider",f)
                     val send=Intent(Intent.ACTION_SEND).setType("application/gpx+xml").putExtra(Intent.EXTRA_STREAM,uri)
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    send.clipData=android.content.ClipData.newUri(contentResolver,"RideDeck GPX",uri)
+                    send.clipData= ClipData.newUri(contentResolver,"RideDeck GPX",uri)
                     startActivity(Intent.createChooser(send,"Share GPX track"))
                 }
                 showPage(if(shared.isFailure)"Could not share this GPX track." else "")

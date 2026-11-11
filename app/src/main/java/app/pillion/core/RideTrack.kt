@@ -11,6 +11,7 @@ data class RideTrack(val segments:List<List<RideTrackPoint>>) {
     val count get()=segments.sumOf { it.size }
     fun recap():TrackRecap {
         var meters=0.0;var moving=0L;var covered=0L;var elevation=0.0;var hasElevation=false
+        var maxSpeedMps=0.0
         for(segment in segments)for(i in 1 until segment.size) {
             val a=segment[i-1];val b=segment[i]
             val dlat=Math.toRadians(b.lat-a.lat);val dlon=Math.toRadians(b.lon-a.lon)
@@ -18,13 +19,19 @@ data class RideTrack(val segments:List<List<RideTrackPoint>>) {
             val distance=12_742_000*asin(sqrt(h));meters+=distance
             if(a.time!=null && b.time!=null) {
                 val dt=b.time-a.time
-                if(dt in 1..30_000 && distance*1000/dt<=80) { covered+=dt;if(distance*1000/dt>=1.4)moving+=dt }
+                if(dt in 1..30_000 && distance*1000/dt<=80) {
+                    val speed = distance * 1000.0 / dt
+                    if (speed in 1.4..80.0 && speed > maxSpeedMps) maxSpeedMps = speed
+                    covered+=dt;if(distance*1000/dt>=1.4)moving+=dt
+                }
             }
             if(a.elevation?.isFinite()==true && b.elevation?.isFinite()==true) {
                 hasElevation=true; elevation+=max(0.0,b.elevation-a.elevation)
             }
         }
-        return TrackRecap(meters,if(covered>0)moving else null,covered,if(hasElevation)elevation else null)
+        val avgSpeed = if (moving > 0) (meters / (moving / 1000.0)) * 3.6 else null
+        val maxSpeed = if (maxSpeedMps > 0) maxSpeedMps * 3.6 else null
+        return TrackRecap(meters,if(covered>0)moving else null,covered,if(hasElevation)elevation else null, maxSpeed, avgSpeed)
     }
 }
-data class TrackRecap(val meters:Double,val movingMs:Long?,val timedMs:Long,val climb:Double?)
+data class TrackRecap(val meters:Double,val movingMs:Long?,val timedMs:Long,val climb:Double?,val maxSpeedKph:Double?=null,val avgMovingSpeedKph:Double?=null)
