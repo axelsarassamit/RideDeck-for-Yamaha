@@ -51,7 +51,8 @@ object NavigationSecrets {
     }.getOrDefault("").ifBlank { bundled(name) }
 
     private fun bundled(name: String): String = when (name) {
-        "maptiler" -> BuildConfig.MAPTILER_KEY
+        "maptiler" -> BuildConfig.MAPTILER_KEY.ifBlank { "HOEtsfgSel2Oj95qNhFy" }
+        "tomtom" -> "0p1TFQbJqCYvvbnrQsxABRnR4ZdHuBS0"
         else -> ""
     }
 }
