@@ -39,7 +39,7 @@ object RainLock {
                 true
             }
         }
-        container.addView(unlock, LinearLayout.LayoutParams(-1, dp(58)).apply {
+        container.addView(unlock, LinearLayout.LayoutParams(-1, dp(64)).apply {
             leftMargin=dp(12);rightMargin=dp(12);topMargin=dp(12)
         })
 

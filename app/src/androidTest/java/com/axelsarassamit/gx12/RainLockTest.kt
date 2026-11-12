@@ -21,7 +21,9 @@ class RainLockTest {
                 root.measure(View.MeasureSpec.makeMeasureSpec(600,exact),View.MeasureSpec.makeMeasureSpec(800,exact))
                 root.layout(0,0,600,800)
                 val shield=root.findViewWithTag<FrameLayout>("ridedeck_rain_lock")
-                val unlock=shield.getChildAt(0) as Button
+                val container=shield.getChildAt(0) as android.view.ViewGroup
+                val unlock=container.getChildAt(0) as Button
+                assertTrue(unlock.height>= (64*activity.resources.displayMetrics.density).toInt())
                 val now=SystemClock.uptimeMillis()
                 for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)) {
                     val event=MotionEvent.obtain(now,now,action,300f,650f,0)

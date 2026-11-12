@@ -14,7 +14,7 @@ import java.util.function.Consumer;
 
 /** One visible rider gesture binds Dash; the explicit ride owns its lifetime. Never reconnects itself. */
 public final class DashRecordingConnection implements ServiceConnection {
-    private static final String SERVICE = DashCompanion.PACKAGE + ".CompanionRecordingService";
+    private static final String SERVICE = "com.axelsarassamit.ridedeck.dash.CompanionRecordingService";
     private static DashRecordingConnection current;
     public static final DashRecordingStatus STATUS = new DashRecordingStatus();
     private final Context app;

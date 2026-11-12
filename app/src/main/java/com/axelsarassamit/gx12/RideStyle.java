@@ -13,7 +13,7 @@ import android.widget.LinearLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 
-/** Shared surfaces for the Yamaha cockpit and parked settings. */
+/** Shared RideDeck family surfaces for cockpit and parked settings. */
 public final class RideStyle {
     public static int BACKGROUND = 0xff081422;
     public static int PANEL = 0xff101c2e;

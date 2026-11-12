@@ -1,6 +1,11 @@
 name: Android build
 on:
   workflow_dispatch:
+    inputs:
+      upload_debug_apk:
+        description: Upload the debug APK
+        type: boolean
+        default: false
   push:
     branches: [main]
 permissions:
@@ -14,10 +19,18 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - run: chmod +x gradlew && ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+      - run: chmod +x gradlew && ./gradlew --no-daemon --max-workers=2 testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
       - name: Check compiled app text encoding
         run: python3 scripts/check_text_encoding.py --apk app/build/outputs/apk/debug/app-debug.apk
+      - name: Build and test isolated migration tooling
+        run: |
+          set -euo pipefail
+          TARGET_HASH=$(sha256sum app/build/outputs/apk/debug/app-debug.apk | cut -d ' ' -f1)
+          ./gradlew -p tools/migration-helper --no-daemon --max-workers=2 testDebugUnitTest assembleDebug \
+            -PtargetPackage=com.axelsarassamit.gx12.yamaha.preview -PexpectedTargetApkSha256="$TARGET_HASH"
+          python3 -m unittest discover -s tools/migration-helper/scripts/tests -p 'test_*.py'
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_debug_apk
         with:
           name: debug-build
           path: app/build/outputs/apk/debug/*.apk

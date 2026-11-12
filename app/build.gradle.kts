@@ -18,10 +18,11 @@ android {
             return "\"$value\""
         }
         buildConfigField("String", "MAPTILER_KEY", providerKey("RIDEDECK_MAPTILER_KEY"))
+        buildConfigField("String", "TOMTOM_KEY", providerKey("RIDEDECK_TOMTOM_KEY"))
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.63").removePrefix("v")
+        val releaseVersion = (System.getenv("GX12_VERSION_NAME") ?: "0.12.64").removePrefix("v")
         val parts = releaseVersion.split(".")
         require(parts.size >= 2 && parts.take(3).all { it.all(Char::isDigit) }) {
             "GX12_VERSION_NAME must use numeric semver such as 0.1.0"
@@ -52,7 +53,9 @@ android {
 
     buildTypes {
         debug {
-            manifestPlaceholders["appLabel"] = "RideDeck for Yamaha"
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            manifestPlaceholders["appLabel"] = "RideDeck Yamaha Preview"
         }
         release {
             signingConfig = signingConfigs.getByName("release")
@@ -96,3 +99,14 @@ val testTextEncoding by tasks.registering(Exec::class) {
     commandLine(python, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_text_encoding.py")
 }
 tasks.named("preBuild") { dependsOn(checkTextEncoding, testTextEncoding) }
+val checkProviderCredentials by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    val python = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+    commandLine(python, "scripts/check_provider_credentials.py")
+}
+val testProviderCredentials by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    val python = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+    commandLine(python, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_provider_credentials.py")
+}
+tasks.named("preBuild") { dependsOn(checkProviderCredentials, testProviderCredentials) }

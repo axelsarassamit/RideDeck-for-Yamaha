@@ -23,8 +23,9 @@ class RideQuickActionsTest {
     }
     private inline fun isolated(block:()->Unit) {
         val c=instrumentation.targetContext;check(c.packageName.endsWith(".preview"))
-        val p=RidePreferences.prefs(c);val keys=listOf("map_auto","map_startup","phone_panel","bike_home");val backup=keys.associateWith{p.all[it]}
-        p.edit().putBoolean("map_auto",false).putBoolean("map_startup",false).commit();RideBackgroundSession.navigationStopped(c)
+        val p=RidePreferences.prefs(c);val keys=listOf("map_auto","map_startup","phone_panel","bike_home","quick_action_fun_ride","quick_action_tools");val backup=keys.associateWith{p.all[it]}
+        p.edit().putBoolean("map_auto",false).putBoolean("map_startup",false)
+            .putBoolean("quick_action_fun_ride",true).putBoolean("quick_action_tools",true).commit();RideBackgroundSession.navigationStopped(c)
         try{block()}finally{p.edit().apply{for((key,value) in backup)when(value){is Boolean->putBoolean(key,value);is String->putString(key,value);else->remove(key)}}.commit();RideBackgroundSession.navigationStopped(c)}
     }
     @Test fun mainActionsRemainVisibleForMapAndMusicInBothOrientations()=isolated {
@@ -37,13 +38,33 @@ class RideQuickActionsTest {
                     s.onActivity{a->
                         val actions=buttons(a).filter{it.contentDescription?.startsWith("Ride action:")==true}
                         assertEquals(listOf("Search","Fun ride","Ride tools"),actions.map{it.text.toString()})
-                        val rects=actions.map(::bounds);for(i in rects.indices)for(j in 0 until i)assertFalse(Rect.intersects(rects[i],rects[j]))
                         val all=SharedSetupTest.views(a.window.decorView)
+                        val rail=all.single{it.tag=="ride_quick_actions"}
+                        val railBounds=bounds(rail)
+                        val target=(64*a.resources.displayMetrics.density).toInt()
+                        assertTrue("Quick-action rail has 64dp visible height",railBounds.height()>=target)
+                        val rects=actions.map { action ->
+                            bounds(action).also { visible ->
+                                assertTrue("64dp visible target for ${action.text}",visible.height()>=target)
+                                assertEquals("No vertical clipping for ${action.text}",action.height,visible.height())
+                                assertEquals("No horizontal clipping for ${action.text}",action.width,visible.width())
+                                assertTrue("Rail contains ${action.text}",railBounds.contains(visible))
+                            }
+                        }
+                        for(i in rects.indices)for(j in 0 until i)assertFalse(Rect.intersects(rects[i],rects[j]))
                         val media=bounds(all.single{it.tag=="ride_media_pane"});val messages=bounds(all.single{it.tag=="ride_message_pane"})
                         assertFalse(Rect.intersects(media,messages));for(r in rects){assertFalse(Rect.intersects(r,media));assertFalse(Rect.intersects(r,messages))}
                         assertTrue("Media remains useful",media.height()>=a.resources.displayMetrics.density*64)
                         assertTrue("Messages remain useful",messages.height()>=a.resources.displayMetrics.density*64)
                         assertTrue(buttons(a).any{it.contentDescription=="Camera"});assertTrue(buttons(a).any{it.contentDescription=="Voice"})
+                        val rain=buttons(a).single{it.contentDescription?.startsWith("Rain lock:")==true}
+                        val rainLayout=rain.layout
+                        assertNotNull("Rain Lock label is laid out",rainLayout)
+                        val lastLine=rainLayout.getLineForOffset(rain.text.length-1)
+                        assertTrue("Complete Rain Lock label is visible",lastLine<rain.maxLines)
+                        assertEquals("Rain Lock label is not ellipsized",0,rainLayout.getEllipsisCount(lastLine))
+                        assertTrue("Rain Lock text fits vertically",
+                            rain.compoundPaddingTop+rainLayout.getLineBottom(lastLine)<=rain.height-rain.compoundPaddingBottom)
                         SharedSetupTest.shot(a,"direct-$panel-${a.resources.configuration.orientation}")
                         if(panel=="music") {
                             all.single{it.tag=="ride_navigation_instruction"}.performClick()

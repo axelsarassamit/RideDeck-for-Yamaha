@@ -20,7 +20,7 @@ public final class AppearanceTest {
     @Test public void authenticatedDashSyncKeepsModeAccentAndRecordingLeaseIndependent() throws Exception {
         Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertTrue("Install the signed Dash companion before this integration check",DashCompanion.installed(c));
-        android.net.Uri uri=android.net.Uri.parse("content://com.axelsarassamit.ridedeck.dash.bridge");
+        android.net.Uri uri=android.net.Uri.parse("content://" + DashCompanion.PACKAGE + ".bridge");
         Bundle request=new Bundle();request.putInt("protocolVersion",1);
         Bundle before=c.getContentResolver().call(uri,"status",null,request);assertNotNull(before);
         assertTrue("Update Dash before checking appearance",before.containsKey("appearanceHostMode"));

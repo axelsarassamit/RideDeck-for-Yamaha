@@ -19,7 +19,8 @@ import java.util.function.Consumer;
 
 /** Provider calls are serialized off the UI thread. No camera or recording calls. */
 public final class DashCompanion {
-    public static final String PACKAGE = "com.axelsarassamit.ridedeck.dash";
+    public static final String PACKAGE = BuildConfig.DEBUG
+        ? "com.axelsarassamit.ridedeck.dash.debug" : "com.axelsarassamit.ridedeck.dash";
     private static final String SIGNER = "cef073342e133ad4c6650da1a276ae4ad03e3396cecac67143154aeb6e6c731b";
     private static final Uri BRIDGE = Uri.parse("content://" + PACKAGE + ".bridge");
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
@@ -28,7 +29,7 @@ public final class DashCompanion {
         try {
             PackageManager manager = context.getPackageManager();
             if (manager.getLaunchIntentForPackage(PACKAGE) == null) return false;
-            if (BuildConfig.DEBUG) return true;
+            if (BuildConfig.DEBUG) return manager.checkSignatures(context.getPackageName(), PACKAGE) == PackageManager.SIGNATURE_MATCH;
             byte[] expected = new byte[SIGNER.length() / 2];
             for (int i = 0; i < expected.length; i++) expected[i] = (byte) Integer.parseInt(SIGNER.substring(i * 2, i * 2 + 2), 16);
             if (Build.VERSION.SDK_INT >= 28) return manager.hasSigningCertificate(PACKAGE, expected, PackageManager.CERT_INPUT_SHA256);
@@ -86,7 +87,6 @@ public final class DashCompanion {
                 reply.containsKey("accepted") ? reply.getBoolean("accepted") : null, reply.getBoolean("rideActive", false));
             return reply.getInt("protocolVersion", 0) == 1 ? "stopped" : "Dash needs a compatible update";
         } catch (SecurityException error) {
-            if (BuildConfig.DEBUG && "renew".equals(method)) return DashBridgeReply.renewal(1, true, true);
             return "Dash did not authorize this RideDeck update";
         }
         catch (IllegalArgumentException error) { return "Dash needs a compatible update"; }

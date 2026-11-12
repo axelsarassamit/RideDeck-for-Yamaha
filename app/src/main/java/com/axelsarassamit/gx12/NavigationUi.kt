@@ -60,7 +60,7 @@ object NavigationUi {
             if(notifyGranted) Toast.makeText(activity,"Precise location is allowed",Toast.LENGTH_SHORT).show(); return true
         }
         activity.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION),74)
-        Toast.makeText(activity,"Allow precise location, then tap Map again",Toast.LENGTH_LONG).show()
+        Toast.makeText(activity,"Allow precise location, then start navigation again",Toast.LENGTH_LONG).show()
         return false
     }
     @JvmStatic fun search(activity: Activity, initial: String?) {
@@ -72,7 +72,17 @@ object NavigationUi {
         val density = activity.resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
 
-        val page=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(RideStyle.BACKGROUND) }
+        var refresh: Runnable? = null
+        val page=object : LinearLayout(activity) {
+            override fun onWindowVisibilityChanged(visibility: Int) {
+                super.onWindowVisibilityChanged(visibility)
+                if (visibility != View.VISIBLE) NativeNavigation.phoneViewport(0, 0)
+                refresh?.let {
+                    main.removeCallbacks(it)
+                    if (visibility == View.VISIBLE && isAttachedToWindow) main.post(it)
+                }
+            }
+        }.apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(RideStyle.BACKGROUND) }
         val image=ImageView(activity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; contentDescription="Map; tap for navigation menu"; setOnClickListener { mapMenu(activity) } }
         val state=TextView(activity).apply {
             setTextColor(RideStyle.TEXT); gravity=Gravity.CENTER_VERTICAL; textSize=11f; setPadding(8,4,8,4)
@@ -95,7 +105,9 @@ object NavigationUi {
         page.addView(directions,LinearLayout.LayoutParams(-1,-2))
         val body=LinearLayout(activity)
         val mapArea=FrameLayout(activity)
-        mapArea.addOnLayoutChangeListener { _,left,top,right,bottom,_,_,_,_ -> NativeNavigation.phoneViewport(right-left,bottom-top) }
+        mapArea.addOnLayoutChangeListener { _,left,top,right,bottom,_,_,_,_ ->
+            if (mapArea.windowVisibility == View.VISIBLE) NativeNavigation.phoneViewport(right-left,bottom-top)
+        }
         mapArea.addView(image,FrameLayout.LayoutParams(-1,-1))
         val empty = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -123,9 +135,9 @@ object NavigationUi {
                 contentDescription = "Start navigation and open map"
                 RideStyle.action(this, true)
                 setOnClickListener {
-                    NativeNavigation.start(activity)
+                    if (permission(activity)) NativeNavigation.start(activity)
                 }
-            }, LinearLayout.LayoutParams(dp(210), dp(56)))
+            }, LinearLayout.LayoutParams(dp(210), dp(64)))
         }
         mapArea.addView(empty,FrameLayout.LayoutParams(-1,-1))
 
@@ -163,14 +175,15 @@ object NavigationUi {
         val gps=TextView(activity).apply { textSize=13f;setTextColor(RideStyle.MUTED);setPadding(12,2,12,2) }
         page.addView(gps)
         page.addView(state)
-        val refresh=object: Runnable { override fun run() {
-            if(!page.isAttachedToWindow) return
+        refresh=object: Runnable { override fun run() {
+            if(!page.isAttachedToWindow || page.windowVisibility != View.VISIBLE) return
             val active=NativeNavigation.running
             empty.visibility=if(active) View.GONE else View.VISIBLE
             image.visibility=if(active) View.VISIBLE else View.GONE
             zoom.visibility=if(active) View.VISIBLE else View.GONE
             tripHud.visibility=if(active) View.VISIBLE else View.GONE
             if(active) {
+                NativeNavigation.phoneViewport(mapArea.width, mapArea.height)
                 image.setImageBitmap(NativeNavigation.phoneBitmap(RidePreferences.prefs(activity).getString("phone_panel","music") ?: "map"))
                 val trip = NativeNavigation.cockpitTrip()
                 if (trip != null) {
@@ -178,13 +191,14 @@ object NavigationUi {
                         Date(it)
                     ) } ?: "--:--"
                     val km = trip.remainingMeters / 1000.0
-                    val min = (trip.remainingMillis ?: 0L) / 60000L
-                    tripEtaView.text = String.format(Locale.US, "ETA %s · %.1f km (%d min)", eta, km, min)
+                    val duration = trip.remainingMillis?.let { " · ${(it + 59999L) / 60000L} min remaining" }.orEmpty()
+                    tripEtaView.text = String.format(Locale.US, "Arrival %s · %.1f km remaining", eta, km) + duration
                 } else {
                     tripEtaView.text = "GPS active"
                 }
                 val fuelText = FuelEstimateStore.mapLabel(activity)
-                tripFuelView.text = if (!fuelText.isNullOrBlank()) "⛽ $fuelText" else "⛽ Est. fuel range ~180 km"
+                tripFuelView.text = fuelText.orEmpty()
+                tripFuelView.visibility = if (fuelText.isNullOrBlank()) View.GONE else View.VISIBLE
             }
             directions.text=NativeNavigation.phoneGuidance()
             gps.text=NativeNavigation.gpsSummary()
@@ -192,8 +206,13 @@ object NavigationUi {
             main.postDelayed(this,750)
         } }
         page.addOnAttachStateChangeListener(object: View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) { main.post(refresh) }
-            override fun onViewDetachedFromWindow(v: View) { main.removeCallbacks(refresh); NativeNavigation.phoneViewport(0, 0) }
+            override fun onViewAttachedToWindow(v: View) {
+                refresh?.let { main.removeCallbacks(it); if (page.windowVisibility == View.VISIBLE) main.post(it) }
+            }
+            override fun onViewDetachedFromWindow(v: View) {
+                refresh?.let(main::removeCallbacks)
+                NativeNavigation.phoneViewport(0, 0)
+            }
         })
         return page
     }

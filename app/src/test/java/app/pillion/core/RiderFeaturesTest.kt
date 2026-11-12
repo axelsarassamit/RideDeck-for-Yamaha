@@ -25,4 +25,19 @@ class RiderFeaturesTest {
         assertEquals(1000L,timed.movingMs)
         assertEquals(3000L,timed.timedMs)
     }
+    @Test fun movingAverageUsesOnlyDistanceWithValidMovingTimestamps() {
+        val a=RideTrackPoint(13.0,100.0,time=1000)
+        val b=a.copy(lat=13.0001,time=2000)
+        val normal=RideTrack(listOf(listOf(a,b))).recap()
+        val withUntimedDistance=RideTrack(listOf(listOf(a,b,b.copy(lat=13.01,time=null)))).recap()
+        val withGpsJump=RideTrack(listOf(listOf(a,b,b.copy(lat=14.0,time=3000)))).recap()
+        assertTrue(withUntimedDistance.meters>normal.meters)
+        assertTrue(withGpsJump.meters>normal.meters)
+        assertEquals(normal.avgMovingSpeedKph!!,withUntimedDistance.avgMovingSpeedKph!!,0.001)
+        assertEquals(normal.avgMovingSpeedKph!!,withGpsJump.avgMovingSpeedKph!!,0.001)
+        assertEquals(normal.maxSpeedKph!!,normal.avgMovingSpeedKph!!,0.001)
+        val withStationaryDrift=RideTrack(listOf(listOf(a,b,b.copy(lat=13.000101,time=12000)))).recap()
+        assertEquals(normal.avgMovingSpeedKph!!,withStationaryDrift.avgMovingSpeedKph!!,0.001)
+        assertNull(RideTrack(listOf(listOf(a,a.copy(time=2000)))).recap().avgMovingSpeedKph)
+    }
 }

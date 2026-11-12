@@ -405,6 +405,7 @@ public class MainActivity extends android.app.Activity {
         setupAction(page, "Bike data and fuel range", () -> BikeDataActivity.open(this));
         setupAction(page, "Ride book", () -> startActivity(new Intent(this, RideBookActivity.class)));
         page = setupGroup(sections, "Help & diagnostics", "View connection details and share a log file", false);
+        setupAction(page, "Yamaha Bluetooth Lab", () -> YamahaLabLauncher.open(this));
         Button diagnostics = button("View and share diagnostic log");
         diagnostics.setOnClickListener(v -> {
             String report = BikeDiagnostics.report(this);
@@ -660,7 +661,7 @@ public class MainActivity extends android.app.Activity {
             guidanceParams.topMargin = dp(8); root.addView(guidanceRow, guidanceParams);
         }
 
-        if (BuildConfig.YAMAHA) root.addView(NavigationUi.quickActions(this), new LinearLayout.LayoutParams(-1, dp(56)));
+        if (BuildConfig.YAMAHA) root.addView(NavigationUi.quickActions(this), new LinearLayout.LayoutParams(-1, dp(64)));
 
         LinearLayout workspace = new LinearLayout(this);
         workspace.setOrientation(LinearLayout.HORIZONTAL);
@@ -823,6 +824,7 @@ public class MainActivity extends android.app.Activity {
         }
         RoadlineUi.dock(dock);
         Button rainLock = rideAction(compact ? "Lock" : "Rain lock", false);
+        rainLock.setMaxLines(2);
         rainLock.setContentDescription("Rain lock: prevent accidental touches");
         rainLock.setOnClickListener(v -> RainLock.engage(this));
         dock.addView(rainLock, rideWeight(compact ? 56 : 64));
