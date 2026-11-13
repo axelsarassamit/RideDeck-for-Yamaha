@@ -11,6 +11,20 @@ import org.junit.Test
 import java.io.File
 
 class MapNavigationTest {
+    @Test fun changingRoadInstructionCannotResizeGuidanceOrMoveMap() {
+        ActivityScenario.launch(DestinationSearchActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                for(size in listOf(1080 to 1700,1700 to 900)) {
+                    val panel=NavigationUi.panel(activity)
+                    val directions=ReleaseMenuTest.views(panel).filterIsInstance<android.widget.TextView>().single{it.contentDescription=="Next navigation instruction"}
+                    fun measure(){panel.measure(View.MeasureSpec.makeMeasureSpec(size.first,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(size.second,View.MeasureSpec.EXACTLY));panel.layout(0,0,size.first,size.second)}
+                    directions.text="Continue";measure();val short=directions.height
+                    directions.text="Turn left onto Thanon Sukhumvit Road, Samut Prakan intersection and continue towards the next exit";measure()
+                    assertEquals("Instruction bounds stay fixed",short,directions.height)
+                }
+            }
+        }
+    }
     @Test fun mapControlsCannotCoverDirectionsOrMapPixelsAtBothPhoneSizes() {
         ActivityScenario.launch(DestinationSearchActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
@@ -23,7 +37,11 @@ class MapNavigationTest {
                     fun bounds(view:View)=Rect().also { view.getDrawingRect(it);(panel as android.view.ViewGroup).offsetDescendantRectToMyCoords(view,it) }
                     val mapBounds=bounds(image)
                     assertTrue("Map must remain usable",mapBounds.width()>size.first/2 && mapBounds.height()>size.second/3)
-                    all.filterIsInstance<Button>().forEach { button ->
+                    // The intentional empty-map Start navigation action belongs inside the map.
+                    // Only the dedicated zoom rail must remain outside map pixels.
+                    val zoomButtons=all.filterIsInstance<Button>().filter{it.contentDescription in listOf("Zoom in","Zoom out")}
+                    assertEquals(2,zoomButtons.size)
+                    zoomButtons.forEach { button ->
                         assertFalse("Zoom covers map",Rect.intersects(mapBounds,bounds(button)))
                         assertTrue(button.height>=63*activity.resources.displayMetrics.density)
                     }

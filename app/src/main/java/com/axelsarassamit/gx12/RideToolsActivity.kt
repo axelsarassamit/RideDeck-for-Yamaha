@@ -30,7 +30,8 @@ class RideToolsActivity:Activity() {
             "Traffic" to { TrafficActivity.open(this) },
             "Ride book" to { RideBookActivity.open(this) },
             "Map settings" to { MapPanelSettingsActivity.open(this) },
-            "Stop navigation" to { NativeNavigation.stopRoute();Toast.makeText(this,"Navigation stopped",Toast.LENGTH_SHORT).show() }
+            "Clear route" to { NavigationSessionActions.clearRoute(this) },
+            "Stop navigation" to { NavigationSessionActions.stopNavigation(this) }
         )
         val columns=if(resources.configuration.screenWidthDp>=560)3 else 2
         val grid=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;tag="ride_tools_grid"}

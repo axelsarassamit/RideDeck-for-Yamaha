@@ -61,11 +61,12 @@ class DestinationSearchActivity:Activity() {
         if(query.startsWith("https://")) { share(query);return }
         (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(field.windowToken,0)
         val id=++generation;results.removeAllViews();showSaved(query);status.text="Searching…"
+        val anchor=SearchLocation.snapshot(this,NativeNavigation.location)
         worker.execute {
-            val answer=runCatching { NavigationApi.search(applicationContext,query,NativeNavigation.location) }
+            val answer=runCatching { NavigationApi.search(applicationContext,query,anchor) }
             runOnUiThread {
                 if(id!=generation || isFinishing || isDestroyed) return@runOnUiThread
-                answer.onSuccess { places -> status.text=if(places.isEmpty()) "No exact match. Paste a Google Maps pin." else "Check the destination pin before choosing a route.";places.forEach(::add) }
+                answer.onSuccess { places -> status.text=if(places.isEmpty()) "No exact match. Paste a Google Maps pin." else if(anchor==null) "No recent local position. Check the destination area and pin before choosing a route." else "Check the destination pin before choosing a route.";places.forEach(::add) }
                     .onFailure { status.text="Search unavailable. Saved places and coordinates still work." }
             }
         }

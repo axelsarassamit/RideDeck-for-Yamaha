@@ -16,6 +16,7 @@ class MapMenuConsistencyTest {
                 val buttons = SharedSetupTest.views(activity.window.decorView).filterIsInstance<Button>()
                 assertTrue(buttons.any { it.text == "Map settings" })
                 assertTrue(buttons.any { it.text == "Stop navigation" })
+                assertTrue("Clearing the destination is distinct from stopping navigation",buttons.any { it.text == "Clear route" })
                 assertTrue(buttons.any { it.text == "Saved places" })
                 val back = buttons.single { it.text == "Back" }
                 assertTrue(back.height >= (48 * activity.resources.displayMetrics.density).toInt())
@@ -32,7 +33,7 @@ class MapMenuConsistencyTest {
             instrumentation.waitForIdleSync()
             scenario.onActivity { activity ->
                 val buttons = SharedSetupTest.views(activity.window.decorView).filterIsInstance<Button>()
-                for (label in listOf("Preview bike map", "Test English voice", "Review location permission", "Back")) {
+                for (label in listOf("Preview bike map", "Test English voice", "Review location permission", "Clear route", "Stop navigation", "Back")) {
                     val button = buttons.single { it.text == label }
                     assertEquals(18f * activity.resources.displayMetrics.scaledDensity, button.textSize, 0.5f)
                     assertNull(button.transformationMethod)

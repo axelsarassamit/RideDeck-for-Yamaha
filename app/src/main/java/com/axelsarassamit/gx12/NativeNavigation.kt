@@ -70,6 +70,12 @@ object NativeNavigation {
     @Volatile private var maneuver = 0
     private val mapZoom = app.pillion.core.MapZoom()
     private var height = 234
+    private var junctionVisible=false
+    private var junctionRouteKey=""
+    private var snapshotMapWidth=0
+    private val displayHeading=NavigationDisplayTiming.Heading()
+    private var lastBikePresentation:BikeNavigationState?=null
+    private var lastPhonePresentation:BikeNavigationState?=null
     private var snapshotter: MapSnapshotter? = null
     private var phoneSnapshotter: MapSnapshotter? = null
     private var phoneHeight = 234
@@ -145,7 +151,13 @@ object NativeNavigation {
             if (!speechReady) BikeDiagnostics.record(c, "Navigation voice unavailable; install English speech data in Android speech settings")
         }
         speaker?.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
-        main.removeCallbacks(tick); main.post(tick)
+        val generation=styleGeneration
+        MapDiskCache.configure(c) {
+            if(running&&generation==styleGeneration) {
+                loadMapStyle(c,isNightMap())
+                main.removeCallbacks(tick); main.post(tick)
+            }
+        }
         BikeDiagnostics.record(c, "Native navigation started renderer=MapLibre locationService=true")
     }
     fun detach() {
@@ -155,6 +167,8 @@ object NativeNavigation {
         phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false; phoneMapFrame = null; englishStyle = null; styleLoading = false
         styleGeneration++; styleCache.clear(); styleDark = null; styleRetryAt = 0L; lastSolarNight = null
         location = null; route = null; bikeMapFrame = null; mapBitmap = null; dashRoute = null; speedWindow = null; speedLimit = null
+        junctionVisible=false;junctionRouteKey="";snapshotMapWidth=0
+        displayHeading.clear();lastBikePresentation=null;lastPhonePresentation=null
         announcements.reset(); trafficAnnouncements.reset(); incidentMatches=emptyList();incidentCheckedAt=null;incidentAnnouncements.reset();incidentStatus="Navigation stopped. Incident checks paused."; status = "Navigation stopped"
     }
     fun resize(width: Int, h: Int) {
@@ -167,7 +181,7 @@ object NativeNavigation {
         val next = (480.0 * h / width).roundToInt().coerceIn(120, 1600)
         if (next != phoneHeight) {
             phoneHeight = next; phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false
-            phoneMapFrame = null; phoneFrameAt = 0
+            phoneMapFrame?.invalidated=true; phoneFrameAt = 0
         }
     }
     fun update(next: Location) {
@@ -241,7 +255,16 @@ object NativeNavigation {
 
     @JvmStatic fun stopRoute() {
         context?.let { RideBackgroundSession.clearDestination(it) }
-        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); trafficAnnouncements.reset(); incidentMatches=emptyList();incidentCheckedAt=null;incidentAnnouncements.reset();progressIndex = 0; speaker?.stop() }
+        main.post {
+            routeGeneration++;routeBusy=false;pendingDestination=null;route=null;dashRoute=null
+            speedWindow=null;speedLimit=null;guidance="Choose a destination"
+            status=if(running)"Free-ride map" else "Navigation stopped"
+            offRouteSamples=0;remaining=0.0;travelledMeters=0.0;maneuver=0;spokenLaneKey=""
+            junctionVisible=false;junctionRouteKey="";lastBikePresentation=null;lastPhonePresentation=null
+            invalidateFrames()
+            announcements.reset();trafficAnnouncements.reset();incidentMatches=emptyList();incidentCheckedAt=null
+            incidentAnnouncements.reset();progressIndex=0;speaker?.stop()
+        }
     }
     @JvmStatic fun routeText(text: String) {
         val c = context ?: error("Open RideDeck navigation first")
@@ -408,8 +431,11 @@ object NativeNavigation {
         val c=context?:return null;val r=route?:return null;val fix=location?:return null
         if(routeBusy||offRouteSamples>0||!RoutePreferencesUi.read(c).laneGuidance||
             SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos !in 0..10_000_000_000L)return null
+        val active=r.turns.getOrNull(dashRoute?.activeIndex?:return null)?:return null
+        val anchorsAtStart=when(r.provider){"Valhalla"->true;"TomTom"->false;else->return null}
+        val lane=LaneManeuverBinding.select(r.lanes,r.cumulative,r.turns.map{it.start},active.start,travelledMeters,anchorsAtStart)?:return null
         val lookAhead=((reliableSpeed(fix)?:0.0)*25).coerceIn(250.0,650.0)
-        return app.pillion.core.LaneGuidance.select(r.lanes,r.cumulative,travelledMeters,lookAhead)
+        return lane.takeIf{r.cumulative[active.start]-travelledMeters<=lookAhead}
     }
     private fun announceLanes():Boolean {
         val lane=currentLanes()?:return false
@@ -525,14 +551,19 @@ object NativeNavigation {
             if (!running) return
             val c = context ?: return
             val fix = location
-            val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos < 10_000_000_000L
+            val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos in 0 until 10_000_000_000L
             val activeRoute=route
             if(fresh && !routeBusy && activeRoute?.provider=="TomTom" &&
                 RidePreferences.prefs(c).getBoolean("tomtom_refresh",true) && SystemClock.elapsedRealtime()-lastTrafficRefresh >= 300000) {
                 lastTrafficRefresh=SystemClock.elapsedRealtime();refreshTrafficRoute(c,activeRoute)
             }
             if(fresh && activeRoute!=null && !routeBusy && offRouteSamples==0)refreshIncidents(c,activeRoute)
-            if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS"; if(route != null && fix != null) announce(announcements.gpsLost()) }
+            if (!fresh) {
+                // Pixel age and GPS age are independent. Never replay live guidance on an expired fix.
+                bikeMapFrame?.invalidated=true;phoneMapFrame?.invalidated=true
+                status=if(fix==null)acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"
+                guidance="Waiting for GPS";if(route!=null&&fix!=null)announce(announcements.gpsLost())
+            }
             if (inFlight && SystemClock.elapsedRealtime() - renderStarted > 15000) {
                 snapshotter?.cancel(); snapshotter = null; inFlight = false
                 BikeDiagnostics.record(c, "Native map render timeout")
@@ -540,8 +571,11 @@ object NativeNavigation {
             if (phoneInFlight && SystemClock.elapsedRealtime() - phoneRenderStarted > 15000) {
                 phoneSnapshotter?.cancel(); phoneSnapshotter = null; phoneInFlight = false
             }
-            if (fresh && !inFlight && SystemClock.elapsedRealtime() - frameAt > 400) render(c, fix!!)
-            if (fresh && phoneVisible && !phoneInFlight && SystemClock.elapsedRealtime() - phoneFrameAt > 400) render(c, fix!!, true)
+            val presentation=presentationKey()
+            val now=SystemClock.elapsedRealtime()
+            val speed=fix?.let(::reliableSpeed)
+            if (fresh && !inFlight && NavigationDisplayTiming.due(frameAt,now,speed,presentation!=lastBikePresentation))render(c,fix!!)
+            if (fresh && phoneVisible && !phoneInFlight && NavigationDisplayTiming.due(phoneFrameAt,now,speed,presentation!=lastPhonePresentation))render(c,fix!!,true)
             if (SystemClock.elapsedRealtime() - lastSummary > 10000) {
                 lastSummary = SystemClock.elapsedRealtime()
                 BikeDiagnostics.record(c, "Native map status gpsFresh=$fresh route=${route != null} renderBusy=$inFlight frameAgeMs=${if(frameAt==0L)-1 else lastSummary-frameAt}")
@@ -552,8 +586,7 @@ object NativeNavigation {
     private fun activateMapStyle(c: Context, json: String, dark: Boolean) {
         if(styleDark == dark && englishStyle != null) return
         englishStyle=json; styleDark=dark
-        snapshotter?.cancel(); snapshotter=null; inFlight=false
-        phoneSnapshotter?.cancel(); phoneSnapshotter=null; phoneInFlight=false
+        invalidateFrames()
         BikeDiagnostics.record(c,"Map sun mode=${if(dark) "night" else "day"}")
     }
     private fun loadMapStyle(c: Context, dark: Boolean) {
@@ -561,7 +594,9 @@ object NativeNavigation {
         val generation=styleGeneration
         styleLoading=true
         styleWorker.execute {
-            val result=runCatching { NavigationApi.englishMapStyle(c,dark) }
+            val result=runCatching {
+                MapStyleCache.read(c,dark,NavigationSecrets.read(c,"maptiler")) ?: NavigationApi.englishMapStyle(c,dark)
+            }
             main.post {
                 if(!running || generation != styleGeneration) return@post
                 styleLoading=false
@@ -588,15 +623,24 @@ object NativeNavigation {
         val style=englishStyle ?: return
         val frameNight=styleDark == true
         val renderHeight = if (phone) phoneHeight else height
-        val bikeLayout=BikeNavigationLayout(height)
+        val requestedState=if(phone)null else bikeState()
+        val viewKey="${dashRoute?.revision}:${dashRoute?.activeIndex}"
+        if(!phone) {
+            if(junctionRouteKey!=viewKey){junctionVisible=false;junctionRouteKey=viewKey}
+            junctionVisible=BikeDisplayPresentation.junction(junctionVisible,requestedState?.lanes,requestedState?.meters,requestedState?.notice?.isBlank()==true)
+        }
+        val bikeLayout=BikeNavigationLayout(height,junctionVisible)
         val mapWidth=if(phone) 480 else bikeLayout.mapWidth
         val mapHeight=if(phone) renderHeight else bikeLayout.mapHeight
+        if(!phone&&snapshotMapWidth!=mapWidth) {
+            val previous=snapshotter;snapshotter=null;previous?.cancel();snapshotMapWidth=mapWidth
+        }
         if (phone) { phoneInFlight = true; phoneRenderStarted = SystemClock.elapsedRealtime() }
         else { inFlight = true; renderStarted = SystemClock.elapsedRealtime() }
         try {
             val activeRoute = route
             val requestedZoom = mapZoom.state()
-            val heading = reliableHeading(fix) ?: if (activeRoute != null) routeBearing(activeRoute, progressIndex) else 0.0
+            val heading = displayHeading.resolve(reliableHeading(fix),activeRoute?.let{routeBearing(it,progressIndex)})
             val cameraBuilder = CameraPosition.Builder()
                 .target(LatLng(fix.latitude, fix.longitude))
                 .zoom(requestedZoom.level.toDouble())
@@ -612,7 +656,13 @@ object NativeNavigation {
             renderer.setCameraPosition(camera)
             renderer.start({ snapshot ->
                 if (!running || (if (phone) phoneSnapshotter else snapshotter) !== renderer) return@start
-                if (mapZoom.state().revision != requestedZoom.revision) {
+                if(SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos !in 0 until 10_000_000_000L) {
+                    if(phone){phoneInFlight=false;phoneMapFrame?.invalidated=true}
+                    else {inFlight=false;bikeMapFrame?.invalidated=true}
+                    BikeDiagnostics.record(c,"Native map discarded expired fix phone=$phone")
+                    return@start
+                }
+                if (mapZoom.state().revision != requestedZoom.revision || (!phone&&viewKey!="${dashRoute?.revision}:${dashRoute?.activeIndex}")) {
                     if (phone) phoneInFlight = false else inFlight = false
                     main.post { if (running) location?.let { render(c, it, phone) } }
                     return@start
@@ -639,13 +689,15 @@ object NativeNavigation {
                     if(renderHeight >= 164) currentSpeedLimitKph()?.let { SpeedLimitIcon.draw(canvas,42f,76f,30f,it) }
                     currentTrafficAlert()?.let { TrafficAlertRenderer.draw(canvas,it,84f,38f,388f) }
                     currentLanes()?.let { LaneGuidanceRenderer.draw(canvas,it,104f,if(currentTrafficAlert()==null)6f else 82f,368f) }
-                    LaneGuidanceRenderer.fuel(canvas,FuelEstimateStore.mapLabel(c),renderHeight)
                     phoneFrameAt = SystemClock.elapsedRealtime()
+                    lastPhonePresentation=presentationKey()
                     phoneMapFrame = MapFrame(bitmap, snapshot.bitmap, phoneFrameAt, ::jpeg); phoneInFlight = false
                 } else {
                     val output=Bitmap.createBitmap(480,renderHeight,Bitmap.Config.ARGB_8888)
-                    BikeNavigationRenderer.draw(Canvas(output),bitmap,bikeLayout,bikeState(),frameNight)
+                    BikeNavigationRenderer.draw(Canvas(output),bitmap,bikeLayout,bikeState(),frameNight,
+                        AppearancePalette.accent(RideAppearance.accentIndex(c),frameNight))
                     frameAt=SystemClock.elapsedRealtime()
+                    lastBikePresentation=presentationKey()
                     val frame=MapFrame(output, snapshot.bitmap, frameAt, ::jpeg)
                     frame.liveJpeg // Encode before publishing to the casting thread.
                     mapBitmap=output; bikeMapFrame=frame; renderedZoomRevision=requestedZoom.revision; inFlight=false
@@ -658,12 +710,16 @@ object NativeNavigation {
     private fun bikeState(): BikeNavigationState {
         val nav=dashRoute
         val fix=location
-        val fresh=fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos < 10_000_000_000L
+        val fresh=fix != null && SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos in 0 until 10_000_000_000L
         val next=nav?.turns?.getOrNull(nav.activeIndex)
         val currentRoad=route?.turns?.lastOrNull { it.start <= progressIndex && it.road.isNotBlank() }?.road.orEmpty()
         val arrival=cockpitTrip()?.arrivalMillis?.let { java.text.SimpleDateFormat("HH:mm",java.util.Locale.US).format(java.util.Date(it)) }
         val notice=when { !fresh -> "Waiting for GPS"; routeBusy || offRouteSamples > 0 -> "Recalculating"; route == null -> "Choose destination"; else -> "" }
-        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice,currentTrafficAlert(),currentLanes(),context?.let{FuelEstimateStore.mapLabel(it)})
+        return BikeNavigationState(next?.sign ?: 0,nav?.nextMeters?.takeIf { notice.isBlank() },next?.road.orEmpty(),currentRoad,arrival,currentSpeedLimitKph(),notice,currentTrafficAlert(),currentLanes(),context?.let{FuelEstimateStore.mapLabel(it)},SystemClock.elapsedRealtime())
+    }
+    private fun presentationKey():BikeNavigationState {
+        val state=bikeState()
+        return state.copy(meters=state.meters?.let{(it/10).toLong()*10.0},elapsedMs=state.elapsedMs/10000)
     }
     private fun banner(canvas: Canvas, paint: Paint, text: String, top: Int, bottom: Int, size: Float, dark: Boolean = isNightMap()) {
         paint.style=Paint.Style.FILL; paint.color=if(dark) 0xff14251c.toInt() else 0xfff4f6fa.toInt(); canvas.drawRect(0f,top.toFloat(),480f,bottom.toFloat(),paint)

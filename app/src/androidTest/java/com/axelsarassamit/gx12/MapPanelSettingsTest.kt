@@ -22,7 +22,7 @@ class MapPanelSettingsTest {
                     SharedSetupTest.click(a,"Yamaha");SharedSetupTest.click(a,"Bike display & maps")
                     val all=SharedSetupTest.views(a.window.decorView)
                     assertFalse(SharedSetupTest.has(a,"MAP + PANEL SETTINGS"))
-                    assertTrue(SharedSetupTest.has(a,"Panels"));assertTrue(SharedSetupTest.has(a,"Guidance"))
+                    assertTrue(SharedSetupTest.has(a,"Panels"));assertTrue(SharedSetupTest.has(a,"Guidance & Quick Actions"))
                     assertTrue(SharedSetupTest.has(a,"Routing & traffic"))
                     val choice=all.filterIsInstance<Switch>().single{it.tag=="navigation_voice"}
                     choice.performClick();assertEquals(!voice,prefs.getBoolean("navigation_voice",voice))

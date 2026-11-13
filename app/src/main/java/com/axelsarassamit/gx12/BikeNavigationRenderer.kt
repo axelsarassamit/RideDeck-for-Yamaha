@@ -9,72 +9,92 @@ import java.util.Locale
 
 data class BikeNavigationState(val sign: Int, val meters: Double?, val nextRoad: String,
     val currentRoad: String, val arrival: String?, val speedLimit: Int?, val notice: String = "",val alert:TrafficAlert?=null,
-    val lanes:app.pillion.core.LaneSection?=null,val fuelRange:String?=null)
+    val lanes:app.pillion.core.LaneSection?=null,val fuelRange:String?=null,val elapsedMs:Long=0)
 
 /** One compositor for the 480-pixel bike image and its diagnostic preview. */
 object BikeNavigationRenderer {
-    fun draw(canvas: Canvas, map: Bitmap, layout: BikeNavigationLayout, state: BikeNavigationState, night: Boolean) {
-        val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        canvas.drawColor(Color.BLACK)
-        canvas.drawBitmap(map, null, Rect(layout.mapLeft, 0, layout.mapWidth, layout.mapHeight), p)
-        p.color = if (night) 0xff101724.toInt() else 0xff202632.toInt()
-        canvas.drawRect(layout.panelLeft.toFloat(), 0f, layout.width.toFloat(), (layout.height-layout.creditHeight).toFloat(), p)
-        p.color=Color.WHITE; p.style=Paint.Style.FILL
-        val junction=state.lanes?.junctionSide(state.sign,state.meters) ?: 0
-        if(junction==0) arrow(canvas, p, state.sign, layout.panelLeft + layout.panelWidth / 2f, 38f)
-        p.textAlign=Paint.Align.CENTER; p.typeface=Typeface.DEFAULT_BOLD; p.textSize=32f
-        val distance = state.meters?.let { if (it >= 1000) String.format(Locale.US,"%.1f km",it/1000)
-            else "${(it.coerceAtLeast(0.0)/10).toInt()*10} m" } ?: "GPS"
-        canvas.drawText(distance, layout.panelLeft+layout.panelWidth/2f, if(junction==0)89f else 37f, p)
-        val title = state.notice.ifBlank { state.nextRoad.ifBlank { "Continue straight" } }
-        wrapped(canvas, title, layout.panelLeft+9f, if(junction==0)104f else 44f, layout.panelWidth-18, if(junction==0)19f else 14f, if(junction==0)3 else 2)
-        if(junction!=0) junction(canvas,layout,state.lanes!!,junction)
-        if (!state.arrival.isNullOrBlank()) {
-            p.color=0xff293957.toInt(); canvas.drawRect(layout.panelLeft.toFloat(),(layout.mapHeight).toFloat(),layout.width.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
-            p.color=Color.WHITE; p.textSize=15f; p.textAlign=Paint.Align.CENTER
-            canvas.drawText("Arrival ${state.arrival}",layout.panelLeft+layout.panelWidth/2f,layout.mapHeight+18f,p)
-        }
-        // Exactly one speed sign belongs to this image. Unknown limits remain absent.
-        state.speedLimit?.let { SpeedLimitIcon.draw(canvas,layout.speedX,layout.speedY,layout.speedRadius,it) }
-        p.style=Paint.Style.FILL; p.color=0xe6101724.toInt()
-        canvas.drawRect(0f,layout.mapHeight.toFloat(),layout.mapWidth.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
-        p.color=Color.WHITE; p.textAlign=Paint.Align.LEFT; p.textSize=18f; p.typeface=Typeface.DEFAULT_BOLD
-        val road=state.currentRoad.ifBlank { "RideDeck navigation" }
-        val shown=TextUtils.ellipsize(road,TextPaint(p),(layout.mapWidth-20).toFloat(),TextUtils.TruncateAt.END).toString()
-        canvas.drawText(shown,10f,layout.mapHeight+19f,p)
-        state.alert?.let { TrafficAlertRenderer.draw(canvas,it,52f,4f,layout.mapWidth-56f) }
-        state.lanes?.let { LaneGuidanceRenderer.draw(canvas,it,54f,if(state.alert==null)6f else 52f,layout.mapWidth-62f) }
-        LaneGuidanceRenderer.fuel(canvas,state.fuelRange,layout.mapHeight)
-        p.color=0xff101724.toInt(); canvas.drawRect(0f,(layout.height-layout.creditHeight).toFloat(),480f,layout.height.toFloat(),p)
-        p.color=Color.WHITE; p.typeface=Typeface.DEFAULT; p.textSize=10f
+    fun draw(canvas: Canvas, map: Bitmap, layout: BikeNavigationLayout, state: BikeNavigationState, night: Boolean,
+        accent:Int=AppearancePalette.accent(4,night)) {
+        val p=Paint(Paint.ANTI_ALIAS_FLAG)
+        val text=AppearancePalette.text(night);val muted=AppearancePalette.muted(night)
+        val panel=AppearancePalette.panel(night);val raised=AppearancePalette.raised(night)
+        canvas.drawColor(AppearancePalette.background(night))
+        // Snapshot dimensions already match the central viewport. Do not crop or cover its rider marker.
+        canvas.drawBitmap(map,null,Rect(layout.mapLeft,0,layout.panelLeft,layout.mapHeight),p)
+        p.color=panel;canvas.drawRect(layout.panelLeft.toFloat(),0f,480f,(layout.height-layout.creditHeight).toFloat(),p)
+        p.color=accent;canvas.drawRect(layout.panelLeft.toFloat(),0f,layout.panelLeft+1f,(layout.height-layout.creditHeight).toFloat(),p)
+        val middle=layout.panelLeft+layout.panelWidth/2f
+        canvas.save();canvas.clipRect(layout.panelLeft+3,0,480,layout.mapHeight)
+        val liveInstruction=state.notice.isBlank()&&state.meters?.let{it.isFinite()&&it>=0}==true
+        if(liveInstruction){p.color=text;arrow(canvas,p,state.sign,middle,37f)}
+        val distance=state.meters?.takeIf{it.isFinite()&&it>=0}?.let {
+            if(it>=1000)String.format(Locale.US,"%.1f km",it/1000) else "${(it/10).toInt()*10} m"
+        }?:"—"
+        p.color=text;p.typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD);p.textAlign=Paint.Align.CENTER
+        p.textSize=34f
+        while(p.textSize>22f&&p.measureText(distance)>layout.panelWidth-14)p.textSize-=1f
+        canvas.drawText(distance,middle,88f,p)
+        val title=state.notice.ifBlank{state.nextRoad.ifBlank{"Continue straight"}}
+        wrapped(canvas,title,layout.panelLeft+9f,104f,layout.panelWidth-18,19f,3,text,layout.mapHeight-109)
+        canvas.restore()
+        if(liveInstruction&&layout.junctionVisible&&state.lanes?.usable()==true)junction(canvas,layout,state.lanes,state.meters,night,accent)
+        state.speedLimit?.let{SpeedLimitIcon.draw(canvas,layout.speedX,layout.speedY,layout.speedRadius,it)}
+        state.alert?.let{TrafficAlertRenderer.draw(canvas,it,layout.mapLeft+4f,4f,layout.mapWidth-8f)}
+        p.color=panel;canvas.drawRect(0f,layout.mapHeight.toFloat(),layout.panelLeft.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)
+        p.color=text;p.textAlign=Paint.Align.LEFT;p.typeface=Typeface.DEFAULT_BOLD;p.textSize=17f
+        val road=state.currentRoad.ifBlank{"RideDeck navigation"}
+        canvas.drawText(TextUtils.ellipsize(road,TextPaint(p),(layout.panelLeft-20).toFloat(),TextUtils.TruncateAt.END).toString(),10f,layout.mapHeight+19f,p)
+        p.color=raised;canvas.drawRect(layout.panelLeft.toFloat(),layout.mapHeight.toFloat(),480f,(layout.height-layout.creditHeight).toFloat(),p)
+        val footer=BikeDisplayPresentation.footer(state.arrival,state.fuelRange,state.elapsedMs)
+        val footerText="${footer.label} ${footer.value}"
+        p.color=text;p.textAlign=Paint.Align.CENTER;p.textSize=16f
+        while(p.textSize>12f&&p.measureText(footerText)>layout.panelWidth-10)p.textSize-=1f
+        canvas.drawText(TextUtils.ellipsize(footerText,TextPaint(p),(layout.panelWidth-10).toFloat(),TextUtils.TruncateAt.END).toString(),middle,layout.mapHeight+18f,p)
+        p.color=AppearancePalette.background(night);canvas.drawRect(0f,(layout.height-layout.creditHeight).toFloat(),480f,layout.height.toFloat(),p)
+        p.color=muted;p.textAlign=Paint.Align.LEFT;p.typeface=Typeface.DEFAULT;p.textSize=10f
         canvas.drawText("© MapTiler  © OpenStreetMap contributors",7f,layout.height-3f,p)
     }
-    private fun junction(canvas:Canvas,layout:BikeNavigationLayout,section:app.pillion.core.LaneSection,side:Int) {
-        val paint=Paint(Paint.ANTI_ALIAS_FLAG)
-        val selected=section.recommendedIndices().toSet()
-        val count=section.lanes.size
-        val middle=layout.panelLeft+layout.panelWidth/2f
-        val horizon=87f;val bottom=layout.mapHeight-8f
-        fun edge(i:Int,f:Float)=middle+(i.toFloat()/count-.5f)*(40f+f*(layout.panelWidth-52f))
-        for(i in 0 until count) {
-            paint.color=if(i in selected)0xff1675cb.toInt() else 0xff344254.toInt()
-            canvas.drawPath(Path().apply { moveTo(edge(i,0f),horizon);lineTo(edge(i+1,0f),horizon);lineTo(edge(i+1,1f),bottom);lineTo(edge(i,1f),bottom);close() },paint)
+    private fun junction(canvas:Canvas,layout:BikeNavigationLayout,section:app.pillion.core.LaneSection,meters:Double?,night:Boolean,accent:Int) {
+        val p=Paint(Paint.ANTI_ALIAS_FLAG)
+        // The firmware may overlay zoom controls in x=0..44. Keep all lane meaning to their right.
+        val left=48f;val right=layout.junctionWidth-5f
+        canvas.save();canvas.clipRect(0,0,layout.junctionWidth,layout.mapHeight)
+        p.color=AppearancePalette.panel(night);canvas.drawRect(0f,0f,layout.junctionWidth.toFloat(),layout.mapHeight.toFloat(),p)
+        p.color=accent;p.textSize=13f;p.typeface=Typeface.DEFAULT_BOLD;p.textAlign=Paint.Align.CENTER
+        canvas.drawText("LANES",(left+right)/2,18f,p)
+        p.color=AppearancePalette.text(night);p.textSize=15f
+        canvas.drawText(meters?.let{"${(it/10).toInt()*10} m"}?:"",(left+right)/2,38f,p)
+        val selected=section.recommendedIndices().toSet();val count=section.lanes.size
+        val middle=(left+right)/2;val horizon=52f;val bottom=layout.mapHeight-28f
+        fun edge(i:Int,f:Float)=middle+(i.toFloat()/count-.5f)*(55f+f*(right-left-55f))
+        for(i in section.lanes.indices) {
+            p.color=if(i in selected)accent else AppearancePalette.raised(night)
+            canvas.drawPath(Path().apply{moveTo(edge(i,0f),horizon);lineTo(edge(i+1,0f),horizon);lineTo(edge(i+1,1f),bottom);lineTo(edge(i,1f),bottom);close()},p)
         }
-        paint.color=0xffa0aec0.toInt();paint.strokeWidth=1f
-        for(i in 0..count)canvas.drawLine(edge(i,0f),horizon,edge(i,1f),bottom,paint)
-        for(i in 0 until count) {
-            val x=(edge(i,.73f)+edge(i+1,.73f))/2
-            canvas.save();canvas.translate(x,horizon+(bottom-horizon)*.73f)
-            val scale=(1.5f/count).coerceAtMost(.35f);canvas.scale(scale,scale)
-            paint.color=if(i in selected)Color.WHITE else 0xffa0aec0.toInt()
-            arrow(canvas,paint,if(i in selected)side else 0,0f,0f);canvas.restore()
+        p.color=AppearancePalette.line(night);p.strokeWidth=1f
+        for(i in 0..count)canvas.drawLine(edge(i,0f),horizon,edge(i,1f),bottom,p)
+        for(i in section.lanes.indices) {
+            val lane=section.lanes[i]
+            val signs=lane.preferred.ifEmpty{lane.valid}.ifEmpty{lane.directions}.take(2)
+            for((n,sign) in signs.withIndex()) {
+                val x=(edge(i,.7f)+edge(i+1,.7f))/2+(n-(signs.size-1)/2f)*7f
+                canvas.save();canvas.translate(x,horizon+(bottom-horizon)*.7f)
+                val scale=(1.15f/count).coerceAtMost(.45f);canvas.scale(scale,scale)
+                p.color=if(i in selected)AppearancePalette.onAccent(night) else AppearancePalette.muted(night)
+                arrow(canvas,p,sign,0f,0f);canvas.restore()
+            }
         }
+        wrapped(canvas,section.spoken(),left,layout.mapHeight-23f,(right-left).toInt(),11f,2,AppearancePalette.text(night),22)
+        p.color=accent;canvas.drawRect(layout.junctionWidth-1f,0f,layout.junctionWidth.toFloat(),layout.mapHeight.toFloat(),p)
+        canvas.restore()
     }
-    private fun wrapped(canvas: Canvas, text: String, x: Float, y: Float, width: Int, size: Float, lines: Int) {
-        val p=TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.WHITE; textSize=size; typeface=Typeface.DEFAULT }
-        val textLayout=StaticLayout.Builder.obtain(text,0,text.length,p,width).setAlignment(Layout.Alignment.ALIGN_CENTER)
+    private fun wrapped(canvas:Canvas,text:String,x:Float,y:Float,width:Int,size:Float,lines:Int,color:Int,maxHeight:Int) {
+        val p=TextPaint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;textSize=size;typeface=Typeface.DEFAULT_BOLD}
+        fun build()=StaticLayout.Builder.obtain(text,0,text.length,p,width).setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).build()
-        canvas.save(); canvas.translate(x,y); textLayout.draw(canvas); canvas.restore()
+        var result=build()
+        while(p.textSize>12f&&(result.height>maxHeight||result.getEllipsisCount(result.lineCount-1)>0)){p.textSize-=1f;result=build()}
+        canvas.save();canvas.clipRect(x,y,x+width,y+maxHeight);canvas.translate(x,y);result.draw(canvas);canvas.restore()
     }
     internal fun arrow(canvas: Canvas, p: Paint, sign: Int, x: Float, y: Float) {
         canvas.save(); canvas.translate(x,y)

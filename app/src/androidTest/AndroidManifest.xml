@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider android:name="com.axelsarassamit.gx12.FailingAppearanceProvider"
+            android:authorities="com.axelsarassamit.gx12.yamaha.preview.test.appearance_fault"
+            android:process=":appearance_fault" android:exported="true" />
+    </application>
+</manifest>

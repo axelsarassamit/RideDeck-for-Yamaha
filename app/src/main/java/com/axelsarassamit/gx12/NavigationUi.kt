@@ -100,9 +100,14 @@ object NavigationUi {
         }
         val directions=TextView(activity).apply {
             textSize=22f;maxLines=2;ellipsize= TextUtils.TruncateAt.END;setTextColor(RideStyle.TEXT)
-            setPadding(12,6,12,6);setBackgroundColor(RideStyle.PANEL);contentDescription="Next navigation instruction"
+            setPadding(dp(12),dp(6),dp(12),dp(6));setBackgroundColor(RideStyle.PANEL);contentDescription="Next navigation instruction"
+            gravity=Gravity.CENTER_VERTICAL or Gravity.START;includeFontPadding=false
+            setAutoSizeTextTypeUniformWithConfiguration(12,22,1,android.util.TypedValue.COMPLEX_UNIT_SP)
+            setOnClickListener { AlertDialog.Builder(activity).setTitle("Navigation instruction").setMessage(text)
+                .setPositiveButton("Close",null).show() }
         }
-        page.addView(directions,LinearLayout.LayoutParams(-1,-2))
+        val compact=activity.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE || activity.resources.configuration.screenHeightDp<450
+        page.addView(directions,LinearLayout.LayoutParams(-1,dp(if(compact)64 else 72)))
         val body=LinearLayout(activity)
         val mapArea=FrameLayout(activity)
         mapArea.addOnLayoutChangeListener { _,left,top,right,bottom,_,_,_,_ ->
