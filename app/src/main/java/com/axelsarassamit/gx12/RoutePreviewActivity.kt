@@ -148,7 +148,7 @@ class RoutePreviewActivity : Activity() {
         mapView.getMapAsync { ready ->
             map=ready; ready.uiSettings.isLogoEnabled=false; ready.uiSettings.isAttributionEnabled=false
             ready.setOnPolylineClickListener { line -> lineChoices[line.id]?.let { select(it) } }
-            loadStyle()
+            MapDiskCache.configure(this) { if(!isFinishing&&!isDestroyed&&map===ready)loadStyle() }
         }
         if(routes.isEmpty()) { status.text="Getting your GPS position..."; main.post(awaitGps) } else showChoices()
         if(funRide)parking.visibility=View.GONE else findParking()
@@ -213,7 +213,11 @@ class RoutePreviewActivity : Activity() {
         val cached=styleJson
         if(cached!=null) { applyStyle(cached); return }
         worker.execute {
-            val result=runCatching { NavigationApi.englishMapStyle(applicationContext,NativeNavigation.isNightMap()) }
+            val result=runCatching {
+                val dark=NativeNavigation.isNightMap()
+                MapStyleCache.read(applicationContext,dark,NavigationSecrets.read(applicationContext,"maptiler")) ?:
+                    NavigationApi.englishMapStyle(applicationContext,dark)
+            }
             main.post {
                 if(isFinishing || isDestroyed) return@post
                 result.onSuccess { styleJson=it; applyStyle(it) }.onFailure { mapStatus.text="Map unavailable. Check internet and MapTiler settings, then Retry." }

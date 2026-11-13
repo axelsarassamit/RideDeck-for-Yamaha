@@ -32,7 +32,9 @@ object NavigationApi {
     fun englishMapStyle(context: Context, dark: Boolean = false): String {
         val key = NavigationSecrets.read(context, "maptiler")
         check(key.isNotBlank()) { "Add your MapTiler key in Setup." }
-        val style = request(Uri.parse("https://api.maptiler.com/maps/${SolarMapTheme.styleId(dark)}/style.json?key=${Uri.encode(key)}"))
+        var cacheMillis=0L
+        val style = request(Uri.parse("https://api.maptiler.com/maps/${SolarMapTheme.styleId(dark)}/style.json?key=${Uri.encode(key)}"),
+            responseCache={ control,age -> cacheMillis=(MapCachePolicy.lifetimeMillis(control)-age.coerceAtLeast(0)*1000).coerceAtLeast(0) })
         val layers = style.getJSONArray("layers")
         for (i in 0 until layers.length()) {
             val layout = layers.getJSONObject(i).optJSONObject("layout") ?: continue
@@ -42,9 +44,13 @@ object NavigationApi {
                 layout.put("text-field", org.json.JSONArray("[\"coalesce\",[\"get\",\"name:en\"],[\"get\",\"name:latin\"],[\"get\",\"name\"]]"))
             }
         }
-        return style.toString()
+        val json=style.toString()
+        val now=System.currentTimeMillis()
+        if(cacheMillis>0)MapStyleCache.save(context,dark,key,json,now,now+cacheMillis) else MapStyleCache.remove(context,dark)
+        return json
     }
-    internal fun request(uri: Uri, provider: String = "MapTiler", body: JSONObject? = null): JSONObject {
+    internal fun request(uri: Uri, provider: String = "MapTiler", body: JSONObject? = null,
+        responseCache:((String?,Long)->Unit)?=null): JSONObject {
         val connection = URL(uri.toString()).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects = false
@@ -59,6 +65,7 @@ object NavigationApi {
                 connection.outputStream.use { it.write(bytes) }
             }
             val responseCode = connection.responseCode
+            if(responseCode==200)responseCache?.invoke(connection.getHeaderField("Cache-Control"),connection.getHeaderField("Age")?.toLongOrNull()?.coerceIn(0,86400)?:0)
             if (responseCode != 200) {
                 val apiKey = uri.getQueryParameter("key").orEmpty()
                 val message = runCatching {

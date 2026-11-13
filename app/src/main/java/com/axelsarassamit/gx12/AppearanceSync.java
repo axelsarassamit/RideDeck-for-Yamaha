@@ -18,8 +18,15 @@ public final class AppearanceSync {
                 Bundle extras=new Bundle();extras.putInt("protocolVersion",1);
                 extras.putInt("appearanceMode",RideAppearance.mode(app));
                 extras.putInt("appearanceAccent",RideAppearance.accentIndex(app));
-                app.getContentResolver().call(Uri.parse("content://" + DashCompanion.PACKAGE + ".bridge"),"appearance",null,extras);
+                deliver(app.getContentResolver(),Uri.parse("content://" + DashCompanion.PACKAGE + ".bridge"),extras);
             } catch(RuntimeException ignored) { /* Older or absent Dash keeps working without appearance sync. */ }
         });
+    }
+    /** An optional peer dying must not make Android terminate this host as a stable dependent. */
+    static boolean deliver(android.content.ContentResolver resolver,Uri endpoint,Bundle extras) {
+        try(android.content.ContentProviderClient client=resolver.acquireUnstableContentProviderClient(endpoint)) {
+            if(client==null)return false;
+            client.call("appearance",null,extras);return true;
+        } catch(android.os.RemoteException|RuntimeException unavailable) { return false; }
     }
 }
