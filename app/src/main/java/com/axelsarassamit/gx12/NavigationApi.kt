@@ -141,7 +141,8 @@ object NavigationApi {
         val url = Uri.Builder().scheme("https").authority("api.maptiler.com").appendPath("geocoding").appendPath(candidate.take(300) + ".json")
             .appendQueryParameter("key", key).appendQueryParameter("language", "en,th").appendQueryParameter("autocomplete", "false")
             .appendQueryParameter("fuzzyMatch","true").appendQueryParameter("limit", "10").appendQueryParameter("types", "poi,address,road,place,locality,municipality,region,country")
-        val fix=location?.takeIf { android.os.SystemClock.elapsedRealtimeNanos()-it.elapsedRealtimeNanos < 60_000_000_000L }
+        // Recheck after preceding requests: an accepted anchor may have expired in the meantime.
+        val fix=SearchLocation.snapshot(context,location)
         if(fix!=null) url.appendQueryParameter("proximity", "${fix.longitude},${fix.latitude}")
         else url.appendQueryParameter("proximity","ip")
         val features = request(url.build()).getJSONArray("features")

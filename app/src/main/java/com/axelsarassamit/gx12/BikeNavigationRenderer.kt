@@ -25,10 +25,11 @@ object BikeNavigationRenderer {
         p.color=accent;canvas.drawRect(layout.panelLeft.toFloat(),0f,layout.panelLeft+1f,(layout.height-layout.creditHeight).toFloat(),p)
         val middle=layout.panelLeft+layout.panelWidth/2f
         canvas.save();canvas.clipRect(layout.panelLeft+3,0,480,layout.mapHeight)
-        p.color=text;arrow(canvas,p,state.sign,middle,37f)
+        val liveInstruction=state.notice.isBlank()&&state.meters?.let{it.isFinite()&&it>=0}==true
+        if(liveInstruction){p.color=text;arrow(canvas,p,state.sign,middle,37f)}
         val distance=state.meters?.takeIf{it.isFinite()&&it>=0}?.let {
             if(it>=1000)String.format(Locale.US,"%.1f km",it/1000) else "${(it/10).toInt()*10} m"
-        }?:"GPS"
+        }?:"—"
         p.color=text;p.typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD);p.textAlign=Paint.Align.CENTER
         p.textSize=34f
         while(p.textSize>22f&&p.measureText(distance)>layout.panelWidth-14)p.textSize-=1f
@@ -36,7 +37,7 @@ object BikeNavigationRenderer {
         val title=state.notice.ifBlank{state.nextRoad.ifBlank{"Continue straight"}}
         wrapped(canvas,title,layout.panelLeft+9f,104f,layout.panelWidth-18,19f,3,text,layout.mapHeight-109)
         canvas.restore()
-        if(layout.junctionVisible&&state.lanes?.usable()==true)junction(canvas,layout,state.lanes,state.meters,night,accent)
+        if(liveInstruction&&layout.junctionVisible&&state.lanes?.usable()==true)junction(canvas,layout,state.lanes,state.meters,night,accent)
         state.speedLimit?.let{SpeedLimitIcon.draw(canvas,layout.speedX,layout.speedY,layout.speedRadius,it)}
         state.alert?.let{TrafficAlertRenderer.draw(canvas,it,layout.mapLeft+4f,4f,layout.mapWidth-8f)}
         p.color=panel;canvas.drawRect(0f,layout.mapHeight.toFloat(),layout.panelLeft.toFloat(),(layout.height-layout.creditHeight).toFloat(),p)

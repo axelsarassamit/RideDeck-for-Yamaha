@@ -98,7 +98,8 @@ object MapPanelSettings {
         action(page,"Ride book") { RideBookActivity.open(a) }
         action(page,"Bike data and fuel range") { BikeDataActivity.open(a) }
         action(page,"Estimated fuel range") { FuelRangeActivity.open(a) }
-        action(page,"Stop navigation") { a.startService(Intent(a,NativeNavigationService::class.java).setAction("STOP")) }
+        action(page,"Clear route") { NavigationSessionActions.clearRoute(a) }
+        action(page,"Stop navigation") { NavigationSessionActions.stopNavigation(a) }
         heading("Advanced")
         val advanced=column().apply { visibility=View.GONE }
         lateinit var disclosure:Button

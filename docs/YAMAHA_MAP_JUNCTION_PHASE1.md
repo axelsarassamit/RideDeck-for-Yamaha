@@ -10,6 +10,14 @@ The right guidance rail keeps fixed bounds at both 480×234 and 480×240. Long i
 
 Phone instruction bounds also stay fixed, with a full-instruction dialog. The phone's existing native trip HUD owns fuel information, avoiding a second fuel label in the map bitmap. Unchanged, confirmed stationary maps have a two-second refresh target; movement or changed presentation bypasses that idle interval. A reliable session heading is retained when stopped.
 
+Unavailable/recalculating guidance does not display an old turn arrow or lane recommendation. Expired GPS immediately invalidates both map surfaces even if their pixels were captured recently. A late snapshot from an expired captured fix is rejected before publication. The usable road image remains available as a clearly paused last map.
+
+## Navigation actions and search
+
+Both riding tools and flat map settings distinguish **Clear route** (keep the free-ride map session) from **Stop navigation** (end the navigation service). Clearing a route immediately invalidates old guidance and resets off-route/junction state.
+
+Search prefers a valid navigation position, then valid recent system last-known positions, before a provider's area fallback. Positions must be no more than 60 seconds old, not future-dated, geographically valid, and have known accuracy within 1 km. Approximate-only permission cannot reuse a previously precise navigation fix; only the system-authorized network position is considered. Permission and age are checked at each provider/query boundary, including after a slow fallback. No search action starts background location or a riding service. The search page explains when no recent local anchor is available.
+
 ## Cache behavior and limits
 
 MapLibre's ambient resource cache is bounded to 256 MiB, or 64 MiB below 1 GiB of available storage. Startup continues after a bounded cache-configuration timeout. The last usable frame is retained during replacement loading; route/view revisions reject obsolete callbacks.
@@ -20,13 +28,13 @@ Ambient caching only retains resources actually fetched. It does not establish c
 
 ## Verification
 
-The initial batch passes 263 JVM tests and ten Android regression checks. Lint reports zero errors, 265 warnings and two hints. Android regressions cover native viewport boundaries, fixed phone instructions, encrypted cache reuse/identity/expiry/corruption, route guidance, and host survival when an optional appearance-sync peer dies. The standalone fault provider lives only in the test APK.
+The batch passes 267 JVM tests and 17 Android regression checks on the physical phone. Lint reports zero errors, 264 warnings and two hints. Android regressions cover native viewport boundaries, fixed phone instructions, encrypted cache reuse/identity/expiry/corruption, live public motorcycle routing, route guidance, flat settings, distinct route/stop actions, immediate GPS-expiry invalidation, and host survival when an optional appearance-sync peer dies. The standalone fault provider lives only in the test APK.
 
 An explicit opt-in preview test renders a public Bangkok fixture using actual TomTom lane data and MapLibre resources. DEMO road labels, ETA and estimated range are synthetic; these images are app-rendered frames, not photographs of a connected motorcycle. Both native resolutions and day/night footer phases are captured. No personal location is used.
 
-The emulator's real-map snapshot currently times out; the same preview completes on the physical Android phone. Emulator regression success must not be presented as successful emulator map rendering. Parked Bluetooth/display delivery, maneuver timing on the motorcycle, broader Thai junction coverage, complete offline coverage and the remaining navigation improvement tasks still require separate acceptance.
+The emulator's real-map snapshot times out and its live-route request later failed DNS resolution; the same checks complete on the physical Android phone. Emulator regression success must not be presented as successful emulator map rendering. An existing settings test also expected the previous heading, "Guidance", instead of the baseline's "Guidance & Quick Actions"; its assertion now matches the actual section. Failed runs are retained in local validation evidence. Parked Bluetooth/display delivery, maneuver timing on the motorcycle, broader Thai junction coverage, complete offline coverage and the remaining navigation improvement tasks still require separate acceptance.
 
-On 2026-11-13 the physical phone completed the public online preview in 6.534 seconds and the warm-cache preview with SDK networking disabled in 5.375 seconds. Eight frames were produced per pass. Six cached frames were pixel-identical to their online counterparts; the remaining two were retained for visual comparison. This is evidence for the already-warmed public viewport, not an entire route, cold offline startup, or offline route calculation. The phone's connectivity settings were not changed.
+On 2026-11-13 an initial physical-phone pass completed the public online preview in 6.534 seconds and the warm-cache preview with SDK networking disabled in 5.375 seconds. Eight frames were produced per pass. Six cached frames were pixel-identical to their online counterparts; the remaining two differed by two pixels each. This is evidence for the already-warmed public viewport, not an entire route, cold offline startup, or offline route calculation. The phone's connectivity settings were not changed.
 
 To run public preview checks explicitly, use the existing preview test APK with `phase1PublicMapPreview=true`. After warming the same public views, `phase1MapOffline=true` forces MapLibre alone offline and reads encrypted cached styles. It restores automatic SDK connectivity afterward and never changes device Wi-Fi/mobile settings. Provider setup is private and must never be committed or included in screenshots/logs.
 

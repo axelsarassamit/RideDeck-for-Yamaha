@@ -255,7 +255,16 @@ object NativeNavigation {
 
     @JvmStatic fun stopRoute() {
         context?.let { RideBackgroundSession.clearDestination(it) }
-        main.post { routeGeneration++; routeBusy = false; pendingDestination = null; route = null; dashRoute = null; speedWindow = null; speedLimit = null; guidance = "Choose a destination"; announcements.reset(); trafficAnnouncements.reset(); incidentMatches=emptyList();incidentCheckedAt=null;incidentAnnouncements.reset();progressIndex = 0; speaker?.stop() }
+        main.post {
+            routeGeneration++;routeBusy=false;pendingDestination=null;route=null;dashRoute=null
+            speedWindow=null;speedLimit=null;guidance="Choose a destination"
+            status=if(running)"Free-ride map" else "Navigation stopped"
+            offRouteSamples=0;remaining=0.0;travelledMeters=0.0;maneuver=0;spokenLaneKey=""
+            junctionVisible=false;junctionRouteKey="";lastBikePresentation=null;lastPhonePresentation=null
+            invalidateFrames()
+            announcements.reset();trafficAnnouncements.reset();incidentMatches=emptyList();incidentCheckedAt=null
+            incidentAnnouncements.reset();progressIndex=0;speaker?.stop()
+        }
     }
     @JvmStatic fun routeText(text: String) {
         val c = context ?: error("Open RideDeck navigation first")
@@ -542,14 +551,19 @@ object NativeNavigation {
             if (!running) return
             val c = context ?: return
             val fix = location
-            val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos < 10_000_000_000L
+            val fresh = fix != null && SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos in 0 until 10_000_000_000L
             val activeRoute=route
             if(fresh && !routeBusy && activeRoute?.provider=="TomTom" &&
                 RidePreferences.prefs(c).getBoolean("tomtom_refresh",true) && SystemClock.elapsedRealtime()-lastTrafficRefresh >= 300000) {
                 lastTrafficRefresh=SystemClock.elapsedRealtime();refreshTrafficRoute(c,activeRoute)
             }
             if(fresh && activeRoute!=null && !routeBusy && offRouteSamples==0)refreshIncidents(c,activeRoute)
-            if (!fresh) { status = if (fix == null) acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"; guidance = "Waiting for GPS"; if(route != null && fix != null) announce(announcements.gpsLost()) }
+            if (!fresh) {
+                // Pixel age and GPS age are independent. Never replay live guidance on an expired fix.
+                bikeMapFrame?.invalidated=true;phoneMapFrame?.invalidated=true
+                status=if(fix==null)acquisitionStatus else "GPS signal lost. Waiting for a fresh fix"
+                guidance="Waiting for GPS";if(route!=null&&fix!=null)announce(announcements.gpsLost())
+            }
             if (inFlight && SystemClock.elapsedRealtime() - renderStarted > 15000) {
                 snapshotter?.cancel(); snapshotter = null; inFlight = false
                 BikeDiagnostics.record(c, "Native map render timeout")
@@ -642,6 +656,12 @@ object NativeNavigation {
             renderer.setCameraPosition(camera)
             renderer.start({ snapshot ->
                 if (!running || (if (phone) phoneSnapshotter else snapshotter) !== renderer) return@start
+                if(SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos !in 0 until 10_000_000_000L) {
+                    if(phone){phoneInFlight=false;phoneMapFrame?.invalidated=true}
+                    else {inFlight=false;bikeMapFrame?.invalidated=true}
+                    BikeDiagnostics.record(c,"Native map discarded expired fix phone=$phone")
+                    return@start
+                }
                 if (mapZoom.state().revision != requestedZoom.revision || (!phone&&viewKey!="${dashRoute?.revision}:${dashRoute?.activeIndex}")) {
                     if (phone) phoneInFlight = false else inFlight = false
                     main.post { if (running) location?.let { render(c, it, phone) } }

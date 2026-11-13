@@ -21,8 +21,9 @@ object TomTomApi {
         for(q in app.pillion.core.DestinationInput.queries(query)) {
             val url=endpoint(c,"search/2/search/${Uri.encode(q.take(300))}.json")
                 .appendQueryParameter("limit","10").appendQueryParameter("language","en-GB").appendQueryParameter("typeahead","false")
-            if(fix!=null && android.os.SystemClock.elapsedRealtimeNanos()-fix.elapsedRealtimeNanos in 0..60_000_000_000L)
-                url.appendQueryParameter("lat","${fix.latitude}").appendQueryParameter("lon","${fix.longitude}")
+            SearchLocation.snapshot(c,fix)?.let { anchor ->
+                url.appendQueryParameter("lat","${anchor.latitude}").appendQueryParameter("lon","${anchor.longitude}")
+            }
             val results=NavigationApi.request(url.build(),"TomTom").getJSONArray("results")
             for(i in 0 until results.length()) {
                 val row=results.getJSONObject(i);val p=row.optJSONObject("position") ?: continue
